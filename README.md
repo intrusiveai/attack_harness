@@ -1,7 +1,9 @@
-# Attack Harness — container and implementation specifications
+# Attack Harness
 
-Implementation handoff draft, 2026-09-16. No harness, image or runtime is
-implemented or qualified in this directory.
+Python runtime implementation is in progress. Immutable-file access and pinned
+shared-contract loading are implemented and tested. No campaign executable or
+qualified image is available yet. See [implementation status](IMPLEMENTATION_STATUS.md)
+and run `make test` for the current unit tests.
 
 The engine is the product-owned `operator-native` Python harness running in an
 Operator-managed, network-disabled Linux OCI container. It generates payloads and

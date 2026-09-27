@@ -1,6 +1,6 @@
 # Attack Harness — Python Implementation Specification
 
-Status: implementation handoff draft; no harness or integration tests implemented  
+Status: implementation in progress; see [current coverage](IMPLEMENTATION_STATUS.md)  
 Date: 2026-09-16  
 Harness identity: `operator-native`
 
