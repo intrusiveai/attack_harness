@@ -1,5 +1,15 @@
 # Attack Harness implementation status
 
+## Native live confinement feasibility
+
+A release-owned stable-ABI C extension now installs the irreversible architecture-
+checked syscall allowlist with TSYNC, verifies single-thread/no-new-privileges
+prerequisites and denies new executable memory mappings. A pinned test-only
+Distroless image passed live ARM64 denial and permitted-file-I/O probes under
+Operator's startup profile. See [native policy and evidence](native/README.md).
+This does not qualify the complete harness or all supported hosts. Bootstrap
+composition, dependency/release locking and broader qualification remain pending.
+
 ## Startup inputs and instruction skills
 
 Input loading now binds the validated bootstrap prefix to the independently
@@ -65,6 +75,5 @@ Run `make test` with a sibling Operator checkout and its prepared development
 virtualenv, or set `OPERATOR_ROOT` and `PYTHON` explicitly. The tests use test-only
 package manifests with explicit pins; they do not approve an image or release.
 
-Next: confinement and
-bootstrap, the model/tool loop, image construction and end-to-end qualification.
+Next: bootstrap, the model/tool loop, image construction and end-to-end qualification.
 No executable campaign harness or qualified image is claimed by this boundary.

@@ -1,0 +1,23 @@
+{
+  "status": "development-candidate-not-runtime-qualified",
+  "runtime": {
+    "repository": "gcr.io/distroless/python3-debian13",
+    "index_digest": "sha256:8ee214843129f43e2ebf5e0ca9f2e4e6d8292143d1b8a6787f169b5898578884",
+    "platforms": {
+      "linux/amd64": "sha256:359614ec673d26ff9f9de9edabe2e6764a45a97a7791f309e5dca218c5a18295",
+      "linux/arm64": "sha256:8ed3bf09202b744e9f360fab522a63d0ae9e479c07dbabca706826df6848610e"
+    },
+    "observed_arm64_python": "3.13.5",
+    "observed_arm64_soabi": "cpython-313-aarch64-linux-gnu"
+  },
+  "builder": {
+    "repository": "docker.io/library/python",
+    "index_digest": "sha256:82c46c08c991d3d3ff10476ac5e386c2c28f27bbd3985a02c5e39fe99ab272eb",
+    "python": "3.13.15",
+    "platforms": {
+      "linux/amd64": "sha256:28c3d37c94818baa77fce7858adde189bbf645363a3a72c2deeb281b401a423c",
+      "linux/arm64": "sha256:4f72f3434c0586369059a3ccb42e31a939f5db1dbf27e66f309065ff0858fcc7"
+    }
+  },
+  "native_extension": {"limited_api": "0x030c0000", "filename": "_confinement.abi3.so"}
+}

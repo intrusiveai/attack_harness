@@ -1,0 +1,9 @@
+FROM python@sha256:82c46c08c991d3d3ff10476ac5e386c2c28f27bbd3985a02c5e39fe99ab272eb AS builder
+COPY native/confinement.c native/live_allowlist.h /source/native/
+COPY build/compile_native.py /source/build/compile_native.py
+RUN --network=none ["python3", "/source/build/compile_native.py"]
+
+FROM gcr.io/distroless/python3-debian13@sha256:8ee214843129f43e2ebf5e0ca9f2e4e6d8292143d1b8a6787f169b5898578884 AS native-test
+COPY --from=builder /out/_confinement.abi3.so /opt/operator/test/_confinement.abi3.so
+COPY tests/native_probe.py /opt/operator/test/native_probe.py
+ENTRYPOINT ["/usr/bin/python3", "-I", "-S", "-B", "/opt/operator/test/native_probe.py"]
