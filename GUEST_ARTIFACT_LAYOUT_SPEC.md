@@ -326,7 +326,15 @@ Skills cannot sign or select a different executable/runtime profile.
 An embedded engine manifest describes the fixed package, entrypoint, paths,
 protocol, native catalog, codecs, loader, prompt and required host features.
 The external HTTPS record approves the full Docker image ID, which binds the
-embedded manifest and installed content. Do not embed the full image's own digest
+embedded manifest and installed content. The embedded manifest and fixed file inventory
+MUST implement [Operator's embedded-file admission contract](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md#5-embedded-image-files).
+The build MUST install the default prompt, UTF-8 skill loader implementation and
+all five native tool projections at the fixed paths in that contract. The native
+catalog MUST be generated from the same verified shared package used by Operator,
+with the complete ordinary operation registry. The manifest MUST bind exact file
+sizes/raw digests, package identity, platform, entrypoint and both transports.
+Build validation MUST exercise Operator's stopped-image inspection and cleanup;
+no guest execution is permitted during metadata discovery. Do not embed the full image's own digest
 in bytes used to calculate it.
 
 The host's acyclic identity sequence remains:
