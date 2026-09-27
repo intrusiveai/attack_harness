@@ -1,5 +1,19 @@
 # Attack Harness implementation status
 
+## Startup inputs and instruction skills
+
+Input loading now binds the validated bootstrap prefix to the independently
+pinned package, raw/canonical manifest descriptors, exact mounted inventories,
+context/bundle/prompt bytes and selected skill contents. The fixed skill loader
+checks its own release-selected digest, bundle/manifest identities, UTF-8 data and
+all inventoried entrypoints/references. It executes no skill code or hooks.
+
+The initialized response body derives from verified input identities. Actual
+`admission_open` must pass the complete shared launch-identity validator before
+context, bundle and entry access are admitted. Admission cannot broaden frozen
+limits or run twice. Tests cover empty/selected skills, wrong loader, missing
+content, changed prompt, extra manifests, explicit admission and immutable copies.
+
 ## Linux FIFO peer
 
 The Python FIFO backend opens only its directional endpoints, validates prepared
@@ -51,6 +65,6 @@ Run `make test` with a sibling Operator checkout and its prepared development
 virtualenv, or set `OPERATOR_ROOT` and `PYTHON` explicitly. The tests use test-only
 package manifests with explicit pins; they do not approve an image or release.
 
-Next: immutable startup inputs/skill loader, confinement and
+Next: confinement and
 bootstrap, the model/tool loop, image construction and end-to-end qualification.
 No executable campaign harness or qualified image is claimed by this boundary.
