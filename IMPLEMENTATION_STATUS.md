@@ -1,5 +1,19 @@
 # Attack Harness implementation status
 
+## Linux FIFO peer
+
+The Python FIFO backend opens only its directional endpoints, validates prepared
+inodes, and uses bounded nonblocking reads/writes with four-byte framing. Initial
+rendezvous has a 60-second limit; partial frames, blocked writes and full receivers
+have non-renewing five-second deadlines. EOF after bootstrap, EPIPE, oversized
+headers and inode/inventory changes are terminal. It never reconnects.
+
+The bootstrap-only descriptor handoff maps ordinary/control endpoints to FD 3–6.
+The opt-in Go/Python interoperability test exercises this mapping in the disposable
+Python test process and then exchanges startup and an ordinary operation. The
+current test host is macOS ARM64; POSIX FIFO mechanics passing here do not qualify
+native Linux containment or a Docker mount.
+
 ## macOS spool peer
 
 The single-threaded Python peer implements bounded ordinary/control queues,
@@ -37,6 +51,6 @@ Run `make test` with a sibling Operator checkout and its prepared development
 virtualenv, or set `OPERATOR_ROOT` and `PYTHON` explicitly. The tests use test-only
 package manifests with explicit pins; they do not approve an image or release.
 
-Next: immutable startup inputs/skill loader, FIFO I/O, confinement and
+Next: immutable startup inputs/skill loader, confinement and
 bootstrap, the model/tool loop, image construction and end-to-end qualification.
 No executable campaign harness or qualified image is claimed by this boundary.

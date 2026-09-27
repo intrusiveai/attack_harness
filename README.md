@@ -1,7 +1,7 @@
 # Attack Harness
 
 Python runtime implementation is in progress. Immutable-file access and pinned
-shared-contract loading and macOS spool I/O are implemented and tested. No campaign executable or
+shared-contract loading and Linux FIFO/macOS spool I/O are implemented and tested. No campaign executable or
 qualified image is available yet. See [implementation status](IMPLEMENTATION_STATUS.md)
 and run `make test` for the current unit tests.
 
