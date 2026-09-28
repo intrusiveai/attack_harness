@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from operator_contracts import ContractError
-from operator_contracts.canonical import _canonical_value
+from operator_contracts.canonical import _canonical_value, raw_digest
 from operator_contracts.schema_ids import ENGINE_MODEL_GENERATE_RESULT_SCHEMA
 from operator_contracts.startup import require
 from operator_contracts.validation import ORDINARY_LIMIT
@@ -51,25 +51,30 @@ def native_batch(protocol, policy_raw, request_raw, result_raw):
     body = protocol._catalog.validate(ENGINE_MODEL_GENERATE_RESULT_SCHEMA, result_raw)
     codec = body["codec_id"]
     response = body["response"]
+    batch_id = raw_digest(result_raw)
     calls = []
     if disposition == "tool-calls":
         if codec == "openai-chat-text-tools-v1":
             values = response["choices"][0]["message"].get("tool_calls") or []
             calls = [ToolCall(value["id"], value["function"]["name"],
-                              value["function"]["arguments"].encode("utf-8"))
+                              value["function"]["arguments"].encode("utf-8"),
+                              batch_id=batch_id)
                      for value in values]
         elif codec == "openai-responses-text-tools-v1":
             values = [item for item in response["output"] if item.get("type") == "function_call"]
             calls = [ToolCall(value["call_id"], value["name"],
-                              value["arguments"].encode("utf-8")) for value in values]
+                              value["arguments"].encode("utf-8"), batch_id=batch_id)
+                     for value in values]
         elif codec == "anthropic-messages-text-tools-v1":
             values = [item for item in response["content"] if item["type"] == "tool_use"]
-            calls = [ToolCall(value["id"], value["name"], _object(value["input"]))
+            calls = [ToolCall(value["id"], value["name"], _object(value["input"]),
+                              batch_id=batch_id)
                      for value in values]
         elif codec == "bedrock-converse-text-tools-v1":
             values = [item["toolUse"] for item in response["output"]["message"]["content"]
                       if "toolUse" in item]
-            calls = [ToolCall(value["toolUseId"], value["name"], _object(value["input"]))
+            calls = [ToolCall(value["toolUseId"], value["name"], _object(value["input"]),
+                              batch_id=batch_id)
                      for value in values]
         elif codec == "gemini-text-tools-v1":
             parts = response["candidates"][0]["content"]["parts"]
@@ -78,7 +83,8 @@ def native_batch(protocol, policy_raw, request_raw, result_raw):
                     continue
                 value = part["functionCall"]
                 identifier = value.get("id", f"gemini-part-{index}")
-                calls.append(ToolCall(identifier, value["name"], _object(value["args"]), index))
+                calls.append(ToolCall(identifier, value["name"], _object(value["args"]),
+                                      index, batch_id))
         else:
             raise ContractError("unsupported model codec")
     elif disposition == "usage-unknown":

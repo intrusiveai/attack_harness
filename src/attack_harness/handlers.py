@@ -21,6 +21,7 @@ _DEPENDENCIES = {
     "snapshot_inspect": frozenset({"engine.snapshot_inspect"}),
     "snapshot_list": frozenset({"engine.snapshot_list"}),
     "snapshot_request": frozenset({"engine.snapshot_request"}),
+    "attempt_execute": frozenset({"engine.attempt_execute"}),
 }
 
 
@@ -38,13 +39,14 @@ class FixedHandlers:
     """
 
     def __init__(self, protocol, inputs, client, loop, *, artifacts=None,
-                 observations=None):
+                 observations=None, attempts=None):
         self.protocol = protocol
         self.inputs = inputs
         self.client = client
         self.loop = loop
         self.artifacts = artifacts or ArtifactPublisher(protocol, client)
         self.observations = observations or ObservationReader(client)
+        self.attempts = attempts
 
     def handlers(self):
         candidates = {
@@ -63,6 +65,12 @@ class FixedHandlers:
             name: handler for name, handler in candidates.items()
             if name == "reference_read" or _DEPENDENCIES[name] <= available
         }
+
+    def raw_handlers(self):
+        if (self.attempts is None or
+                not _DEPENDENCIES["attempt_execute"] <= self.client.operations):
+            return {}
+        return {"attempt_execute": self.attempts}
 
     def reference_read(self, arguments):
         try:

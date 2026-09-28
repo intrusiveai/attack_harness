@@ -93,6 +93,11 @@ class OrdinaryClient:
             self._stopped = True
             self.transport.close()
 
+    def fail(self, reason, *, receipt=None):
+        """Close after a validated terminal typed result has been retained."""
+        require(type(reason) is str and reason)
+        self._close(reason, receipt=receipt)
+
     def _identifier(self, kind):
         if kind == "call":
             self._call_index += 1

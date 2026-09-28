@@ -20,6 +20,7 @@ class ToolCall:
     name: str
     arguments: bytes
     correlation: int | None = None
+    batch_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,12 +62,18 @@ def _content(value):
 class Dispatcher:
     """Dispatch only explicitly installed handlers in declared call order."""
 
-    def __init__(self, protocol, loop, handlers):
+    def __init__(self, protocol, loop, handlers, *, raw_handlers=None):
+        if raw_handlers is None:
+            raw_handlers = {}
         require(type(handlers) is dict and all(type(name) is str and callable(handler)
                                                for name, handler in handlers.items()))
+        require(type(raw_handlers) is dict and all(type(name) is str and callable(handler)
+                                                   for name, handler in raw_handlers.items()))
+        require(not handlers.keys() & raw_handlers.keys())
         self.protocol = protocol
         self.loop = loop
         self._handlers = dict(handlers)
+        self._raw_handlers = dict(raw_handlers)
 
     @staticmethod
     def _invalid(call, message="Invalid tool name or arguments."):
@@ -106,22 +113,27 @@ class Dispatcher:
             for index, call in enumerate(calls):
                 self.loop.start_tool(call.name)
                 handler = self._handlers.get(call.name)
-                if handler is None:
+                raw_handler = self._raw_handlers.get(call.name)
+                if handler is None and raw_handler is None:
                     result = self._invalid(call, "Unknown tool name.")
                     self.loop.finish_tool("invalid")
                     results.append(result)
                     continue
                 try:
-                    arguments = self.protocol.validate_tool_arguments(call.name, call.arguments)
-                except ContractError:
-                    result = self._invalid(call)
-                    self.loop.finish_tool("invalid")
-                    results.append(result)
-                    continue
-                try:
-                    handled = handler(arguments)
+                    if raw_handler is not None:
+                        handled = raw_handler(call)
+                    else:
+                        try:
+                            arguments = self.protocol.validate_tool_arguments(call.name, call.arguments)
+                        except ContractError:
+                            result = self._invalid(call)
+                            self.loop.finish_tool("invalid")
+                            results.append(result)
+                            continue
+                        handled = handler(arguments)
                     require(type(handled) is HandlerResult)
-                    require(handled.outcome in ("success", "preflight-rejected", "failed", "restored"))
+                    require(handled.outcome in ("success", "invalid", "preflight-rejected",
+                                                "failed", "restored"))
                 except ToolError as error:
                     handled = HandlerResult(error.value, error.outcome)
                 result = ToolResult(call.call_id, call.name, _content(handled.value), handled.outcome)

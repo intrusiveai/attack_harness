@@ -141,6 +141,14 @@ class ArtifactPublisher:
         require(receipt_id in self._artifacts)
         return self._artifacts[receipt_id]
 
+    def committed(self, descriptor, purpose):
+        """Resolve a model descriptor only against a committed local receipt."""
+        require(type(descriptor) is dict and purpose in ("payload", "carrier"))
+        matches = [artifact for artifact in self._artifacts.values()
+                   if artifact.purpose == purpose and artifact.descriptor() == descriptor]
+        require(matches)
+        return matches[-1]
+
     def content(self, receipt_id):
         """Return exact committed bytes or explicitly fail when not retained."""
         require(receipt_id in self._artifacts)
