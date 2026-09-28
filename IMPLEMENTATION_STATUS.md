@@ -1,5 +1,19 @@
 # Attack Harness implementation status
 
+## Provider-native model tool turns
+
+Complete correlated model exchanges now expose tool calls only after the installed
+codec and policy validators accept the request/result pair. OpenAI Chat, OpenAI
+Responses, Anthropic Messages, Bedrock Converse and Gemini retain their native
+argument, call-ID/order and continuation shapes; Gemini calls without IDs use a
+local positional handle without inventing a provider ID. Unknown usage is never
+treated as zero and cannot lead to tool effects.
+
+All five package fixture families pass call extraction and provider-valid follow-up
+construction, including parallel/same-name calls. Tests also reject uncorrelated
+exchanges and mismatched result order. This is codec/dispatcher compatibility,
+not live provider-route qualification or a completed conversation loop.
+
 ## Fixed serial model-tool dispatcher
 
 The dispatcher now accepts only a complete prevalidated batch, rejects duplicate

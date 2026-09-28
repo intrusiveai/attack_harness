@@ -19,6 +19,7 @@ class ToolCall:
     call_id: str
     name: str
     arguments: bytes
+    correlation: int | None = None
 
 
 @dataclass(frozen=True)
