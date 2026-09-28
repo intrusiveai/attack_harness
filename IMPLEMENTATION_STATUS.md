@@ -8,10 +8,11 @@ contract package, selects only the launcher-provided FIFO or spool transport,
 completes confinement and startup, constructs all campaign-lifetime services once,
 and runs the adaptive model/tool loop through structured conclusion and stop.
 
-This boundary is not a release claim. Real provider credentials/routes, native
-Interceptor and declarative-HTTPS targets, Operator journaling/termination failure
-cases, release publication, and native qualification on all supported host tuples
-have not been run. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
+This boundary is not a release claim. Deterministic Go/Python process integration
+now covers both transports, campaign completion and interruption. Live provider
+routes, real target deployments, release publication and native qualification on
+all supported host tuples remain outstanding. Historical image candidates predate
+the current source/contract pins and require rebuilding. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
 
 ## Implemented runtime
 
@@ -44,7 +45,7 @@ have not been run. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEP
 
 ## Deterministic evidence
 
-`make test` runs 81 tests. They include the scripted benign marker vertical slice:
+`make test` runs 82 tests. They include the scripted benign marker vertical slice:
 a baseline negative observation causes a distinct child payload/attempt, the child
 returns actual marker bytes, and the final conclusion cites both receipts. The same
 production `AdaptiveHarness`, native conversation, dispatcher, handlers, artifact,
@@ -54,6 +55,19 @@ The suite also covers contract/input drift, prompt and skill identities, all fiv
 codec families, serial multi-call behavior, restore batch skipping, allocator and
 loop boundaries, reference/observation reads, FIFO/spool faults, graceful and
 unavailable conclusions, compaction provenance and impossible-context handling.
+
+The [joined process suite](../operator_sandbox/docs/PROCESS_INTEGRATION.md) invokes
+the production Python entrypoint against the Go host over FIFO and spool. It covers
+large manifests, all prompt modes, skills, objectives-only/scenario/exploratory
+campaigns, production HTTPS against local TLS, feedback and conclusions, healthy
+restore with retained injections, correlated skipped calls, uncertain outcomes,
+spool overflow and abrupt host/harness loss without replay. Large histories cross
+the real compaction threshold; component stress tests repeat compaction for all
+five codecs. The test-only launcher relocates paths and bypasses confinement;
+Docker, native Interceptor and model responses remain controlled fixtures.
+
+The acceptance matrix pins both source commits and the development contract
+package. CI consumes these same pins and includes the process suite.
 
 ## Candidate build
 

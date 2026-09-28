@@ -1,7 +1,7 @@
 # Attack Harness Container Artifact Specification
 
-Status: container design and implementation handoff draft; not implemented or runtime-qualified  
-Date: 2026-09-16  
+Status: runtime and deterministic Go/Python process integration implemented; release publication and native qualification outstanding — see [current coverage](IMPLEMENTATION_STATUS.md)
+Date: 2026-09-28\
 Harness identity: `operator-native`  
 Runtime ABI: `operator-container/v1` — Docker with Linux FIFO / macOS file-spool transport; qualification pending  
 Pipe protocol: accepted `operator.dev/engine-pipe/v1alpha1`; package publication pending

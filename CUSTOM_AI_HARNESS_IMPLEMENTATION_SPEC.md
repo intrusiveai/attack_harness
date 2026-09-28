@@ -1,7 +1,7 @@
 # Attack Harness — Python Implementation Specification
 
-Status: implementation in progress; see [current coverage](IMPLEMENTATION_STATUS.md)
-Date: 2026-09-16  
+Status: runtime and deterministic Go/Python process integration implemented; release publication and native qualification outstanding — see [current coverage](IMPLEMENTATION_STATUS.md)
+Date: 2026-09-28\
 Harness identity: `operator-native`
 
 ## 1. Outcome and reading order

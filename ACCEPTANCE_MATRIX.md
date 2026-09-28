@@ -1,44 +1,67 @@
 # Attack Harness acceptance matrix
 
-Evidence recorded 2026-09-27. `Pass (component)` means the deterministic harness
-component or fake-host behavior passed, not that the complete native criterion is
-qualified. `Partial` means only the listed subset passed. `Not run` is an explicit
-external qualification gap; no row is inferred from image construction alone.
+Evidence recorded 2026-09-28. `Pass (component)` means deterministic component
+coverage; `Pass (process)` means the listed behavior passed across real Go/Python
+processes. Neither status qualifies production containers or live infrastructure.
+`Partial` identifies a tested subset and its remaining gate. `Not run` identifies
+external qualification still required.
 
 ## Evidence identity
 
 | Item | Identity |
 |---|---|
-| Harness source | repository commit containing this matrix; runtime source lock `sha256:35dd1f2ac24b71a22aa8ea914bb0681631ee904368780334b3243f10f112d78a` |
-| Operator source | `51a11c1bbbc27246e9913b1d71b6ebb49f2102af` |
-| Contract package | version `0.0.0`, digest `sha256:648c7b2641a05505d8aa21f24054832dc3867fd63a302ec87ef855a213313b7a` |
-| Local host | macOS ARM64; Python 3.14.6 test interpreter; Go 1.26.5; Docker client/server 29.0.1; Linux/ARM64 Docker VM |
-| Test suite | `make test`: 81 passed |
+| Harness source | `d9d85fb78c15bec40694a8e22fd471d8bdb35294` |
+| Runtime source lock | `sha256:c727d8db9f5447d485e7d4ae9b4940263880e358986b9b96801e9b31f79e7d83` (51 files) |
+| Operator source | `e6f3ccd1a08ea3e1defdbb1a5514ff55dbfa6220`, tree `fd8d715632d1f9491558a7081cc09e5718768353` |
+| Contract package | development version `0.0.0`, digest `sha256:be32c73554eab728df22bd51940b20ce670bd8442a827f3d6bfb2fd34f106c61` |
+| Local process host | macOS ARM64; Python 3.14.6; Go 1.26.5 |
+| Harness suite | 82 tests passed; includes three large-history compaction cycles for each of five codecs |
+| Shared validation | 28 Python tests passed; full Go suite, schema generator checks and shared fixtures passed |
+| Process suite | Full Go suite with `OPERATOR_HARNESS_INTEGRATION=1 OPERATOR_PYTHON_PEER_TEST=1`; focused restore/failure/history/transport race checks passed |
+
+The [process integration guide](../operator_sandbox/docs/PROCESS_INTEGRATION.md)
+provides commands and fixture boundaries. Python invokes the production entrypoint
+with test-only path relocation and a no-op confinement callback. Model, native
+Interceptor, Docker and release approval are fixtures. HTTPS uses the production
+adapter against a local TLS server. Physical FIFO tests on macOS demonstrate wire
+behavior, not the native Linux container profile. CI pins the matching Operator
+commit and runs the combined suite; this record reports local execution, not an
+observed CI run.
+
+## Historical image-build evidence
+
+These candidates predate the source/contract pins above and MUST NOT be treated as
+images validated by the current process suite. Updated image builds and native
+qualification remain required. Historical Docker client/server was 29.0.1 with a
+Linux/ARM64 Docker VM.
+
+| Item | Historical identity |
+|---|---|
 | AMD64 candidate | config `sha256:9db407c25428ed3bb61dfc9c4c1daab659bdde77ec9c74578540769423eaaf12`; manifest `sha256:26a4046c7191e084ab4950cc19ec7f26f52600ba42701c5cc0d35d54c4acf0db`; OCI index `sha256:f8b32c513c173119a91310e283c7a92446d9ff77d04650feb959fae9df803d31`; archive `sha256:6439a753f867e5ce1863730c46a7e851489b6ec2971e4a3a11078c2066b0427c`; built locally, not native-qualified |
 | ARM64 candidate | config `sha256:004bc121fb26b3ae1bb242276dd0d576e2af99294bf2997694952831a7e7b756`; manifest `sha256:2468f8f3a58f17af224016829ab7a9e715b3b9d19ea6c3650fa5a052e9db0e62`; OCI index `sha256:c5455df4b72a2068501e30c96393654973e7c5f25a5cc1aeedd80c982a788849`; archive `sha256:b31e3636928d55e6029f4c336df1bc80b249fd4364d72e2089dc2563e0a304b3`; built locally, not release-approved |
 | Stopped-image check | ARM64 Docker ID `sha256:4dc8ac9935cf48dbcf0ace2ab98a0a2ae908448c47cf7fc17405f8ea19f5c927`; exact OCI config/layers matched; Operator inspection and cleanup passed |
 
-Candidate files and machine-generated reports remain under ignored `dist/`.
+Candidate files and reports remain under ignored `dist/`.
 
 ## AIH acceptance criteria
 
 | ID | Status | Evidence / remaining gate |
 |---|---|---|
-| AIH-AC-001 | Partial | Exact input/package/skill inventories, corruption, additions, empty/nonempty skills and admission narrowing pass; complete incompatible-capability initialization matrix remains. |
-| AIH-AC-002 | Partial | Exact prompt bytes and all five compaction request shapes pass; Operator default/replace/ordered-extension end-to-end staging remains. |
-| AIH-AC-003 | Partial | Bounded objective work queue, coverage ledger, full scenario index and reference handles pass; broader objectives-only/catalog/source-provenance variants remain. |
-| AIH-AC-004 | Pass (component) | Production-path scripted marker vertical slice performs baseline, actual negative feedback read, changed child payload/attempt, marker read and evidence-bound conclusion. |
-| AIH-AC-005 | Partial | Direct mapped operations and scenario-independent dispatch pass; complete exploratory-origin fixture matrix remains. |
-| AIH-AC-006 | Partial | Shared allocator/loop implementations are used and local decode/schema/semantic/lineage/artifact checks pass; the full cross-language trace set is not rerun here. |
-| AIH-AC-007 | Partial | Completed negatives adapt and failed/unknown operations terminate; all cleanup-unknown/partial-report variants remain. |
-| AIH-AC-008 | Pass (component) | Receipt scope, campaign membership, range assembly, integrity, UTF-8 boundaries, binary opacity, truncation and unavailable/empty distinctions pass. |
-| AIH-AC-009 | Partial | Native serial batches, ordering, duplicates, malformed calls and all five offline codecs pass; real provider route qualification is not run. |
-| AIH-AC-010 | Partial | Oversized initial context, explicit handles, tool-suppressed complete-segment compaction, provenance and impossible-fit context-limit pass; stress-scale histories remain. |
-| AIH-AC-011 | Partial | Only host-advertised mapped operations are installed and source-bound shared validators run; real HTTPS/Interceptor integrations are not run. |
-| AIH-AC-012 | Partial | Shared finite-loop accounting, deadlines, invalid/no-progress/read/compaction behavior and model-free finalization pass in components; full transport pressure/timer matrix remains. |
-| AIH-AC-013 | Pass (component) | Conclusion artifact, record and stop ordering, unknown receipt rejection, unavailable conclusion and conflicting acknowledgement handling pass. |
-| AIH-AC-014 | Partial | Restore advances once and skips every later call with correlated results; complete snapshot/restore/compaction/termination race matrix remains. |
-| AIH-AC-015 | Partial | Exact package pin, five-message startup, bounded identities, FIFO/spool component traces and stop finalization pass; complete real Go/Python peer-through-stop traces remain. |
+| AIH-AC-001 | Partial | Exact input/package/skill inventories, corruption, additions and narrowing pass; production startup includes large manifests and selected skills. Complete incompatible-capability initialization matrix remains. |
+| AIH-AC-002 | Pass (process) | Exact default, replacement and ordered-extension prompts reach the model through real staging/startup on both transports; five codec compaction request shapes pass in components. |
+| AIH-AC-003 | Partial | Objectives-only and scenario-guided process campaigns, reference reads and a 250-reference startup inventory pass; broader catalog/source-provenance variants remain. |
+| AIH-AC-004 | Pass (process) | Both transports execute related attempts, retrieve actual feedback bytes and commit an evidence-bound conclusion. Component marker tests separately demonstrate negative-to-positive adaptation. |
+| AIH-AC-005 | Pass (process) | Exploratory process campaigns execute mapped operations and conclude without requiring a supplied scenario origin. |
+| AIH-AC-006 | Partial | Go validates actual Python attempt identities, release-record digest and parent lineage, including after restore. Shared rejection fixtures pass; exhaustive joined rejection traces remain. |
+| AIH-AC-007 | Partial | Failed/unknown effects close execution in process tests; no automatic replay or admission after interruption. Exhaustive native cleanup-unknown/report variants remain. |
+| AIH-AC-008 | Pass (process) | Actual receipt-scoped feedback reaches the next model turn; components cover membership, ranges, integrity, UTF-8, binary opacity, truncation and empty/unavailable distinctions. |
+| AIH-AC-009 | Partial | Real Chat Completions model/tool loop plus all five offline codecs pass; live provider route qualification remains. |
+| AIH-AC-010 | Pass (process) | Production 1 MiB history threshold triggers tool-suppressed compaction on both transports, preserving task and non-evidence provenance; repeated 200-segment stress histories pass for all five codecs. |
+| AIH-AC-011 | Partial | Production HTTPS adapter/local TLS process campaign passes with observer assurance; real deployment and native Interceptor qualification remain. |
+| AIH-AC-012 | Partial | Control while model work is blocked, spool overflow, host/harness loss and finite-loop components pass; native resource/timer qualification remains. |
+| AIH-AC-013 | Pass (process) | Real conclusion artifact, record and accepted stop chain pass; invalid references and conflicting acknowledgements retain component coverage. |
+| AIH-AC-014 | Partial | Snapshot metadata/list/inspect, revision adoption in the same Python process, retained-injection cleanup, child lineage and correlated skipped batch calls pass; lost restore replies terminate. Native race matrix remains. |
+| AIH-AC-015 | Pass (process) | Both peers verify the same fresh package and exchange the five-message startup through accepted stop over physical FIFO/spool. |
 
 ## AHC acceptance criteria
 
@@ -46,27 +69,27 @@ Candidate files and machine-generated reports remain under ignored `dist/`.
 |---|---|---|
 | AHC-AC-001 | Not run | No final approved image has run on all four native host tuples. |
 | AHC-AC-002 | Partial | Minimal Distroless release tree, locked dependencies and build inventory checks pass; final forbidden-file inventory qualification remains. |
-| AHC-AC-003 | Partial | Fixed isolated entrypoint and confinement-before-input ordering pass in tests; full launched candidate startup remains. |
+| AHC-AC-003 | Partial | Production isolated entrypoint completes real host startup using test-only path/confinement shims; full launched production image qualification remains. |
 | AHC-AC-004 | Partial | ARM64 feasibility image denied representative exec/fork/socket/namespace/memory/kernel probes; final image and AMD64 probe matrix remain. |
 | AHC-AC-005 | Partial | Socket denial and allowed file I/O were probed; complete address-family/network and live transport matrix remains. |
-| AHC-AC-006 | Partial | FIFO/spool direction, framing, EOF, ACK, cleanup, queue and deadline component tests pass; native Linux/macOS transport qualification remains. |
-| AHC-AC-007 | Partial | Shared validators and framing/identity fault fixtures pass through Python components; complete cross-language wire suite remains. |
-| AHC-AC-008 | Partial | Control is pumped during bounded waits/reads and deadlines are non-renewing; hostile pressure and kill-deadline qualification remains. |
+| AHC-AC-006 | Partial | Physical FIFO/spool process campaigns and fault tests pass; native Linux/macOS Docker transport qualification remains. |
+| AHC-AC-007 | Partial | Joined startup/ordinary/restore/stop traces and shared framing/identity fault fixtures pass; exhaustive hostile cross-language wire qualification remains. |
+| AHC-AC-008 | Partial | Control terminates blocked model work across processes; spool overflow closes execution. Native hostile-pressure and Docker kill deadlines remain. |
 | AHC-AC-009 | Partial | Immutable inventory, links, traversal, replacement and extra-entry tests pass; mounted live filesystem/scratch enforcement remains. |
-| AHC-AC-010 | Pass (component) | Empty and selected skill sets load atomically without image rebuild; missing, changed and extra content fail. |
-| AHC-AC-011 | Partial | Prompt raw identity and every model system request are bound; all Operator prompt composition modes need end-to-end qualification. |
-| AHC-AC-012 | Partial | Bounded bundle index/reference reads, omissions, coverage and compaction gaps pass; complete large-bundle qualification remains. |
+| AHC-AC-010 | Pass (process) | Empty and selected skills load through real host staging without image rebuild; component inventory tests reject changed/missing/extra content. |
+| AHC-AC-011 | Pass (process) | Default, replacement and ordered-extension prompts match exact staged bytes at the first model request over both transports. |
+| AHC-AC-012 | Partial | Large startup inventory/reference handles and real large-history compaction pass; complete native large-bundle qualification remains. |
 | AHC-AC-013 | Pass (component) | Closed fixed dispatch rejects unknown/prose/malformed arguments; payload bytes remain passive data; call/result order is preserved. |
 | AHC-AC-014 | Partial | All five native codecs pass offline request/result/continuation fixtures; real provider exchanges are not run. |
-| AHC-AC-015 | Pass (component) | Declared/actual artifact bytes, media, digest, parts, quotas and commit-only usability pass. |
-| AHC-AC-016 | Partial | Guest request semantics, allocation and immutable lineage pass; native host translation goldens/targets remain. |
-| AHC-AC-017 | Not run | Real declarative-HTTPS and native Interceptor qualification is unavailable. |
-| AHC-AC-018 | Not run | Full host journal authenticity/gap qualification is Operator-owned and not run here. |
+| AHC-AC-015 | Pass (process) | Real multipart artifacts become usable only after commit; component fixtures cover quotas, declared/actual bytes, media and integrity. |
+| AHC-AC-016 | Partial | Actual Python requests reach Go allocation, translation, feedback and immutable lineage, including restore; live native target qualification remains. |
+| AHC-AC-017 | Partial | Production declarative HTTPS adapter passes against a local TLS server; live HTTPS and native Interceptor qualification remain. |
+| AHC-AC-018 | Partial | Real Go journal persists model intent across abrupt host death; repeated cleanup preserves the uncertain committed prefix. Full native audit/gap qualification remains. |
 | AHC-AC-019 | Not run | Resource exhaustion, audit failure and direct Docker-kill matrix is not run. |
-| AHC-AC-020 | Partial | Guest crash/stop/unknown-effect paths do not reconnect or replay; committed host-journal crash evidence is not run. |
-| AHC-AC-021 | Partial | Guest restore continuity, revision adoption and batch skipping pass; complete snapshot history and termination race matrix remains. |
-| AHC-AC-022 | Pass (component) | The scripted marker vertical slice demonstrates adaptive refinement and an evidence-scoped structured conclusion without shell/code tools. |
+| AHC-AC-020 | Partial | Killed Go host, killed Python harness, cancellation and unknown restore tests reject replay/readmission; native Docker/host interruption qualification remains. |
+| AHC-AC-021 | Partial | Same-process restore, snapshot metadata, retained injection cleanup, lineage and batch skipping pass; full native restore/termination races remain. |
+| AHC-AC-022 | Pass (process) | Related attempts, actual feedback reads and receipt-bound conclusions pass with the Go host; component marker slice verifies adaptive negative-to-positive refinement. |
 | AHC-AC-023 | Partial | Locked dual-platform builds, offline tests, normalized OCI, SBOM/provenance, identity comparison and stopped-image inspection are implemented; native CI and publication repeatability remain unobserved. |
-| AHC-AC-024 | Partial | Actual bounded observation bytes, membership, ranges, hashes, UTF-8, empty/unavailable and retained receipts pass; all selection/profile/restore variants remain. |
-| AHC-AC-025 | Partial | Manifest descriptor, immutable file and identity validation pass; explicit over-one-frame HC-05 integration remains. |
-| AHC-AC-026 | Partial | Package/startup/envelope/restore/conclusion behavior passes in shared and component fixtures; complete real FIFO/spool fake-peer trace through accepted stop remains. |
+| AHC-AC-024 | Partial | Actual feedback bytes reach the model through host visibility filtering and receipt reads; range/integrity/unavailable distinctions pass in components. Complete native profile/restore matrix remains. |
+| AHC-AC-025 | Pass (process) | HC-05 descriptor carries an input manifest exceeding the control-frame limit; Python validates and consumes its staged immutable files. |
+| AHC-AC-026 | Pass (process) | Real Go/Python FIFO/spool traces cover pinned package, startup, operations, restore, conclusion and accepted stop; native container qualification remains separate. |
