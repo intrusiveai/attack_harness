@@ -1,5 +1,20 @@
 # Attack Harness implementation status
 
+## Admitted ordinary-operation scheduler
+
+The single-threaded Python client now constructs and validates closed ordinary
+envelopes, permits only the host-advertised operation set, keeps one operation in
+flight, pumps launch-scoped termination control ahead of ordinary responses and
+uses non-renewing monotonic response deadlines. It keeps durable operation IDs
+separate from call IDs, resolves exact completed duplicates locally, rejects
+changed reuse, treats unknown/terminal outcomes as terminal and applies a healthy
+restore revision exactly once without resetting transport state.
+
+Unit tests cover correlation, exact duplicate suppression, changed-content
+conflicts, restore continuity, next-request revision binding, host termination,
+unknown effects and response timeout. Broker persistence and the composition root
+remain pending, so this boundary alone is not an executable harness.
+
 ## Native live confinement feasibility
 
 A release-owned stable-ABI C extension now installs the irreversible architecture-
