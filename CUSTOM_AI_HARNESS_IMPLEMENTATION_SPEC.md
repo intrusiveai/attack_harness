@@ -688,8 +688,17 @@ the trusted host integration; they provide no guest network or credential access
 For declarative HTTPS, emit mapped operation IDs and schema-valid invocation
 artifacts with no initial injection setup actions, snapshot or restore calls.
 Host configuration fixes destination, method, authentication and response mapping.
-Record its actual external-response assurance. If a required hypothesis needs
-internal injection unavailable on this adapter, report the capability gap.
+The harness MUST use the same `engine.attempt_execute` and receipt-scoped
+`engine.observation_read` operations for HTTPS. Feedback MUST retain the host's
+`request-ended` boundary and `declared-observer` assurance. These records describe
+selected application responses; they MUST NOT be interpreted as native oracle
+verification, remote closure or target reset. The harness MUST use only advertised
+input media types and operations, and MUST NOT request injection cleanup or native
+state tools absent from its catalog. Adapter-specific error codes remain subject
+to the effective feedback profile. Operator's
+[HTTPS mapping contract](../operator_sandbox/docs/HTTPS_TARGETS.md) defines the
+host-side projection and execution rules. If a required hypothesis needs internal
+injection unavailable on this adapter, report the capability gap.
 
 Only expose state tools when both target and host policy advertise them. Use
 `snapshot_request` with an optional short label and description explaining the
