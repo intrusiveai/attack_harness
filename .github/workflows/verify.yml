@@ -79,6 +79,11 @@ jobs:
             --first dist/first-build-report.json \
             --second dist/attack-harness-${{ matrix.slug }}.build-report.json \
             --output dist/attack-harness-${{ matrix.slug }}.rebuild-comparison.json
+      - name: Exercise Operator stopped-image inspection and cleanup
+        working-directory: attack_harness
+        run: |
+          make inspect-stopped-image PLATFORM=${{ matrix.platform }} \
+            OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
       - name: Remove ephemeral builder
         if: always()
         run: docker buildx rm "harness-${{ github.run_id }}-${{ matrix.slug }}" || true
@@ -90,6 +95,7 @@ jobs:
             attack_harness/dist/attack-harness-${{ matrix.slug }}.oci.tar
             attack_harness/dist/attack-harness-${{ matrix.slug }}.build-report.json
             attack_harness/dist/attack-harness-${{ matrix.slug }}.rebuild-comparison.json
+            attack_harness/dist/attack-harness-${{ matrix.slug }}.inspection-report.json
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

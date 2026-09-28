@@ -5,7 +5,7 @@ PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
 CONTRACT_COMMIT := 51a11c1bbbc27246e9913b1d71b6ebb49f2102af
 
-.PHONY: test verify-source verify-contracts contract-package image inspect-image
+.PHONY: test verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" OPERATOR_CONTRACT_SOURCE="$(abspath $(OPERATOR_ROOT))/schemas" $(PYTHON) -m unittest discover -s tests -v
 
@@ -41,3 +41,17 @@ inspect-image:
 		--platform "$(PLATFORM)" \
 		--contract-lock build/contract-lock.json \
 		--output "dist/attack-harness-$(PLATFORM_SLUG).build-report.json"
+
+# Run after `make image`. The Docker archive has the attested OCI candidate's
+# exact config and layers, but omits attestations so Docker exposes a resolvable
+# single-manifest ID to Operator's immutable recheck.
+inspect-stopped-image: verify-source verify-contracts
+	@test -f "dist/attack-harness-$(PLATFORM_SLUG).build-report.json"
+	docker buildx build --platform "$(PLATFORM)" --target runtime \
+		--build-arg SOURCE_DATE_EPOCH=0 --provenance=false \
+		--output "type=docker,dest=dist/attack-harness-$(PLATFORM_SLUG).inspection.tar,rewrite-timestamp=true" .
+	$(PYTHON) build/inspect_stopped_image.py --source-root . \
+		--operator-root "$(OPERATOR_ROOT)" --platform "$(PLATFORM)" \
+		--archive "dist/attack-harness-$(PLATFORM_SLUG).inspection.tar" \
+		--build-report "dist/attack-harness-$(PLATFORM_SLUG).build-report.json" \
+		--output "dist/attack-harness-$(PLATFORM_SLUG).inspection-report.json"
