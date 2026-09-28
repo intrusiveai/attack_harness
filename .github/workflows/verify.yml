@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 51a11c1bbbc27246e9913b1d71b6ebb49f2102af
+          ref: e6f3ccd1a08ea3e1defdbb1a5514ff55dbfa6220
           path: operator_sandbox
           persist-credentials: false
       - name: Verify runner toolchain
@@ -61,6 +61,10 @@ jobs:
           make contract-package OPERATOR_ROOT=../operator_sandbox
           make verify-contracts OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make test OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
+      - name: Verify Go and Python process integration
+        working-directory: attack_harness
+        run: |
+          make -C ../operator_sandbox test-integration PYTHON="$(pwd)/.ci-venv/bin/python"
       - name: Start pinned BuildKit
         working-directory: attack_harness
         run: |
