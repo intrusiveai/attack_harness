@@ -1,4 +1,4 @@
-# Attack Harness
+<h1><img src="assets/attack-harness.png" alt="Attack Harness icon" width="48" height="48" align="absmiddle"> Attack Harness</h1>
 
 This repository contains the initial production-path Python Attack Harness and a
 locked OCI candidate build. The fixed bootstrap performs the five-message startup,
