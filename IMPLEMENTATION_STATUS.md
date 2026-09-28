@@ -1,5 +1,21 @@
 # Attack Harness implementation status
 
+## Committed artifacts and observation content
+
+The deterministic artifact wrapper validates the fixed model argument schema,
+preserves UTF-8/base64 bytes, emits canonical JSON without collapsing JSON strings,
+and performs begin/ordered 256 KiB parts/commit with independent operation IDs.
+Only the verified commit receipt becomes usable. Exact committed bytes are kept
+in a bounded cache, with explicit `ARTIFACT_UNAVAILABLE` behavior when retention
+is impossible.
+
+Receipt-scoped observation reads validate ranges and consistent metadata, decode
+canonical base64, assemble bounded chunks, verify full-object SHA-256 only at EOF,
+decode textual media incrementally across UTF-8 boundaries, and leave unsupported
+binary media opaque. Empty content and unavailable content remain distinct. Tests
+cover chunk ordering, canonical encodings, cache bounds, corruption, changed
+metadata, UTF-8 boundaries and authenticated size ceilings.
+
 ## Admitted ordinary-operation scheduler
 
 The single-threaded Python client now constructs and validates closed ordinary
