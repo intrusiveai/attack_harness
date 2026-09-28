@@ -22,6 +22,10 @@ _DEPENDENCIES = {
     "snapshot_list": frozenset({"engine.snapshot_list"}),
     "snapshot_request": frozenset({"engine.snapshot_request"}),
     "attempt_execute": frozenset({"engine.attempt_execute"}),
+    "request_stop": frozenset({
+        "engine.artifact_begin", "engine.artifact_put_part", "engine.artifact_commit",
+        "engine.record_append", "engine.request_stop",
+    }),
 }
 
 
@@ -39,7 +43,8 @@ class FixedHandlers:
     """
 
     def __init__(self, protocol, inputs, client, loop, *, artifacts=None,
-                 observations=None, attempts=None):
+                 observations=None, attempts=None, finalizer=None,
+                 record_receipts=None):
         self.protocol = protocol
         self.inputs = inputs
         self.client = client
@@ -47,6 +52,8 @@ class FixedHandlers:
         self.artifacts = artifacts or ArtifactPublisher(protocol, client)
         self.observations = observations or ObservationReader(client)
         self.attempts = attempts
+        self.finalizer = finalizer
+        self.record_receipts = record_receipts if record_receipts is not None else set()
 
     def handlers(self):
         candidates = {
@@ -55,6 +62,7 @@ class FixedHandlers:
             "observation_read": self.observation_read,
             "record_append": self.record_append,
             "reference_read": self.reference_read,
+            "request_stop": self.request_stop,
             "restore_request": self.restore_request,
             "snapshot_inspect": self.snapshot_inspect,
             "snapshot_list": self.snapshot_list,
@@ -63,7 +71,8 @@ class FixedHandlers:
         available = self.client.operations
         return {
             name: handler for name, handler in candidates.items()
-            if name == "reference_read" or _DEPENDENCIES[name] <= available
+            if ((name == "reference_read" or _DEPENDENCIES[name] <= available)
+                and (name != "request_stop" or self.finalizer is not None))
         }
 
     def raw_handlers(self):
@@ -150,7 +159,12 @@ class FixedHandlers:
         return self._ordinary("engine.injection_delete", arguments)
 
     def record_append(self, arguments):
-        return self._ordinary("engine.record_append", arguments)
+        result = self._ordinary("engine.record_append", arguments)
+        self.record_receipts.add(result.value["receipt_id"])
+        return result
+
+    def request_stop(self, arguments):
+        return self.finalizer.stage(arguments)
 
     def restore_request(self, arguments):
         return self._ordinary("engine.restore_request", arguments, outcome="restored")

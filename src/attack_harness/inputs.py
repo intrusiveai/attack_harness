@@ -93,6 +93,13 @@ class Inputs:
         require(self._admitted)
         return deepcopy(self._bundle)
 
+    def conclusion_binding(self, run_revision):
+        """Return the verified startup identity binding at the final revision."""
+        require(self._admitted and type(run_revision) is int and run_revision >= 0)
+        binding = self.initialized_body()["binding"]
+        binding["run_revision"] = run_revision
+        return binding
+
     def entry(self,identifier):
         require(self._admitted and identifier in self._entries)
         return deepcopy(self._entries[identifier]),self.files[identifier]

@@ -56,6 +56,7 @@ class AttemptExecutor:
         self.allocator = AttemptAllocator(context["attempt_index_high_watermark"])
         self._history = {}
         self._parents = {}
+        self._receipts = set()
         capabilities = context["target"]["capabilities"]
         self._operations = {item["operation_id"]: item
                             for item in capabilities["operations"]}
@@ -65,6 +66,10 @@ class AttemptExecutor:
     @property
     def high_watermark(self):
         return self.allocator.high_watermark
+
+    @property
+    def receipts(self):
+        return frozenset(self._receipts)
 
     def _rejected(self, allocation, code, path, message, *, outcome="invalid"):
         value = {
@@ -269,6 +274,7 @@ class AttemptExecutor:
             self._history[key] = (call.arguments, handled)
             return handled
         receipt = result["receipt_id"]
+        self._receipts.add(receipt)
         self._parents[allocation.attempt_id] = (arguments["thread_id"], arguments["generation"])
         if status == "completed":
             self.loop.experiment_completed(receipt)

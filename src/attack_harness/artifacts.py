@@ -85,14 +85,17 @@ class ArtifactPublisher:
         return self.publish(value["purpose"], value["media_type"], content,
                             canonicalization=canonicalization)
 
-    def _request(self, operation, body, purpose):
+    def _request(self, operation, body, purpose, before_request=None):
+        if before_request is not None:
+            before_request(operation, body)
         operation_id = self.client.operation_id(f"{purpose}-{operation.removeprefix('engine.').replace('_', '-')}")
         reply = self.client.request(operation, body, operation_id=operation_id)
         if reply.error is not None:
             raise ArtifactRejected(reply.error)
         return reply.result
 
-    def publish(self, purpose, media_type, content, *, canonicalization="raw"):
+    def publish(self, purpose, media_type, content, *, canonicalization="raw",
+                before_request=None):
         require(purpose in ("payload", "carrier", "conclusion", "supporting-data"))
         require(type(media_type) is str and type(content) is bytes)
         maximum = CONCLUSION_LIMIT if purpose == "conclusion" else ARTIFACT_LIMIT
@@ -113,7 +116,7 @@ class ArtifactPublisher:
         begin = self._request("engine.artifact_begin", {
             "purpose": purpose,
             "artifact": descriptor,
-        }, purpose)
+        }, purpose, before_request)
         upload_id = begin["upload_id"]
         offset = 0
         while offset < len(content):
@@ -122,10 +125,11 @@ class ArtifactPublisher:
                 "upload_id": upload_id,
                 "offset": offset,
                 "content": base64.b64encode(part).decode("ascii"),
-            }, purpose)
+            }, purpose, before_request)
             require(result["next_offset"] == offset + len(part))
             offset = result["next_offset"]
-        committed = self._request("engine.artifact_commit", {"upload_id": upload_id}, purpose)
+        committed = self._request("engine.artifact_commit", {"upload_id": upload_id},
+                                  purpose, before_request)
         require(committed["purpose"] == purpose and committed["artifact"] == descriptor)
         receipt_id = committed["artifact_receipt"]
         require(receipt_id not in self._artifacts)

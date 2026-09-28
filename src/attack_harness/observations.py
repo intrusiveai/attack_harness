@@ -64,6 +64,9 @@ class ObservationReader:
         self.client = client
         self._metadata = {}
 
+    def observed(self, receipt_id, entry_id):
+        return (receipt_id, entry_id) in self._metadata
+
     def read(self, receipt_id, entry_id, offset, max_bytes=CHUNK_LIMIT):
         require(type(offset) is int and offset >= 0)
         require(type(max_bytes) is int and 0 < max_bytes <= CHUNK_LIMIT)

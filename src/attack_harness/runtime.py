@@ -211,6 +211,7 @@ class OrdinaryClient:
                         self._close("protocol-error")
                     self._history[operation_id] = (identity, reply)
                     self._stopped = True
+                    self.transport.close()
                     return reply
                 self._history[operation_id] = (identity, reply)
                 return reply
