@@ -77,7 +77,16 @@ class ObservationReader:
             raise ObservationRejected(reply.error)
         result = reply.result
         content = _bytes(result["content"])
+        require(result["receipt_id"] == receipt_id and result["entry_id"] == entry_id)
+        require(result["offset"] == offset and result["raw_length"] == len(content))
+        require(len(content) <= max_bytes)
         artifact = result.get("artifact")
+        if result["availability"] == "available":
+            require(artifact is not None)
+            require(offset + len(content) <= artifact["size_bytes"])
+            require(result["eof"] == (offset + len(content) == artifact["size_bytes"]))
+        else:
+            require(not content and not result["eof"] and artifact is None)
         metadata = (result["availability"], artifact, result["truncated"], result.get("reason", ""))
         key = (receipt_id, entry_id)
         previous = self._metadata.setdefault(key, metadata)
