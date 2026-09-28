@@ -238,7 +238,7 @@ class AttemptExecutor:
                 "attempt_index": allocation.attempt_index,
                 "generator": {
                     "kind": "operator-engine",
-                    "release_digest": self.context["release"]["image_digest"],
+                    "release_digest": self.context["release"]["release_record_digest"],
                 },
                 **arguments,
             }

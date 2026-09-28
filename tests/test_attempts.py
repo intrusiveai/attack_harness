@@ -170,7 +170,7 @@ class AttemptTest(unittest.TestCase):
         self.assertEqual(operation_id, request["request_id"])
         self.assertEqual(request["attempt_index"], 1)
         self.assertEqual(request["generator"], {"kind": "operator-engine",
-            "release_digest": self.context["release"]["image_digest"]})
+            "release_digest": self.context["release"]["release_record_digest"]})
         self.protocol._catalog.validate_value(
             "urn:operator:schema:engine-attempt-request:v1alpha2", request)
         self.assertEqual(loop.snapshot()["tool_calls"], 1)
