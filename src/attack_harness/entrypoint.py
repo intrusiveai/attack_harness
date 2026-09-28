@@ -14,7 +14,7 @@ from .startup import Startup, transport_from_environment
 
 
 RELEASE_ROOT = "/opt/operator/engine"
-CONTRACT_ROOT = RELEASE_ROOT + "/share/contracts"
+CONTRACT_ROOT = RELEASE_ROOT + "/share/schemas"
 CONFIG_NAME = "runtime-config.json"
 
 

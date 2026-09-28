@@ -1,5 +1,19 @@
 {
   "status": "development-candidate-not-runtime-qualified",
+  "source_date_epoch": 0,
+  "dockerfile_frontend": {
+    "reference": "docker/dockerfile:1.18.0",
+    "index_digest": "sha256:dabfc0969b935b2080555ace70ee69a5261af8a8f1b4df97b9e7fbcf6722eddf"
+  },
+  "tooling": {
+    "docker_client": "29.0.1",
+    "buildx": "v0.29.1-desktop.1",
+    "buildkit": "v0.25.2"
+  },
+  "sbom_generator": {
+    "reference": "docker.io/docker/buildkit-syft-scanner:stable-1",
+    "index_digest": "sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9"
+  },
   "runtime": {
     "repository": "gcr.io/distroless/python3-debian13",
     "index_digest": "sha256:8ee214843129f43e2ebf5e0ca9f2e4e6d8292143d1b8a6787f169b5898578884",
@@ -7,8 +21,10 @@
       "linux/amd64": "sha256:359614ec673d26ff9f9de9edabe2e6764a45a97a7791f309e5dca218c5a18295",
       "linux/arm64": "sha256:8ed3bf09202b744e9f360fab522a63d0ae9e479c07dbabca706826df6848610e"
     },
-    "observed_arm64_python": "3.13.5",
-    "observed_arm64_soabi": "cpython-313-aarch64-linux-gnu"
+    "python": {
+      "linux/amd64": {"version": "3.13.5", "soabi": "cpython-313-x86_64-linux-gnu"},
+      "linux/arm64": {"version": "3.13.5", "soabi": "cpython-313-aarch64-linux-gnu"}
+    }
   },
   "builder": {
     "repository": "docker.io/library/python",
@@ -19,5 +35,10 @@
       "linux/arm64": "sha256:4f72f3434c0586369059a3ccb42e31a939f5db1dbf27e66f309065ff0858fcc7"
     }
   },
-  "native_extension": {"limited_api": "0x030c0000", "filename": "_confinement.abi3.so"}
+  "native_extension": {
+    "limited_api": "0x030c0000",
+    "filename": "_confinement.abi3.so",
+    "compiler": "/usr/bin/cc",
+    "flags": ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC", "-fvisibility=hidden", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=3", "-Wl,-z,relro,-z,now,-z,noexecstack"]
+  }
 }

@@ -1,0 +1,17 @@
+{
+  "api_version": "operator.dev/harness-contract-lock/v1alpha1",
+  "source": {
+    "repository": "https://github.com/intrusiveai/operator_sandbox.git",
+    "commit": "51a11c1bbbc27246e9913b1d71b6ebb49f2102af",
+    "tree": "7f05d7c427ff461a59a3c66f7c48fdb05e643bc2"
+  },
+  "package": {
+    "package_version": "0.0.0",
+    "package_digest": "sha256:648c7b2641a05505d8aa21f24054832dc3867fd63a302ec87ef855a213313b7a",
+    "catalog_digest": "sha256:7b6f5035d7a5fbc26c97fc7cef4c067dcfe18611b094718cc5b6a04ecfcb0fd6",
+    "operations_digest": "sha256:f53cdfa1f3f204035271bad6c4cf768b6e0a6a42e9051278940c4a45b5601869",
+    "file_count": 268,
+    "content_bytes": 6815876
+  },
+  "publisher": "go run ./cmd/operatorctl contract build --source <operator-root> --output <new-directory> --package-version 0.0.0"
+}
