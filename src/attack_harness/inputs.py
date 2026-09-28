@@ -1,5 +1,6 @@
 """Immutable initialized input capture, followed by actual admission validation."""
 from copy import deepcopy
+import hashlib
 from types import MappingProxyType
 
 from operator_contracts.canonical import canonical_digest
@@ -72,6 +73,21 @@ class Inputs:
         require(c["prompt"]["provenance"]["effective"]==descriptor(self.prompt_raw))
         require(c["references"]==[e for e in inventory if e["role"]=="reference"])
         self.skills=load_skills(protocol,selection,manifests,loader_digest,skills_root,tick=tick)
+        self._skill_entries,self._skill_files={},{}
+        for skill,manifest_raw in zip(self.skills,self.manifests):
+            manifest=protocol.validate_skill_manifest(manifest_raw)
+            for item in manifest["files"]:
+                identity=hashlib.sha256((skill.skill_id+"\0"+item["path"]).encode("utf-8")).hexdigest()
+                entry_id="skill:"+identity
+                require(entry_id not in self._entries and entry_id not in self._skill_entries)
+                self._skill_entries[entry_id]={
+                    "entry_id":entry_id,"root_kind":"customer-skill",
+                    "path":skill.skill_id+"/"+item["path"],"role":"skill-reference",
+                    "media_type":item["media_type"],"size_bytes":item["size_bytes"],
+                    "digest":item["digest"],"skill_id":skill.skill_id,
+                    "bundle_digest":skill.bundle_digest,
+                }
+                self._skill_files[entry_id]=skill.files[item["path"]]
 
     def initialized_body(self):
         body=deepcopy(self._protocol.validate_control("host",self._prefix[2])["body"])
@@ -101,5 +117,14 @@ class Inputs:
         return binding
 
     def entry(self,identifier):
-        require(self._admitted and identifier in self._entries)
-        return deepcopy(self._entries[identifier]),self.files[identifier]
+        require(self._admitted)
+        if identifier in self._entries:
+            return deepcopy(self._entries[identifier]),self.files[identifier]
+        require(identifier in self._skill_entries)
+        return deepcopy(self._skill_entries[identifier]),self._skill_files[identifier]
+
+    def reference_index(self):
+        require(self._admitted)
+        return [deepcopy(value) for value in
+                sorted([*self._entries.values(),*self._skill_entries.values()],
+                       key=lambda item:item["entry_id"])]

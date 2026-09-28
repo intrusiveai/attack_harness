@@ -76,6 +76,7 @@ class ConclusionFinalizer:
             require(set(gap["record_refs"]) <= known_records)
             for reference in gap["input_refs"]:
                 descriptor, _ = self.inputs.entry(reference["entry_id"])
+                require(descriptor["root_kind"] == "input")
                 span = reference.get("range")
                 require(span is None or span["offset"] + span["length"] <= descriptor["size_bytes"])
 
