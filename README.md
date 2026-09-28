@@ -2,8 +2,9 @@
 
 Python runtime implementation is in progress. Immutable-file access and pinned
 shared-contract loading, startup input/skill verification, Linux FIFO/macOS
-spool I/O, the admitted ordinary-operation scheduler, committed artifact uploads
-and receipt-scoped observation content are implemented and tested. No campaign executable or
+spool I/O, the exact startup coordinator, the admitted ordinary-operation scheduler,
+committed artifact uploads and receipt-scoped observation content are implemented
+and tested. No campaign executable or
 qualified image is available yet. See [implementation status](IMPLEMENTATION_STATUS.md)
 and run `make test` for the current unit tests.
 

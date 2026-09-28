@@ -1,5 +1,20 @@
 # Attack Harness implementation status
 
+## Five-message startup coordinator
+
+The startup coordinator now selects only the launcher-provided FIFO/spool adapter,
+validates the independently pinned package and host-platform transport binding,
+pins Linux descriptors before confinement, installs confinement before constructing
+the input loader, and performs the exact bootstrap/readiness/initialize/initialized/
+admission exchange. Input reads yield to launch-scoped termination control. The
+confinement and input phases use separate non-renewing deadlines; every mismatch,
+filter failure, timeout or early termination closes the transport.
+
+Tests prove the ordering boundary, exact guest control messages, admission handoff,
+transport/platform mismatch rejection, native-filter failure behavior, termination
+precedence and startup expiry. A fixed production entrypoint and release assets
+remain to be composed.
+
 ## Committed artifacts and observation content
 
 The deterministic artifact wrapper validates the fixed model argument schema,
