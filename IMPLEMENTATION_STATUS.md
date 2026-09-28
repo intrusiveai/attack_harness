@@ -1,5 +1,21 @@
 # Attack Harness implementation status
 
+## Fixed serial model-tool dispatcher
+
+The dispatcher now accepts only a complete prevalidated batch, rejects duplicate
+provider call IDs before dispatch, enforces the shared per-response/cumulative
+loop accounting, validates each argument against the installed fixed catalog and
+invokes only an explicit handler map. Unknown and malformed calls receive bounded
+correlated no-effect results; handler contract faults hard-stop the loop.
+
+A successful restore ends the batch, charges only the dispatched restore and
+returns the shared `TARGET_REVISION_CHANGED` result for every remaining original
+call ID without decoding arguments or invoking handlers. Oversized batches dispatch
+nothing and enter model-free finalization. Tests cover serial ordering, exact
+correlation, invalid-call bounds, restore/read/helper skipping, schema validity,
+duplicate IDs, batch limits and fatal integrity faults. Provider-native call
+extraction and concrete handler composition remain pending.
+
 ## Five-message startup coordinator
 
 The startup coordinator now selects only the launcher-provided FIFO/spool adapter,
