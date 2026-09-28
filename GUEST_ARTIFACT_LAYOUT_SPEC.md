@@ -320,8 +320,8 @@ The publisher serves immutable metadata over HTTPS after qualification; Operator
 checks minimum Operator application version, exact installed contract package version/digest and
 runtime/platform requirements before launch. The response is cached locally while
 that image is installed/in use.
-Separate skill signatures and other publication rules remain applicable.
-Skills cannot sign or select a different executable/runtime profile.
+Skill bundles MUST satisfy Operator's content-validation and frozen-input rules.
+Skills MUST NOT select a different executable/runtime profile.
 
 An embedded engine manifest describes the fixed package, entrypoint, paths,
 protocol, native catalog, codecs, loader, prompt and required host features.
@@ -659,11 +659,11 @@ operatorctl campaign start --run <saved-run> --skill sha256:<manifest-digest>
 ```
 
 They require no extra confirmation workflow. Campaign launch never ingests skill
-source or builds executable artifacts. The engine neither publishes/signs skills
-nor selects a different set. Host publication packages SKILL.md/reference sources
-as signed data bundles.
+source or builds executable artifacts. The engine MUST NOT publish skills
+or select a different set. Host publication packages SKILL.md/reference sources
+as validated, content-addressed data bundles.
 
-Consume the exact signed/frozen SkillSetManifest projection and per-skill loading
+Consume the exact frozen SkillSetManifest projection and per-skill loading
 digests. Verify loader schema/release, harness identity, bundle content identity,
 canonical entrypoint and ordered aggregate binding. Open every and only selected
 SKILL.md in canonical skill-ID order beneath `/run/operator/customer-skills`.
