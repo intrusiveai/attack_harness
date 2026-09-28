@@ -151,5 +151,7 @@ Run `make test` with a sibling Operator checkout and its prepared development
 virtualenv, or set `OPERATOR_ROOT` and `PYTHON` explicitly. The tests use test-only
 package manifests with explicit pins; they do not approve an image or release.
 
-Next: bootstrap, the model/tool loop, image construction and end-to-end qualification.
-No executable campaign harness or qualified image is claimed by this boundary.
+Next: concrete tool-handler composition, attempt construction/semantic validation,
+the adaptive conversation/portfolio/conclusion loop, production image construction
+and end-to-end qualification. No executable campaign harness or qualified image
+is claimed by this boundary.
