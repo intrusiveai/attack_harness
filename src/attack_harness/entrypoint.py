@@ -46,6 +46,6 @@ def main():
         return 0
     except RuntimeStopped:
         return 1
-    except (OSError,RuntimeError,ContractError):
+    except (OSError,RuntimeError,ImportError,ContractError):
         if transport is not None:transport.close()
         return 1

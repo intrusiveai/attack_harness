@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from operator_contracts import ContractError
 
-from attack_harness.entrypoint import load_runtime_config
+from attack_harness.entrypoint import load_runtime_config, main
 
 
 class EntrypointTest(unittest.TestCase):
@@ -32,6 +33,21 @@ class EntrypointTest(unittest.TestCase):
             try:
                 with self.assertRaises(ContractError):load_runtime_config(root)
             finally:root.chmod(0o700)
+
+    def test_native_import_failure_closes_transport_without_traceback(self):
+        transport=Mock()
+        original_import=__import__
+        def controlled_import(name,*args,**kwargs):
+            if name=="_confinement":raise ImportError("unavailable")
+            return original_import(name,*args,**kwargs)
+        with patch("attack_harness.entrypoint.load_runtime_config",
+                   return_value={"contract":{},"skill_loader_digest":"sha256:"+"1"*64}), \
+             patch("attack_harness.entrypoint.load_contract",return_value=object()), \
+             patch("attack_harness.entrypoint.transport_from_environment",
+                   return_value=transport), \
+             patch("builtins.__import__",side_effect=controlled_import):
+            self.assertEqual(main(),1)
+        transport.close.assert_called_once_with()
 
 
 if __name__=="__main__":unittest.main()

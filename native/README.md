@@ -48,5 +48,6 @@ probe identified a Docker startup dependency on `openat2`; Operator's startup
 allowlist now includes it. It is absent from this live allowlist.
 
 `build/image-lock.json` records the candidate runtime/builder index and platform
-digests. Upstream signature/provenance verification, complete toolchain/dependency
-locks, SBOM and final release qualification remain publication gates.
+digests. The candidate build now uses locked runtime dependencies, emits an SBOM
+and provenance attestation, and verifies its OCI structure. Upstream signature
+verification and final multi-host release qualification remain publication gates.

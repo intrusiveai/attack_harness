@@ -1,157 +1,86 @@
 # Attack Harness implementation status
 
-## Provider-native model tool turns
+## Current boundary
 
-Complete correlated model exchanges now expose tool calls only after the installed
-codec and policy validators accept the request/result pair. OpenAI Chat, OpenAI
-Responses, Anthropic Messages, Bedrock Converse and Gemini retain their native
-argument, call-ID/order and continuation shapes; Gemini calls without IDs use a
-local positional handle without inventing a provider ID. Unknown usage is never
-treated as zero and cannot lead to tool effects.
+The initial production-path harness is implemented and packaged as a reproducible,
+non-approved OCI candidate. The fixed entrypoint loads the exact pinned shared
+contract package, selects only the launcher-provided FIFO or spool transport,
+completes confinement and startup, constructs all campaign-lifetime services once,
+and runs the adaptive model/tool loop through structured conclusion and stop.
 
-All five package fixture families pass call extraction and provider-valid follow-up
-construction, including parallel/same-name calls. Tests also reject uncorrelated
-exchanges and mismatched result order. This is codec/dispatcher compatibility,
-not live provider-route qualification or a completed conversation loop.
+This boundary is not a release claim. Real provider credentials/routes, native
+Interceptor and declarative-HTTPS targets, Operator journaling/termination failure
+cases, release publication, and native qualification on all supported host tuples
+have not been run. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
 
-## Fixed serial model-tool dispatcher
+## Implemented runtime
 
-The dispatcher now accepts only a complete prevalidated batch, rejects duplicate
-provider call IDs before dispatch, enforces the shared per-response/cumulative
-loop accounting, validates each argument against the installed fixed catalog and
-invokes only an explicit handler map. Unknown and malformed calls receive bounded
-correlated no-effect results; handler contract faults hard-stop the loop.
+- Immutable, no-follow input and selected-skill loading validates exact inventories,
+  digests, permissions, identities and bounded reads before admission.
+- Linux FIFO and macOS spool peers implement fixed lanes, framing, ordering,
+  cumulative acknowledgements, producer cleanup, control priority and non-renewing
+  deadlines without reconnect or resume.
+- The startup coordinator enforces the exact five-message exchange and installs the
+  architecture-specific stable-ABI seccomp filter before campaign input parsing.
+- The ordinary scheduler keeps one operation in flight, separates operation/call/
+  attempt identities, resolves exact duplicates locally, and treats unknown effects,
+  peer loss and host termination as terminal.
+- Provider-native OpenAI Chat, OpenAI Responses, Anthropic Messages, Bedrock Converse
+  and Gemini request/result/continuation shapes are validated by the shared package.
+  Calls execute serially through a fixed handler map; payload bytes never become code.
+- Initial context includes an explicit objective work queue, coverage ledger,
+  scenario index, immutable reference handles, budget projection and uncertainties.
+  Model-assisted compaction suppresses tools, charges a model turn, summarizes only
+  complete valid history, records source digest/omitted segments, labels the summary
+  non-evidence, and fails closed when safe compaction cannot fit.
+- Artifact upload is begin/ordered-part/commit; only a verified commit receipt is
+  usable. Observation reads are receipt-scoped, bounded, range/integrity checked and
+  distinguish empty, truncated, binary and unavailable content.
+- Attempts receive deterministic allocation and local schema/semantic/lineage/
+  artifact checks before target contact. Known negative results remain adaptive;
+  failures or unknown effects stop later work.
+- Conclusion finalization validates evidence references and commits conclusion
+  artifact, conclusion record and stop in that order under a separate bounded budget.
 
-A successful restore ends the batch, charges only the dispatched restore and
-returns the shared `TARGET_REVISION_CHANGED` result for every remaining original
-call ID without decoding arguments or invoking handlers. Oversized batches dispatch
-nothing and enter model-free finalization. Tests cover serial ordering, exact
-correlation, invalid-call bounds, restore/read/helper skipping, schema validity,
-duplicate IDs, batch limits and fatal integrity faults. Provider-native call
-extraction and concrete handler composition remain pending.
+## Deterministic evidence
 
-## Five-message startup coordinator
+`make test` runs 81 tests. They include the scripted benign marker vertical slice:
+a baseline negative observation causes a distinct child payload/attempt, the child
+returns actual marker bytes, and the final conclusion cites both receipts. The same
+production `AdaptiveHarness`, native conversation, dispatcher, handlers, artifact,
+attempt, observation and finalizer components are used.
 
-The startup coordinator now selects only the launcher-provided FIFO/spool adapter,
-validates the independently pinned package and host-platform transport binding,
-pins Linux descriptors before confinement, installs confinement before constructing
-the input loader, and performs the exact bootstrap/readiness/initialize/initialized/
-admission exchange. Input reads yield to launch-scoped termination control. The
-confinement and input phases use separate non-renewing deadlines; every mismatch,
-filter failure, timeout or early termination closes the transport.
+The suite also covers contract/input drift, prompt and skill identities, all five
+codec families, serial multi-call behavior, restore batch skipping, allocator and
+loop boundaries, reference/observation reads, FIFO/spool faults, graceful and
+unavailable conclusions, compaction provenance and impossible-context handling.
 
-Tests prove the ordering boundary, exact guest control messages, admission handoff,
-transport/platform mismatch rejection, native-filter failure behavior, termination
-precedence and startup expiry. A fixed production entrypoint and release assets
-remain to be composed.
+## Candidate build
 
-## Committed artifacts and observation content
+The Dockerfile pins its frontend, Python builder, Distroless runtime and SBOM scanner.
+Runtime wheels and build backend are hash/version locked. The build regenerates the
+release tree from the exact contract package, runs all tests offline, verifies the
+embedded manifest/catalog/prompt/loader, normalizes timestamps, and emits a
+single-platform OCI archive with SPDX SBOM and SLSA provenance.
 
-The deterministic artifact wrapper validates the fixed model argument schema,
-preserves UTF-8/base64 bytes, emits canonical JSON without collapsing JSON strings,
-and performs begin/ordered 256 KiB parts/commit with independent operation IDs.
-Only the verified commit receipt becomes usable. Exact committed bytes are kept
-in a bounded cache, with explicit `ARTIFACT_UNAVAILABLE` behavior when retention
-is impossible.
+CI uses native self-hosted Linux AMD64 and ARM64 runners, builds each platform twice,
+compares runtime identity, and exercises Operator's stopped-image inspection and
+cleanup. That workflow is configured but has not been observed in this implementation
+session. Local macOS/ARM64 evidence built both platform candidates (AMD64 through the
+builder's non-native path) and passed stopped-image inspection for ARM64. These are
+`built-not-qualified` artifacts and are intentionally ignored by git.
 
-Receipt-scoped observation reads validate ranges and consistent metadata, decode
-canonical base64, assemble bounded chunks, verify full-object SHA-256 only at EOF,
-decode textual media incrementally across UTF-8 boundaries, and leave unsupported
-binary media opaque. Empty content and unavailable content remain distinct. Tests
-cover chunk ordering, canonical encodings, cache bounds, corruption, changed
-metadata, UTF-8 boundaries and authenticated size ceilings.
+## Remaining qualification gates
 
-## Admitted ordinary-operation scheduler
+- Run real non-streaming text, tool and follow-up exchanges for every advertised
+  provider route, including cancellation and ambiguous outcomes.
+- Run real declarative-HTTPS and native Interceptor target integrations with the
+  required assurance, selection and cleanup behavior.
+- Execute the complete `AIH-AC`/`AHC-AC` matrix on native Linux and macOS AMD64/ARM64
+  hosts, including transport, confinement, networking, resource, crash, journaling,
+  Docker-kill and restore races.
+- Publish the shared contract package and immutable HTTPS release approval for the
+  final image IDs; verify cache/offline preparation and installation lifecycle.
 
-The single-threaded Python client now constructs and validates closed ordinary
-envelopes, permits only the host-advertised operation set, keeps one operation in
-flight, pumps launch-scoped termination control ahead of ordinary responses and
-uses non-renewing monotonic response deadlines. It keeps durable operation IDs
-separate from call IDs, resolves exact completed duplicates locally, rejects
-changed reuse, treats unknown/terminal outcomes as terminal and applies a healthy
-restore revision exactly once without resetting transport state.
-
-Unit tests cover correlation, exact duplicate suppression, changed-content
-conflicts, restore continuity, next-request revision binding, host termination,
-unknown effects and response timeout. Broker persistence and the composition root
-remain pending, so this boundary alone is not an executable harness.
-
-## Native live confinement feasibility
-
-A release-owned stable-ABI C extension now installs the irreversible architecture-
-checked syscall allowlist with TSYNC, verifies single-thread/no-new-privileges
-prerequisites and denies new executable memory mappings. A pinned test-only
-Distroless image passed live ARM64 denial and permitted-file-I/O probes under
-Operator's startup profile. See [native policy and evidence](native/README.md).
-This does not qualify the complete harness or all supported hosts. Bootstrap
-composition, dependency/release locking and broader qualification remain pending.
-
-## Startup inputs and instruction skills
-
-Input loading now binds the validated bootstrap prefix to the independently
-pinned package, raw/canonical manifest descriptors, exact mounted inventories,
-context/bundle/prompt bytes and selected skill contents. The fixed skill loader
-checks its own release-selected digest, bundle/manifest identities, UTF-8 data and
-all inventoried entrypoints/references. It executes no skill code or hooks.
-
-The initialized response body derives from verified input identities. Actual
-`admission_open` must pass the complete shared launch-identity validator before
-context, bundle and entry access are admitted. Admission cannot broaden frozen
-limits or run twice. Tests cover empty/selected skills, wrong loader, missing
-content, changed prompt, extra manifests, explicit admission and immutable copies.
-
-## Linux FIFO peer
-
-The Python FIFO backend opens only its directional endpoints, validates prepared
-inodes, and uses bounded nonblocking reads/writes with four-byte framing. Initial
-rendezvous has a 60-second limit; partial frames, blocked writes and full receivers
-have non-renewing five-second deadlines. EOF after bootstrap, EPIPE, oversized
-headers and inode/inventory changes are terminal. It never reconnects.
-
-The bootstrap-only descriptor handoff maps ordinary/control endpoints to FD 3–6.
-The opt-in Go/Python interoperability test exercises this mapping in the disposable
-Python test process and then exchanges startup and an ordinary operation. The
-current test host is macOS ARM64; POSIX FIFO mechanics passing here do not qualify
-native Linux containment or a Docker mount.
-
-## macOS spool peer
-
-The single-threaded Python peer implements bounded ordinary/control queues,
-atomic publication, strict sequence/identity checks, cumulative ACKs, producer
-cleanup and non-renewing five-second transfer/backpressure deadlines. Control
-capture precedes ordinary work. It rejects unsafe/replaced lanes, changed retained
-files, reappearing/gapped sequences, stale temporaries and future ACKs. A transport
-failure is terminal; it cannot reopen an old guest output directory.
-
-`make test` covers these paths. Operator's opt-in
-`OPERATOR_PYTHON_PEER_TEST=1 go test ./internal/transport -run
-TestPythonSpoolInteroperability -count=1` exchanges the five startup messages and
-an ordinary request/response between its actual Go transport and this Python peer
-using real files. The peer script is test-only: it does not install confinement or
-verify campaign inputs. This is interoperability evidence, not Docker Desktop
-file-sharing or runtime qualification.
-
-## Immutable data and shared-contract loading
-
-The Python package now includes descriptor-relative, no-follow, bounded reads
-and exact immutable inventories. Reads service a caller-supplied control/deadline
-callback between 64 KiB chunks and reject mutable types, links, unexpected names,
-missing data and changed inode/content metadata. Guest input mounts require
-read-only file/directory permission bits; release trees may retain owner-write
-bits because their immutable root filesystem is enforced by Docker.
-
-The contract loader requires an independently selected version/content digest,
-authenticates the manifest before reading its declared payloads, verifies all
-bytes, and compiles the shared Operator validator from frozen resources offline.
-No package file is executed. It imports `operator_contracts` rather than forking
-schemas or validators. The dependency remains an unpublished development package;
-release lockfiles, publication and qualification remain required.
-
-Run `make test` with a sibling Operator checkout and its prepared development
-virtualenv, or set `OPERATOR_ROOT` and `PYTHON` explicitly. The tests use test-only
-package manifests with explicit pins; they do not approve an image or release.
-
-Next: concrete tool-handler composition, attempt construction/semantic validation,
-the adaptive conversation/portfolio/conclusion loop, production image construction
-and end-to-end qualification. No executable campaign harness or qualified image
-is claimed by this boundary.
+No remaining item above should be replaced by a mock or inferred from a successful
+build. Until those gates pass, Operator must not treat these candidates as approved.
