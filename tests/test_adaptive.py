@@ -82,6 +82,18 @@ class AdaptiveTest(unittest.TestCase):
                                                   "Inspect the admitted target.")
                 _, request_raw = conversation.body()
                 self.protocol.validate_model_request(policy_raw, request_raw)
+                compact_body, compact_raw, _, _ = conversation.compaction_body()
+                self.protocol.validate_model_request(policy_raw, compact_raw)
+                if conversation.codec == "bedrock-converse-text-tools-v1":
+                    self.assertNotIn("toolConfig", compact_body["request"])
+                elif conversation.codec == "gemini-text-tools-v1":
+                    self.assertEqual(compact_body["request"]["toolConfig"]
+                                     ["functionCallingConfig"]["mode"], "NONE")
+                elif conversation.codec == "anthropic-messages-text-tools-v1":
+                    self.assertEqual(compact_body["request"]["tool_choice"],
+                                     {"type":"none"})
+                else:
+                    self.assertEqual(compact_body["request"]["tool_choice"], "none")
 
     def test_tool_continuation_is_native_and_text_exhaustion_finalizes(self):
         cases = self.cases("model-codec.json")
@@ -110,6 +122,50 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual([item["role"] for item in messages[-2:]], ["tool", "tool"])
         self.assertEqual(finalizer.reason, "local-error")
         self.assertEqual(loop.snapshot()["model_turns"], 2)
+
+    def test_compaction_suppresses_tools_and_retains_summary_provenance(self):
+        cases = self.cases("model-codec.json")
+        tool_case = next(item for item in cases if item["name"] == "multiple native tools")
+        text_case = next(item for item in cases
+                         if item["name"] == "native text and usage preserved")
+        policy_raw = _canonical_value(tool_case["policy"], 4 << 20)
+        conversation = NativeConversation(self.protocol, policy_raw,
+                                          "Inspect the target.", compact_at=1000)
+        loop = HarnessLoop(dict(LIMITS, max_no_progress_turns=3))
+        dispatcher = Dispatcher(
+            self.protocol, loop,
+            {"snapshot_list": lambda arguments:
+             HandlerResult({"status": "ok", "snapshots": []})})
+        client = Client([tool_case["result"], text_case["result"], text_case["result"]])
+        finalizer = Finalizer()
+        AdaptiveHarness(self.protocol, client, loop, dispatcher,
+                        conversation, finalizer).run()
+        self.assertEqual(len(client.requests), 3)
+        self.assertEqual(client.requests[1]["request"]["tool_choice"], "none")
+        compacted = client.requests[2]["request"]["messages"][1]["content"]
+        self.assertIn('\"omitted_complete_segments\":1', compacted)
+        self.assertIn('\"summary_provenance\":\"model-generated-not-evidence\"',
+                      compacted)
+        self.assertEqual(loop.snapshot()["model_turns"], 3)
+
+    def test_unsafe_compaction_fails_closed_with_context_limit(self):
+        case = next(item for item in self.cases("model-codec.json")
+                    if item["name"] == "native text and usage preserved")
+        policy_raw = _canonical_value(case["policy"], 4 << 20)
+        conversation = NativeConversation(self.protocol, policy_raw,
+                                          "Inspect the target.", compact_at=1)
+        conversation.extend(_canonical_value(
+            [{"role":"user", "content":"x" * (1 << 20)}], 4 << 20))
+        loop = HarnessLoop(LIMITS)
+        client = Client([])
+        finalizer = Finalizer()
+        result = AdaptiveHarness(
+            self.protocol, client, loop, Dispatcher(self.protocol, loop, {}),
+            conversation, finalizer).run()
+        self.assertEqual(result["conclusion_state"], "unavailable")
+        self.assertEqual(finalizer.reason, "context-limit")
+        self.assertEqual(client.requests, [])
+        self.assertEqual(loop.snapshot()["model_turns"], 1)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 from copy import deepcopy
 
 from operator_contracts import ContractError
-from operator_contracts.canonical import _canonical_value
+from operator_contracts.canonical import _canonical_value, raw_digest
 from operator_contracts.loop import LoopStopped
 from operator_contracts.startup import require
 from operator_contracts.validation import decode, ORDINARY_LIMIT
@@ -15,13 +15,18 @@ from .runtime import RuntimeStopped
 class NativeConversation:
     """Mutable native history for exactly one installed model codec."""
 
-    def __init__(self, protocol, policy_raw, task):
+    def __init__(self, protocol, policy_raw, task, *, compact_at=1 << 20):
         require(type(policy_raw) is bytes and type(task) is str and task)
+        require(type(compact_at) is int and compact_at > 0)
         self.protocol = protocol
         self.policy_raw = policy_raw
         self.policy = protocol._catalog.validate(
             "urn:operator:schema:model-codec-policy:v1alpha1", policy_raw)
         self.codec = self.policy["codec_id"]
+        self._task = task
+        self._compact_at = compact_at
+        self._segments = 0
+        self._compactions = []
         self._request = self._initial(task)
 
     def _initial(self, task):
@@ -92,12 +97,76 @@ class NativeConversation:
         self.protocol.validate_model_request(self.policy_raw, raw)
         return body, raw
 
+    def needs_compaction(self):
+        if self._segments == 0:
+            return False
+        try:
+            _, raw = self.body()
+        except ContractError:
+            return True
+        return len(raw) >= self._compact_at
+
+    def compaction_body(self):
+        """Build a tool-suppressed request over complete native history."""
+        field = self._history_field()
+        history = self._request[field]
+        if self.codec == "openai-chat-text-tools-v1":
+            history = history[1:]  # The exact privileged prompt remains in _initial().
+        history_raw = _canonical_value(history, ORDINARY_LIMIT)
+        instruction = (
+            "Summarize this complete campaign history concisely. Preserve immutable "
+            "identities, hypothesis and attempt lineage, known result dispositions, "
+            "evidence receipt IDs, outstanding coverage, omissions, contamination, "
+            "and uncertainty. A summary is not evidence. Source history JSON follows:\n"
+        )
+        source = instruction + history_raw.decode("utf-8")
+        # Every installed codec caps one text item at 1 MiB. Do not split JSON
+        # across provider-specific structures with different semantics.
+        require(len(source) <= (1 << 20))
+        request = self._initial(source)
+        if self.codec in ("openai-chat-text-tools-v1",
+                          "openai-responses-text-tools-v1"):
+            request["tool_choice"] = "none"
+        elif self.codec == "anthropic-messages-text-tools-v1":
+            request["tool_choice"] = {"type": "none"}
+        elif self.codec == "bedrock-converse-text-tools-v1":
+            request.pop("toolConfig", None)
+        elif self.codec == "gemini-text-tools-v1":
+            request["toolConfig"]["functionCallingConfig"]["mode"] = "NONE"
+        body = {key: deepcopy(self.policy[key])
+                for key in ("codec_id", "profile_id", "profile_digest")}
+        body["request"] = request
+        raw = _canonical_value(body, ORDINARY_LIMIT)
+        self.protocol.validate_model_request(self.policy_raw, raw)
+        return body, raw, raw_digest(history_raw), self._segments
+
+    def apply_compaction(self, summary, source_digest, omitted_segments):
+        require(type(summary) is str and summary and len(summary) <= 128 << 10)
+        require(type(source_digest) is str and type(omitted_segments) is int
+                and omitted_segments > 0)
+        record = {
+            "generation": len(self._compactions) + 1,
+            "source_digest": source_digest,
+            "omitted_complete_segments": omitted_segments,
+            "summary_provenance": "model-generated-not-evidence",
+        }
+        self._compactions.append(record)
+        compacted = self._task + "\n\nCompacted campaign history:\n" + \
+            _canonical_value({**record, "summary": summary}, 256 << 10).decode("utf-8")
+        require(len(compacted) <= 1 << 20)
+        self._request = self._initial(compacted)
+        self._segments = 0
+
+    def _history_field(self):
+        return "input" if self.codec == "openai-responses-text-tools-v1" else (
+            "contents" if self.codec == "gemini-text-tools-v1" else "messages")
+
     def extend(self, segment_raw):
         segment = decode(segment_raw, ORDINARY_LIMIT)
         require(type(segment) is list)
-        field = "input" if self.codec == "openai-responses-text-tools-v1" else (
-            "contents" if self.codec == "gemini-text-tools-v1" else "messages")
+        field = self._history_field()
         self._request[field].extend(segment)
+        self._segments += 1
 
     def prompt_again(self, text="Continue with the next useful tool action or request_stop."):
         require(type(text) is str and text)
@@ -131,6 +200,50 @@ class AdaptiveHarness:
 
     def run(self):
         while self.loop.snapshot()["mode"] == "exploring":
+            if self.conversation.needs_compaction():
+                try:
+                    self.loop.begin_model(True)
+                except LoopStopped:
+                    break
+                try:
+                    body, request_raw, source_digest, omitted = \
+                        self.conversation.compaction_body()
+                except ContractError:
+                    if self.loop.snapshot()["mode"] == "model":
+                        self.loop.accept_response(0)
+                        self.loop.stop("no-useful-next-experiment")
+                        self.loop.end_turn()
+                    return self.finalizer.finish_unavailable("context-limit")
+                try:
+                    reply = self.client.request(
+                        "engine.model_generate", body,
+                        operation_id=self.client.operation_id("model-compaction"),
+                    )
+                    if reply.error is not None:
+                        self.client.fail("model-compaction-failed")
+                    result_raw = _canonical_value(reply.result, ORDINARY_LIMIT)
+                    batch = native_batch(self.protocol, self.conversation.policy_raw,
+                                         request_raw, result_raw)
+                except RuntimeStopped:
+                    self.loop.hard_stop()
+                    raise
+                except ContractError:
+                    self.loop.hard_stop()
+                    self.client.fail("model-compaction-contract-failed")
+                self.loop.accept_response(0)
+                if batch.disposition != "text":
+                    self.loop.stop("no-useful-next-experiment")
+                    self.loop.end_turn()
+                    return self.finalizer.finish_unavailable("context-limit")
+                try:
+                    self.conversation.apply_compaction(
+                        batch.text(), source_digest, omitted)
+                except ContractError:
+                    self.loop.stop("no-useful-next-experiment")
+                    self.loop.end_turn()
+                    return self.finalizer.finish_unavailable("context-limit")
+                self.loop.end_turn()
+                continue
             try:
                 self.loop.begin_model()
             except LoopStopped:

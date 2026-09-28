@@ -25,6 +25,28 @@ def _scenario_index(bundle):
              if key in scenario} for scenario in bundle["scenarios"]]
 
 
+def _portfolio(bundle):
+    scenarios = _scenario_index(bundle)
+    work_queue = []
+    for objective in bundle["objectives"]:
+        related = [item["scenario_id"] for item in scenarios
+                   if objective["objective_id"] in item.get("objective_refs", ())]
+        work_queue.append({
+            "objective_id": objective["objective_id"],
+            "required": objective.get("required", False),
+            "scenario_ids": related,
+            "status": "untested",
+            "exploratory_origin_allowed": not related,
+        })
+    return {
+        "work_queue": work_queue,
+        "coverage_ledger": [{"objective_id": item["objective_id"],
+                             "status": "untested", "evidence_refs": []}
+                            for item in work_queue],
+        "uncertainties": ["No experiment outcome has been observed yet."],
+    }
+
+
 def build_task(inputs):
     """Build bounded initial context with immutable handles for deferred reads."""
     context,bundle=inputs.context(),inputs.bundle()
@@ -37,6 +59,7 @@ def build_task(inputs):
             "omissions":context["omissions"],
         },
         "target":context["target"],"objectives":bundle["objectives"],
+        "portfolio":_portfolio(bundle),
         "scenario_index":_scenario_index(bundle),
         "reference_handles":inputs.reference_index(),
         "selected_skills":[{
@@ -62,6 +85,15 @@ def build_task(inputs):
         document["objectives"]=[{
             key:objective[key] for key in ("objective_id","required") if key in objective
         } for objective in bundle["objectives"]]
+        document["portfolio"]={
+            "work_queue":[{
+                "objective_id":item["objective_id"],"required":item["required"],
+                "scenario_count":len(item["scenario_ids"]),"status":"untested",
+                "exploratory_origin_allowed":item["exploratory_origin_allowed"],
+            } for item in document["portfolio"]["work_queue"]],
+            "coverage_ledger":document["portfolio"]["coverage_ledger"],
+            "uncertainties":document["portfolio"]["uncertainties"],
+        }
         document["scenario_index"]=[{
             key:scenario[key] for key in
             ("scenario_id","objective_refs","priority","required") if key in scenario

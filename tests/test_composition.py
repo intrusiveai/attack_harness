@@ -35,6 +35,12 @@ class CompositionTest(unittest.TestCase):
         task=json.loads(raw)
         self.assertEqual(len(task["scenario_index"]),100)
         self.assertEqual(len(task["reference_handles"]),100)
+        self.assertEqual(task["portfolio"]["work_queue"], [{
+            "objective_id":"objective-1","required":True,"scenario_count":100,
+            "status":"untested","exploratory_origin_allowed":False,
+        }])
+        self.assertEqual(task["portfolio"]["coverage_ledger"][0]["status"],
+                         "untested")
         self.assertTrue(task["selected_skills"][0]["instructions_deferred"])
         self.assertTrue(task["target"]["details_deferred"])
 

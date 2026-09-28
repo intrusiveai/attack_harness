@@ -19,6 +19,33 @@ class NativeBatch:
     disposition: str
     calls: tuple[ToolCall, ...]
 
+    def text(self):
+        """Return supported native text without treating it as evidence."""
+        require(self.disposition == "text")
+        body = self.protocol._catalog.validate(
+            ENGINE_MODEL_GENERATE_RESULT_SCHEMA, self.result_raw)
+        response = body["response"]
+        if self.codec_id == "openai-chat-text-tools-v1":
+            values = [response["choices"][0]["message"].get("content")]
+        elif self.codec_id == "openai-responses-text-tools-v1":
+            values = [part["text"] for item in response["output"]
+                      if item.get("type") == "message"
+                      for part in item["content"] if part["type"] == "output_text"]
+        elif self.codec_id == "anthropic-messages-text-tools-v1":
+            values = [item["text"] for item in response["content"]
+                      if item["type"] == "text"]
+        elif self.codec_id == "bedrock-converse-text-tools-v1":
+            values = [item["text"] for item in
+                      response["output"]["message"]["content"] if "text" in item]
+        elif self.codec_id == "gemini-text-tools-v1":
+            values = [item["text"] for item in
+                      response["candidates"][0]["content"]["parts"] if "text" in item]
+        else:
+            raise ContractError("unsupported model codec")
+        text = "\n".join(value for value in values if value)
+        require(text != "")
+        return text
+
     def continuation(self, results):
         require(type(results) is list and len(results) == len(self.calls)
                 and all(type(result) is ToolResult for result in results))
