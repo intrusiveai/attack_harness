@@ -59,6 +59,16 @@ def build_task(inputs):
             "action_refs":[item["ref"] for item in target["capabilities"]["actions"]],
             "details_deferred":True,
         }
+        document["objectives"]=[{
+            key:objective[key] for key in ("objective_id","required") if key in objective
+        } for objective in bundle["objectives"]]
+        document["scenario_index"]=[{
+            key:scenario[key] for key in
+            ("scenario_id","objective_refs","priority","required") if key in scenario
+        } for scenario in bundle["scenarios"]]
+        document["reference_handles"]=[
+            item["entry_id"] for item in inputs.reference_index()
+        ]
         return _canonical_value(document,TASK_LIMIT).decode("utf-8")
 
 

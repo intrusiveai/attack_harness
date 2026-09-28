@@ -8,7 +8,8 @@
   "tooling": {
     "docker_client": "29.0.1",
     "buildx": "v0.29.1-desktop.1",
-    "buildkit": "v0.25.2"
+    "buildkit": "v0.25.2",
+    "buildkit_image": "moby/buildkit:v0.25.2@sha256:0f63d66f8d2de0bd16438284831a3e9ee6ca7cd57b6eb3ed6e38a7a456590fa7"
   },
   "sbom_generator": {
     "reference": "docker.io/docker/buildkit-syft-scanner:stable-1",
