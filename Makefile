@@ -3,7 +3,7 @@ PYTHON ?= $(OPERATOR_ROOT)/.venv/bin/python
 PLATFORM ?= linux/arm64
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-CONTRACT_COMMIT := e6f3ccd1a08ea3e1defdbb1a5514ff55dbfa6220
+CONTRACT_COMMIT := c24fc7cd10199d679b7219570af983694736529b
 
 .PHONY: test verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
@@ -19,7 +19,7 @@ $(CONTRACT_PACKAGE)/package.json:
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.0.0
+		--package-version 0.0.1
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \

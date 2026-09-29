@@ -98,3 +98,12 @@ builder's non-native path) and passed stopped-image inspection for ARM64. These 
 
 No remaining item above should be replaced by a mock or inferred from a successful
 build. Until those gates pass, Operator must not treat these candidates as approved.
+
+## Bedrock compatibility contract update
+
+The contract candidate is now version `0.0.1`, pinned in
+[build/contract-lock.json](build/contract-lock.json). It accepts the empty native
+`usage.serverToolUsage` object observed by Operator's live Nova Lite probe while
+rejecting populated hosted-tool usage. Shared Go/Python fixtures cover both cases.
+Existing images contain the earlier contract and require rebuilding with this pin;
+a host-only probe does not qualify the full Python/container campaign path.
