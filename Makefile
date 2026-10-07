@@ -3,7 +3,7 @@ PYTHON ?= $(OPERATOR_ROOT)/.venv/bin/python
 PLATFORM ?= linux/arm64
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-CONTRACT_COMMIT := f359420702041d8a8d7549fb63ee15bc50861d43
+CONTRACT_COMMIT := 396a90d215e57b582ee0a71c3a0802ee2ed278f4
 
 .PHONY: test verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:

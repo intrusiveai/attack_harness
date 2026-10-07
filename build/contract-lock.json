@@ -2,8 +2,8 @@
   "api_version": "operator.dev/harness-contract-lock/v1alpha1",
   "source": {
     "repository": "https://github.com/intrusiveai/operator_sandbox.git",
-    "commit": "f359420702041d8a8d7549fb63ee15bc50861d43",
-    "tree": "480c02359d9a486c0ed7b6b03b5effb0b51ae847"
+    "commit": "396a90d215e57b582ee0a71c3a0802ee2ed278f4",
+    "tree": "16ae01f6261eb0016d9c133f38f40cc4b62287f7"
   },
   "package": {
     "package_version": "0.0.3",
