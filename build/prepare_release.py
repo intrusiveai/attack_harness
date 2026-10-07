@@ -142,10 +142,7 @@ def prepare(source_root, contract_root, output_root, platform, prompt_path,
     _write_json(share / "runtime-config.json", runtime_config)
     engine_manifest = {
         "api_version": "operator.dev/engine-manifest/v1alpha1",
-        "contract": {
-            "version": runtime_config["contract"]["package_version"],
-            "digest": runtime_config["contract"]["package_digest"],
-        },
+        "contract": runtime_config["contract"],
         "runtime_profile": "operator-container/v1",
         "platform": platform,
         "entrypoint": ENTRYPOINT,
@@ -197,8 +194,7 @@ def verify(output_root, contract_root, lock_path, *, require_native=True):
     pin = protocol.package_identity()
     if runtime != {"contract": pin,
                    "skill_loader_digest": manifest["skill_loader"]["digest"]} or \
-            manifest["contract"] != {"version": pin["package_version"],
-                                      "digest": pin["package_digest"]}:
+            manifest["contract"] != pin:
         raise ValueError("runtime configuration identity mismatch")
     if require_native and not (library / "_confinement.abi3.so").is_file():
         raise ValueError("native confinement module is absent")
