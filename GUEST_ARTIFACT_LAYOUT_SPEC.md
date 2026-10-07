@@ -312,6 +312,13 @@ The host accepts only an explicitly compatible tuple binding:
 Record the Operator host platform separately from the Linux image platform, as
 required by [host profiles](../operator_sandbox/HOST_RUNTIME_PROFILES.md).
 
+The embedded `share/engine-manifest.json` and `share/runtime-config.json` MUST use
+`contract.package_version` and `contract.package_digest`, matching Operator's
+native package identity and the reviewed contract lock. The legacy
+`contract.version` / `contract.digest` field names MUST NOT be emitted or accepted
+by build verification. Images containing those legacy fields require rebuilding;
+a host update MUST NOT be treated as a repair of immutable image metadata.
+
 Campaign bindings separately identify the exact skills, prompt, scenario,
 supporting inventory, target-capability projection and host-computed limits.
 They do not require an executable image rebuild. Attack Harness approval uses the

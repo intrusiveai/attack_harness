@@ -10,7 +10,7 @@ and runs the adaptive model/tool loop through structured conclusion and stop.
 
 This boundary is not a release claim. Deterministic Go/Python process integration
 now covers both transports, campaign completion and interruption. Live provider
-routes, real target deployments, release publication and native qualification on
+routes, production target deployments, release publication and native qualification on
 all supported host tuples remain outstanding. Historical image candidates predate
 the current source/contract pins and require rebuilding. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
 
@@ -45,7 +45,7 @@ the current source/contract pins and require rebuilding. Exact per-criterion sta
 
 ## Deterministic evidence
 
-`make test` runs 82 tests. They include the scripted benign marker vertical slice:
+`make test` runs 83 tests. They include the scripted benign marker vertical slice:
 a baseline negative observation causes a distinct child payload/attempt, the child
 returns actual marker bytes, and the final conclusion cites both receipts. The same
 production `AdaptiveHarness`, native conversation, dispatcher, handlers, artifact,
@@ -66,8 +66,26 @@ the real compaction threshold; component stress tests repeat compaction for all
 five codecs. The test-only launcher relocates paths and bypasses confinement;
 Docker, native Interceptor and model responses remain controlled fixtures.
 
-The acceptance matrix pins both source commits and the development contract
-package. CI consumes these same pins and includes the process suite.
+The acceptance matrix preserves historical process-test identities and separately
+records the newer local container checks. Current build inputs are pinned in the
+Makefile and contract/source locks. The CI workflow still selects an older Operator
+commit and must be aligned before it can validate the current candidate; no current
+CI qualification is claimed.
+
+## Local container campaign checks (2026-10-07)
+
+The actual locally built, confined Harness ran through Operator against a support
+target both over verified local HTTPS and inside a real Interceptor container.
+Both runs exercised the required support scenario, resolved the actual ticket,
+confirmed cleanup, and passed independent result checks. The Interceptor run
+retained complete native evidence. These were macOS ARM64 host diagnostics with
+separate scripted Harness/target models, not the process suite's Docker fixtures.
+
+The test-only image compatibility records were private to each run. Runtime image,
+contract, confinement, TLS and evidence checks remained enabled. These checks do
+not qualify live-model behavior, production deployment, native Linux/rootless
+isolation, release approval, or the full acceptance matrix. See the
+[additional evidence record](ACCEPTANCE_MATRIX.md#additional-local-container-evidence-2026-10-07).
 
 ## Candidate build
 
@@ -77,19 +95,21 @@ release tree from the exact contract package, runs all tests offline, verifies t
 embedded manifest/catalog/prompt/loader, normalizes timestamps, and emits a
 single-platform OCI archive with SPDX SBOM and SLSA provenance.
 
-CI uses native self-hosted Linux AMD64 and ARM64 runners, builds each platform twice,
-compares runtime identity, and exercises Operator's stopped-image inspection and
-cleanup. That workflow is configured but has not been observed in this implementation
-session. Local macOS/ARM64 evidence built both platform candidates (AMD64 through the
-builder's non-native path) and passed stopped-image inspection for ARM64. These are
+The CI workflow is configured for native self-hosted Linux AMD64 and ARM64 runners,
+two builds per platform, runtime identity comparison, and Operator's stopped-image
+inspection and cleanup. It has not been observed in this implementation
+session, and its Operator checkout still needs the pin alignment noted above.
+Historical local macOS/ARM64 evidence built both platform candidates (AMD64 through
+the builder's non-native path) and passed stopped-image inspection for ARM64. These are
 `built-not-qualified` artifacts and are intentionally ignored by git.
 
 ## Remaining qualification gates
 
 - Run real non-streaming text, tool and follow-up exchanges for every advertised
   provider route, including cancellation and ambiguous outcomes.
-- Run real declarative-HTTPS and native Interceptor target integrations with the
-  required assurance, selection and cleanup behavior.
+- Complete declarative-HTTPS and native Interceptor target qualification beyond
+  the local scripted support cases above, covering required assurance, selection,
+  failure and cleanup behavior.
 - Execute the complete `AIH-AC`/`AHC-AC` matrix on native Linux and macOS AMD64/ARM64
   hosts, including transport, confinement, networking, resource, crash, journaling,
   Docker-kill and restore races.
@@ -99,11 +119,21 @@ builder's non-native path) and passed stopped-image inspection for ARM64. These 
 No remaining item above should be replaced by a mock or inferred from a successful
 build. Until those gates pass, Operator must not treat these candidates as approved.
 
-## Bedrock compatibility contract update
+## Current contract and build metadata
 
-The contract candidate is now version `0.0.1`, pinned in
-[build/contract-lock.json](build/contract-lock.json). It accepts the empty native
-`usage.serverToolUsage` object observed by Operator's live Nova Lite probe while
-rejecting populated hosted-tool usage. Shared Go/Python fixtures cover both cases.
-Existing images contain the earlier contract and require rebuilding with this pin;
-a host-only probe does not qualify the full Python/container campaign path.
+The contract candidate is version `0.0.3`, pinned with its exact Operator source
+commit/tree and package digest in [build/contract-lock.json](build/contract-lock.json).
+The reviewed source pin includes Operator's private model-CA support and verified
+normal completion. Refreshing that pin did not change the shared contract bytes.
+Builds must use the matching Operator checkout; they must not override the lock.
+
+Embedded runtime and engine manifests now use the native `package_version` and
+`package_digest` fields that Operator expects. A regression test checks preparation
+and verification of those fields and rejects the old `version`/`digest` form.
+Images built before this correction must be rebuilt; updating host code alone
+does not repair their embedded metadata.
+
+The current package retains the Bedrock compatibility change: it accepts the empty
+native `usage.serverToolUsage` object observed by Operator's live Nova Lite probe
+while rejecting populated hosted-tool usage. Shared Go/Python fixtures cover both cases.
+That host-only probe does not qualify the full Python/container campaign path.

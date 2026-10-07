@@ -6,7 +6,7 @@ processes. Neither status qualifies production containers or live infrastructure
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
 
-## Evidence identity
+## Historical process evidence identity
 
 | Item | Identity |
 |---|---|
@@ -26,7 +26,33 @@ Interceptor, Docker and release approval are fixtures. HTTPS uses the production
 adapter against a local TLS server. Physical FIFO tests on macOS demonstrate wire
 behavior, not the native Linux container profile. CI pins the matching Operator
 commit and runs the combined suite; this record reports local execution, not an
-observed CI run.
+observed CI run. The current workflow's Operator checkout still selects that
+historical revision, not the newer build pin; it requires alignment before current
+candidate validation.
+
+## Additional local container evidence (2026-10-07)
+
+The following runtime revisions passed benign support campaigns on macOS ARM64
+using an actual confined Harness image and actual targets, rather than fixture
+Docker. Both the standalone HTTPS and Interceptor paths passed required scenario,
+independent ticket/sink checks, cleanup, and the test controller's result handoff.
+Interceptor's protected archive passed Operator's unchanged evidence verifier.
+
+| Input | Validated identity |
+|---|---|
+| Harness runtime source | `4469a97c87832f513f9a187a3ada1998fa9d794c` |
+| Runtime source lock | `sha256:1370be3c06f661a1880fcde4d76ae93c603ed63a219dc6464d91ef2030a68689` (51 files) |
+| Operator source | `396a90d215e57b582ee0a71c3a0802ee2ed278f4` |
+| Interceptor source | `bd80a449ae32d4ecb57e7899a1d5d4ea8011d762` |
+| Contract package | development version `0.0.3`, digest `sha256:7d85bc39910f23b2c8f8de761f447be5dedc9c74d0833f358eadded20a07bfac` |
+
+Harness and target models were separate scripted providers. Image compatibility
+records were private test fixtures; runtime checks were not bypassed. The Harness
+suite passed 83 tests. These results supplement, rather than re-date or replace,
+the historical process evidence and matrix below. They do not establish live-model
+susceptibility, native Linux/rootless or cloud isolation, release approval, or full
+native-platform qualification. No acceptance criterion is promoted to a complete
+qualification pass by this limited example.
 
 ## Historical image-build evidence
 
