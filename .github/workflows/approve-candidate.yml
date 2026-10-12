@@ -21,7 +21,6 @@ jobs:
       actions: read
     outputs:
       matrix: ${{ steps.evidence.outputs.matrix }}
-      qualification_status: ${{ steps.evidence.outputs.qualification_status }}
       evidence_url: ${{ steps.evidence.outputs.evidence_url }}
       image_reference: ${{ steps.evidence.outputs.image_reference }}
       index_digest: ${{ steps.evidence.outputs.index_digest }}
@@ -38,7 +37,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: intrusiveai-engineering/releases
-          ref: f4bea2a7864bbd45ea318f6339f8d310c3276fd3
+          ref: ba4049627fa4a6602c5ea63efab6fb74c8643a61
           path: releases-service
           persist-credentials: false
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -59,11 +58,10 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: intrusiveai-engineering/releases/.github/workflows/publish-record.yml@f4bea2a7864bbd45ea318f6339f8d310c3276fd3
+    uses: intrusiveai-engineering/releases/.github/workflows/publish-record.yml@ba4049627fa4a6602c5ea63efab6fb74c8643a61
     with:
       record_json: ${{ matrix.record_json }}
-      qualification_status: ${{ needs.evidence.outputs.qualification_status }}
-      qualification_evidence_url: ${{ needs.evidence.outputs.evidence_url }}
+      build_evidence_url: ${{ needs.evidence.outputs.evidence_url }}
       source_commit: ${{ github.sha }}
       image_reference: ${{ needs.evidence.outputs.image_reference }}
       platform: ${{ matrix.platform }}

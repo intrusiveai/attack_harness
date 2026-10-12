@@ -1,0 +1,46 @@
+name: publish release catalog
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: attack-harness-catalog
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  entry:
+    if: github.repository == 'intrusiveai/attack_harness' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      json: ${{ steps.entry.outputs.entry_json }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install OCI inspection tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - name: Verify the generated catalog entry against the public release
+        id: entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m build.publish_candidate catalog-context
+
+  publish:
+    needs: entry
+    permissions:
+      contents: read
+      id-token: write
+    uses: intrusiveai-engineering/releases/.github/workflows/publish-catalog.yml@ba4049627fa4a6602c5ea63efab6fb74c8643a61
+    with:
+      product: attack_harness
+      entry_json: ${{ needs.entry.outputs.json }}

@@ -183,6 +183,7 @@ jobs:
       contents: write
       packages: write
       pull-requests: read
+      actions: write # Dispatch catalog publication from the promoted v* tag.
     concurrency:
       group: attack-harness-registry-publication
       cancel-in-progress: false

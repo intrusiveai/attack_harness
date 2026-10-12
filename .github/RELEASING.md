@@ -19,27 +19,42 @@ and GitHub prerelease with exact platform/config/index identities and reports.
 The OCI images retain their SBOM and provenance attestations. The workflow
 dispatches `approve-candidate.yml` at that unique Git tag; it independently checks
 the completed build jobs and calls the pinned releases-service publisher once per
-platform. Approve the existing `production` environment deployment when prompted.
+platform using the public build evidence. It also dispatches `publish-catalog.yml`
+to register that immutable candidate version with `tags: ["rc"]`, hidden from the
+website. The rolling `:v1.2.3` image remains available for convenient QA pulls.
+Approve the existing `production` environment deployments when prompted.
 After it completes, Operator can admit the candidate by its exact config digest.
 This is approval for QA use, not a claim that the full runtime acceptance matrix
 has passed. The seven-field service record has no QA-only restriction.
 
+Record actual QA results and evidence links in the candidate PR before merging it;
+the merge is the maintainer's QA sign-off. The workflow retains the PR URL, merge
+commit, and description with the promoted release, without claiming it ran QA.
 Merging the same-repository candidate PR into `main` verifies its published source,
 unchanged merge tree, and both public approval records, then copies that exact OCI
 index to `:latest` without rebuilding. It creates `v1.2.3` as a stable GitHub Release
 and freezes that version against later candidate writes. Merge `main` into the
 candidate before releasing if needed to make their trees agree. Use a new version
 for further development after promotion. Direct pushes to `main` only verify code.
+Promotion also dispatches catalog publication at `v1.2.3`, with `tags: ["release"]`.
+The catalog caller verifies that this final version retains the candidate's exact
+image digest, platform records, and build evidence. Approval record bytes do not
+change during promotion.
 
-The workflow changes, including `approve-candidate.yml`, must first exist on the
-default branch so GitHub can dispatch approval. Native runners retain the existing
+The workflow changes, including `approve-candidate.yml` and `publish-catalog.yml`,
+must first exist on the default branch and selected tags so GitHub can dispatch
+them. Native runners retain the existing
 `self-hosted`, `Linux`, `attack-harness-release`, and `X64`/`ARM64` labels and need
 Python 3.13.15, Go 1.26.5, Docker 29.0.1 and Buildx 0.29.1. The GHCR package must be
 public and grant this repository Actions write access. Protect `candidate-v*` and
 `v*` against unauthorized changes; keep the existing `production` environment's
 `v*` tag policy and its `AWS_REGION`, `CONTENT_BUCKET`,
 `CLOUDFRONT_DISTRIBUTION_ID`, and `RECORD_PUBLISHER_ROLE_ARN` variables.
-Only the reusable publisher receives OIDC permission; no AWS keys or extra
+Catalog publication uses `CATALOG_PUBLISHER_ROLE_ARN` when configured, otherwise
+the existing `RECORD_PUBLISHER_ROLE_ARN`. The releases service's one-time catalog
+infrastructure and site migration must already be deployed; routine publication
+does not apply Terraform or redeploy the website.
+Only the reusable publishers receive OIDC permission; no AWS keys or extra
 cross-repository write token are required.
 
 Approval failure does not discard the image. Inspect the failure, fix its cause,
@@ -49,10 +64,18 @@ to roll back `latest` if `main` has since advanced. Superseded builds retain the
 unique image/evidence but do not replace the rolling version tag. Registry writes
 are serialized across publication and promotion.
 
-Each GitHub Release includes `release-index-entry.json` for the releases service's
-existing reviewed catalog-update process. Candidates carry `tags: ["rc"]` and
-stay hidden; promotion generates `tags: ["release"]`. Merge the entry into
-`site/docs/releases/attack_harness.json` in `intrusiveai-engineering/releases`,
-preserving older entries and keeping `latest: true` only on the first entry, then
-run `make site` and use its normal review/deployment workflow. Image approval is
-automatic through the workflow above; website catalog submission remains separate.
+Each GitHub Release includes `release-index-entry.json`, which the catalog caller
+downloads and verifies against the public image before passing it to the releases
+service. That publisher merges one entry directly into the S3 catalog, preserves
+history, and verifies public delivery. No releases-repository edit, PR, site build,
+or site deployment is part of this release cycle. Unique candidate catalog versions
+prevent a delayed candidate retry from replacing a newer candidate or final entry.
+
+A dispatch acknowledgement means publication was requested, not completed. Follow
+both the record and catalog workflows to successful completion. On a catalog
+failure, inspect and fix the cause, then rerun `publish-catalog.yml` at the same Git
+tag. Verify the entry in
+`https://releases.intrusive.ai/docs/releases/attack_harness.json`: candidates stay
+hidden on the website, while the first two entries labeled `release` are displayed.
+The production environment approval for candidate admission does not certify QA;
+merging the candidate PR after QA is the separate promotion decision.
