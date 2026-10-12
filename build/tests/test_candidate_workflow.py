@@ -1,0 +1,262 @@
+import copy
+import io
+import json
+from pathlib import Path
+import tarfile
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from build import publish_candidate as release
+from build.inspect_oci import ALLOWED_ENV, ENTRYPOINT, inspect
+
+
+SOURCE = "a" * 40
+MERGE = "b" * 40
+BRANCH = "candidate-v1.2.3"
+
+
+def make_archive(directory, platform):
+    """Small OCI fixture exercising the actual inspector and publication path."""
+    blobs = {}
+
+    def blob(value, media_type):
+        raw = json.dumps(value, separators=(",", ":")).encode()
+        digest = release.digest(raw)
+        blobs["blobs/sha256/" + digest[7:]] = raw
+        return {"mediaType": media_type, "digest": digest, "size": len(raw)}
+
+    config = blob({"os": "linux", "architecture": platform.split("/")[1],
+                   "created": "1970-01-01T00:00:00Z", "history": [],
+                   "rootfs": {"diff_ids": ["sha256:" + "c" * 64]},
+                   "config": {"User": "65532:65532", "Entrypoint": ENTRYPOINT,
+                              "WorkingDir": "/run/operator/work", "Env": ALLOWED_ENV,
+                              "Labels": {"org.opencontainers.image.source": "https://github.com/" + release.REPOSITORY}}},
+                  "application/vnd.oci.image.config.v1+json")
+    layer = blob({"fixture": True}, "application/vnd.oci.image.layer.v1.tar+gzip")
+    manifest = blob({"schemaVersion": 2, "config": config, "layers": [layer]},
+                    "application/vnd.oci.image.manifest.v1+json")
+    manifest["platform"] = {"os": "linux", "architecture": platform.split("/")[1]}
+    statements = []
+    for predicate in ("https://spdx.dev/Document", "https://slsa.dev/provenance/v0.2"):
+        statement = blob({"predicateType": predicate}, "application/vnd.in-toto+json")
+        statement["annotations"] = {"in-toto.io/predicate-type": predicate}
+        statements.append(statement)
+    attestation = blob({"schemaVersion": 2, "layers": statements}, "application/vnd.oci.image.manifest.v1+json")
+    attestation["platform"] = {"os": "unknown", "architecture": "unknown"}
+    attestation["annotations"] = {"vnd.docker.reference.type": "attestation-manifest",
+                                   "vnd.docker.reference.digest": manifest["digest"]}
+    index = blob({"schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json",
+                  "manifests": [manifest, attestation]}, "application/vnd.oci.image.index.v1+json")
+    blobs["index.json"] = json.dumps({"mediaType": "application/vnd.oci.image.index.v1+json", "manifests": [index]}).encode()
+    blobs["oci-layout"] = b'{"imageLayoutVersion":"1.0.0"}'
+    prefix = directory / ("attack-harness-" + platform.replace("/", "-"))
+    archive = Path(str(prefix) + ".oci.tar")
+    with tarfile.open(archive, "w") as output:
+        for name, raw in blobs.items():
+            entry = tarfile.TarInfo(name)
+            entry.size = len(raw)
+            output.addfile(entry, io.BytesIO(raw))
+    report = inspect(archive, platform, Path("build/contract-lock.json"))
+    release.write_json(Path(str(prefix) + ".build-report.json"), report)
+    release.write_json(Path(str(prefix) + ".inspection-report.json"), {
+        "status": "passed", "platform": platform, "oci_config_digest": config["digest"],
+        "layer_digests": [layer["digest"]], "operator_stopped_image_inspection": "passed",
+        "inspection_container_cleanup": "passed", "operator_version": "0.1.0",
+        "operator_commit": json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]})
+    release.write_json(Path(str(prefix) + ".rebuild-comparison.json"), {
+        "platform": platform, "runtime_identity": "identical",
+        "runtime_comparisons": {"image_digest": True, "manifest_digest": True, "layer_digests": True}})
+
+
+class FakeRegistry:
+    def __init__(self):
+        self.images = {}
+        self.copies = []
+
+    def raw(self, reference):
+        return self.images[reference]
+
+    def copy(self, source, tag):
+        self.copies.append((source, tag))
+        if source.startswith("oci-archive:"):
+            with tarfile.open(source.removeprefix("oci-archive:")) as archive:
+                root = json.load(archive.extractfile("index.json"))
+                raw = archive.extractfile("blobs/sha256/" + root["manifests"][0]["digest"][7:]).read()
+        else:
+            raw = self.raw(source.removeprefix("docker://"))
+        self.images[release.IMAGE + ":" + tag] = raw
+        self.images[release.IMAGE + "@" + release.digest(raw)] = raw
+
+    def combine(self, references, tag, source, version, evidence_tag):
+        manifests = [m for reference in references for m in json.loads(self.raw(reference))["manifests"]]
+        raw = json.dumps({"manifests": manifests, "annotations": {
+            "org.opencontainers.image.revision": source, "org.opencontainers.image.version": version,
+            "ai.intrusive.evidence-tag": evidence_tag}}).encode()
+        self.images[release.IMAGE + ":" + tag] = raw
+        self.images[release.IMAGE + "@" + release.digest(raw)] = raw
+        return raw
+
+
+class FakeGitHub:
+    def __init__(self):
+        self.refs = {BRANCH: SOURCE, "main": MERGE}
+        self.tags, self.releases, self.dispatches = {}, {}, []
+        self.tree = {SOURCE: "tree", MERGE: "tree"}
+        self.pr = {"number": 42, "merged": True, "merge_commit_sha": MERGE,
+                   "base": {"ref": "main"}, "head": {"ref": BRANCH, "sha": SOURCE,
+                   "repo": {"full_name": release.REPOSITORY}}}
+        self.jobs = [{"name": "native-platform (" + p + ")", "conclusion": "success"} for p in release.PLATFORMS]
+
+    def api(self, path, method="GET", data=None, missing=False):
+        if path.startswith("git/ref/heads/"):
+            value = self.refs.get(path.removeprefix("git/ref/heads/"))
+            return {"object": {"sha": value}} if value else None
+        if path.startswith("git/ref/tags/"):
+            value = self.tags.get(path.removeprefix("git/ref/tags/"))
+            return {"object": {"sha": value}} if value else None
+        if path.startswith("git/commits/"):
+            return {"tree": {"sha": self.tree[path.removeprefix("git/commits/")]}}
+        if path == "pulls/42":
+            return self.pr
+        if path.endswith("/dispatches"):
+            self.dispatches.append(data)
+            return None
+        if path == "actions/runs/123":
+            return {"head_sha": SOURCE, "head_branch": BRANCH, "path": ".github/workflows/verify.yml", "event": "push"}
+        if path == "actions/runs/123/attempts/1/jobs?per_page=100":
+            return {"jobs": self.jobs}
+        if path == "actions/runs/123/attempts/2/jobs?per_page=100":
+            return {"jobs": []}
+        raise AssertionError(path)
+
+    def release(self, tag):
+        return self.releases.get(tag)
+
+    def create_release(self, tag, source, metadata, files, prerelease):
+        self.tags[tag] = source
+        result = {"draft": False, "body": release.MARKER + "\n" + json.dumps(metadata),
+                  "html_url": "https://github.com/" + release.REPOSITORY + "/releases/tag/" + tag,
+                  "prerelease": prerelease, "files": {p.name: p.read_bytes() for p in files}}
+        self.releases[tag] = result
+        return result
+
+
+class CandidateWorkflowTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.github, self.registry = FakeGitHub(), FakeRegistry()
+        for platform in release.PLATFORMS:
+            make_archive(self.directory, platform)
+
+    def publish(self, run="123.1", source=SOURCE):
+        return release.publish(self.github, self.registry, self.directory, BRANCH, source, run, "success")
+
+    def test_push_and_merge_into_candidate_publish_but_pr_does_not(self):
+        for event in ({}, {"before": "c" * 40, "after": SOURCE}):
+            self.assertEqual(release.context(event, "push", "refs/heads/" + BRANCH, SOURCE, release.REPOSITORY)["mode"], "publish")
+        event = {"action": "synchronize", "pull_request": self.github.pr}
+        self.assertEqual(release.context(event, "pull_request", "refs/pull/42/merge", SOURCE, release.REPOSITORY)["mode"], "verify")
+        event["action"] = "closed"
+        self.assertEqual(release.context(event, "pull_request", "refs/heads/main", MERGE, release.REPOSITORY)["mode"], "promote")
+        self.github.pr["base"]["ref"] = BRANCH
+        self.assertEqual(release.context(event, "pull_request", "refs/heads/" + BRANCH, MERGE, release.REPOSITORY)["mode"], "ignore")
+
+    def test_closed_unmerged_fork_deleted_and_main_never_publish(self):
+        for merged, repo in ((False, release.REPOSITORY), (True, "elsewhere/fork")):
+            pr = copy.deepcopy(self.github.pr)
+            pr["merged"], pr["head"]["repo"]["full_name"] = merged, repo
+            self.assertEqual(release.context({"action": "closed", "pull_request": pr}, "pull_request", "", SOURCE, release.REPOSITORY)["mode"], "ignore")
+        self.assertEqual(release.context({"deleted": True}, "push", "refs/heads/" + BRANCH, SOURCE, release.REPOSITORY)["mode"], "ignore")
+        self.assertEqual(release.context({}, "push", "refs/heads/main", SOURCE, release.REPOSITORY)["mode"], "verify")
+
+    def test_complete_candidate_approval_and_promotion_preserves_bytes(self):
+        self.publish()
+        tag = "v1.2.3-candidate.123.1"
+        candidate = self.registry.raw(release.IMAGE + ":v1.2.3")
+        self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
+        self.assertEqual(self.github.dispatches, [{"ref": tag}])
+        context = release.approval_context(self.github, tag, SOURCE, self.directory)
+        self.assertEqual(context["qualification_status"], "passed")
+        matrix = json.loads(context["matrix"])["include"]
+        self.assertEqual({m["platform"] for m in matrix}, set(release.PLATFORMS))
+        records = {"https://releases.intrusive.ai/sha256/" + m["image_config_digest"][7:]:
+                   (m["record_json"] + "\n").encode() for m in matrix}
+        with patch.object(release.urllib.request, "urlopen", side_effect=lambda url, timeout: io.BytesIO(records[url])):
+            release.promote(self.github, self.registry, 42, self.directory)
+            release.promote(self.github, self.registry, 42, self.directory)
+        self.assertEqual(self.registry.raw(release.IMAGE + ":latest"), candidate)
+        self.assertEqual(self.github.tags["v1.2.3"], SOURCE)
+        final = json.loads(self.github.releases["v1.2.3"]["files"]["release-index-entry.json"])
+        self.assertEqual(final["tags"], ["release"])
+        self.assertEqual(final["digest"], release.digest(candidate))
+        with self.assertRaisesRegex(ValueError, "frozen"):
+            self.publish("124.1")
+
+    def test_stale_build_preserves_immutable_evidence_without_moving_version(self):
+        self.publish()
+        original = self.registry.raw(release.IMAGE + ":v1.2.3")
+        self.github.refs[BRANCH] = "c" * 40
+        self.assertIn("superseded", self.publish("124.1"))
+        self.assertEqual(self.registry.raw(release.IMAGE + ":v1.2.3"), original)
+        self.assertIn("v1.2.3-candidate.124.1", self.github.releases)
+
+    def test_new_head_replaces_version_and_requires_matching_merge(self):
+        self.publish()
+        self.github.refs[BRANCH] = "c" * 40
+        self.publish("124.1", "c" * 40)
+        with self.assertRaisesRegex(ValueError, "merged candidate head"):
+            release.promote(self.github, self.registry, 42, self.directory)
+
+    def test_merge_tree_change_and_stale_promotion_fail(self):
+        self.publish()
+        self.github.tree[MERGE] = "different"
+        with self.assertRaisesRegex(ValueError, "merge changed"):
+            release.promote(self.github, self.registry, 42, self.directory)
+        self.github.tree[MERGE] = "tree"
+        self.github.refs["main"] = "d" * 40
+        with self.assertRaisesRegex(ValueError, "main has advanced"):
+            release.promote(self.github, self.registry, 42, self.directory)
+        self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
+
+    def test_failed_build_or_different_inspection_never_publishes(self):
+        with self.assertRaisesRegex(ValueError, "must succeed"):
+            release.publish(self.github, self.registry, self.directory, BRANCH, SOURCE, "123.1", "failure")
+        path = self.directory / "attack-harness-linux-amd64.inspection-report.json"
+        inspection = json.loads(path.read_bytes())
+        inspection["oci_config_digest"] = "sha256:" + "f" * 64
+        release.write_json(path, inspection)
+        with self.assertRaisesRegex(ValueError, "inspection does not match"):
+            self.publish()
+        self.assertEqual(self.registry.copies, [])
+
+    def test_approval_rechecks_real_job_results_and_source(self):
+        self.publish()
+        self.github.jobs[1]["conclusion"] = "failure"
+        with self.assertRaisesRegex(ValueError, "did not both succeed"):
+            release.approval_context(self.github, "v1.2.3-candidate.123.1", SOURCE, self.directory)
+        with self.assertRaisesRegex(ValueError, "qualification identity"):
+            release.approval_context(self.github, "v1.2.3-candidate.123.1", "f" * 40, self.directory)
+
+    def test_failed_publication_retry_reuses_successful_build_jobs(self):
+        self.publish("123.2")
+        result = release.approval_context(self.github, "v1.2.3-candidate.123.2", SOURCE, self.directory)
+        self.assertEqual(result["qualification_status"], "passed")
+
+    def test_missing_or_different_approval_blocks_latest(self):
+        self.publish()
+        with patch.object(release.urllib.request, "urlopen", return_value=io.BytesIO(b"{}\n")):
+            with self.assertRaisesRegex(ValueError, "approval differs"):
+                release.promote(self.github, self.registry, 42, self.directory)
+        self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
+
+    def test_unsafe_versions_are_rejected(self):
+        for branch in ("candidate-v1.2", "candidate-v01.2.3", "candidate-v1.2.3\n", "candidate-v1.2.3;echo bad", "feature-v1.2.3", "candidate-v1.2.3-01", "candidate-v1.2.3-rc..1"):
+            with self.assertRaises(ValueError):
+                release.version_for(branch)
+
+
+if __name__ == "__main__":
+    unittest.main()

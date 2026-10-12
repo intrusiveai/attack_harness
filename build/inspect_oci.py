@@ -97,6 +97,8 @@ def inspect(archive, platform, contract_lock):
         if config.get("os") != os_name or config.get("architecture") != architecture:
             raise ValueError("OCI configuration platform mismatch")
         process = config.get("config", {})
+        if process.get("Labels", {}).get("org.opencontainers.image.source") != "https://github.com/intrusiveai/attack_harness":
+            raise ValueError("OCI image lacks the canonical source label")
         if process.get("User") != "65532:65532" or \
                 process.get("Entrypoint") != ENTRYPOINT or \
                 process.get("WorkingDir") != "/run/operator/work" or \

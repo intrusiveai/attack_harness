@@ -10,7 +10,7 @@ and runs the adaptive model/tool loop through structured conclusion and stop.
 
 This boundary is not a release claim. Deterministic Go/Python process integration
 now covers both transports, campaign completion and interruption. Live provider
-routes, production target deployments, release publication and native qualification on
+routes, production target deployments, observed release publication and native qualification on
 all supported host tuples remain outstanding. Historical image candidates predate
 the current source/contract pins and require rebuilding. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
 
@@ -68,9 +68,11 @@ Docker, native Interceptor and model responses remain controlled fixtures.
 
 The acceptance matrix preserves historical process-test identities and separately
 records the newer local container checks. Current build inputs are pinned in the
-Makefile and contract/source locks. The CI workflow still selects an older Operator
-commit and must be aligned before it can validate the current candidate; no current
-CI qualification is claimed.
+Makefile and contract/source locks. The CI workflow now selects the locked Operator
+commit and publishes candidates after the automated checks. Candidate admission
+records enable subsequent runtime QA; they do not claim full runtime qualification.
+The publication/approval/promotion path has local fixture coverage, but no new
+successful hosted publication or native CI run is claimed here.
 
 ## Local container campaign checks (2026-10-07)
 

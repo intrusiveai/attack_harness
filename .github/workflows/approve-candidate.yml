@@ -1,0 +1,72 @@
+name: approve candidate for Operator QA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approve-candidate-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  evidence:
+    if: github.repository == 'intrusiveai/attack_harness' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      matrix: ${{ steps.evidence.outputs.matrix }}
+      qualification_status: ${{ steps.evidence.outputs.qualification_status }}
+      evidence_url: ${{ steps.evidence.outputs.evidence_url }}
+      image_reference: ${{ steps.evidence.outputs.image_reference }}
+      index_digest: ${{ steps.evidence.outputs.index_digest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify actual candidate build gates and assemble records
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m build.publish_candidate approval-context
+      - name: Check out the reviewed record validator
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: intrusiveai-engineering/releases
+          ref: f4bea2a7864bbd45ea318f6339f8d310c3276fd3
+          path: releases-service
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: releases-service/go.mod
+          cache-dependency-path: releases-service/go.mod
+      - name: Validate canonical records using the releases service
+        working-directory: releases-service
+        run: |
+          go run ./cmd/releasectl record validate --file ../dist/publication/linux-amd64.json
+          go run ./cmd/releasectl record validate --file ../dist/publication/linux-arm64.json
+
+  approve:
+    needs: evidence
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.evidence.outputs.matrix) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: intrusiveai-engineering/releases/.github/workflows/publish-record.yml@f4bea2a7864bbd45ea318f6339f8d310c3276fd3
+    with:
+      record_json: ${{ matrix.record_json }}
+      qualification_status: ${{ needs.evidence.outputs.qualification_status }}
+      qualification_evidence_url: ${{ needs.evidence.outputs.evidence_url }}
+      source_commit: ${{ github.sha }}
+      image_reference: ${{ needs.evidence.outputs.image_reference }}
+      platform: ${{ matrix.platform }}
+      platform_manifest_digest: ${{ matrix.platform_manifest_digest }}
+      image_config_digest: ${{ matrix.image_config_digest }}
+      index_digest: ${{ needs.evidence.outputs.index_digest }}

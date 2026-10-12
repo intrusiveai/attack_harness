@@ -60,9 +60,9 @@ release compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
 **Development status:** the harness and deterministic integration tests are
-implemented. Image approval, complete native runtime qualification, and live
-campaign integration remain release prerequisites. Selected host-side provider
-probes have passed, but they do not qualify the complete harness/container path.
+implemented. Full native runtime and live campaign validation remain in progress.
+Selected host-side provider probes have passed, but they do not qualify the
+complete harness/container path.
 See [implementation status](IMPLEMENTATION_STATUS.md), the
 [acceptance matrix](ACCEPTANCE_MATRIX.md), and
 [Operator's live qualification results](https://github.com/intrusiveai/operator_sandbox/blob/main/docs/LIVE_QUALIFICATION_VALIDATION.md).
@@ -107,8 +107,7 @@ after the corresponding image build:
 make inspect-stopped-image PLATFORM=linux/arm64
 ```
 
-This inspects the image without starting the container and checks cleanup. Passing
-builds and offline checks do not make an image release-approved. The
+This inspects the image without starting the container and checks cleanup. The
 [build specification](GUEST_ARTIFACT_LAYOUT_SPEC.md#41-container-build-deliverables)
 describes the packaging and qualification requirements.
 

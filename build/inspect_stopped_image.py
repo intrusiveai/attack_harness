@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import tarfile
@@ -103,12 +104,17 @@ def inspect(args):
     operator_commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=operator_root, check=True,
         capture_output=True, text=True).stdout.strip()
+    version_match = re.search(r'^var operatorVersion = "([^"]+)"$',
+                              (operator_root / "cmd/operatorctl/worker.go").read_text(), re.MULTILINE)
+    if version_match is None or not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version_match[1]):
+        raise ValueError("pinned Operator source must identify a stable version")
     result = {
         "api_version": "intrusive.ai/stopped-image-inspection/v1alpha1",
         "status": "passed",
         "platform": args.platform,
         "host_platform": _host_platform(),
         "operator_commit": operator_commit,
+        "operator_version": version_match[1],
         "docker_image_id": selector,
         "oci_config_digest": config_digest,
         "layer_digests": layers,

@@ -2,8 +2,9 @@ name: verify-candidate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
   push:
-    branches: [main]
+    branches: [main, 'candidate-v*']
   workflow_dispatch:
 
 permissions:
@@ -12,9 +13,30 @@ permissions:
 concurrency:
   group: verify-candidate-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
+  context:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.release.outputs.mode }}
+      version: ${{ steps.release.outputs.version }}
+      branch: ${{ steps.release.outputs.branch }}
+      source: ${{ steps.release.outputs.source }}
+      pr: ${{ steps.release.outputs.pr }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Test candidate publication and promotion
+        run: python3 -m unittest discover -s build/tests -v
+      - id: release
+        run: python3 -m build.publish_candidate context
+
   native-platform:
+    needs: context
+    if: needs.context.outputs.mode == 'verify' || needs.context.outputs.mode == 'publish'
     strategy:
       fail-fast: false
       matrix:
@@ -37,14 +59,14 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: intrusiveai/operator_sandbox
-          ref: e6f3ccd1a08ea3e1defdbb1a5514ff55dbfa6220
+          ref: 396a90d215e57b582ee0a71c3a0802ee2ed278f4
           path: operator_sandbox
           persist-credentials: false
       - name: Verify runner toolchain
         working-directory: attack_harness
         run: |
           test "$(python3 -c 'import platform;print(platform.python_version())')" = 3.13.15
-          test "$(go version | awk '{print $3}')" = go1.26.0
+          test "$(go version | awk '{print $3}')" = go1.26.5
           docker version --format '{{.Client.Version}}' | grep -Fx 29.0.1
           docker buildx version | grep -F 'v0.29.1'
       - name: Install locked test dependencies
@@ -91,7 +113,7 @@ jobs:
       - name: Remove ephemeral builder
         if: always()
         run: docker buildx rm "harness-${{ github.run_id }}-${{ matrix.slug }}" || true
-      - name: Retain unqualified candidate evidence
+      - name: Retain inspected candidate and evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: attack-harness-${{ matrix.slug }}-candidate
@@ -103,3 +125,90 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  publish:
+    needs: [context, native-platform]
+    if: needs.context.outputs.mode == 'publish' && github.repository == 'intrusiveai/attack_harness'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+      actions: write # Download build artifacts and dispatch approval at the candidate tag.
+    concurrency:
+      group: attack-harness-registry-publication
+      cancel-in-progress: false
+      queue: max
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install OCI copy tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+          docker buildx version
+      - name: Download this run's inspected OCI archives
+        run: |
+          gh run download "$GITHUB_RUN_ID" --name attack-harness-linux-amd64-candidate --dir dist/publication
+          gh run download "$GITHUB_RUN_ID" --name attack-harness-linux-arm64-candidate --dir dist/publication
+      - name: Authenticate to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+          DOCKER_CONFIG: ${{ runner.temp }}/harness-registry
+        run: |
+          printf 'DOCKER_CONFIG=%s\nREGISTRY_AUTH_FILE=%s/config.json\n' "$DOCKER_CONFIG" "$DOCKER_CONFIG" >> "$GITHUB_ENV"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Publish candidate and request per-platform approval
+        env:
+          CANDIDATE_BRANCH: ${{ needs.context.outputs.branch }}
+          CANDIDATE_SOURCE: ${{ needs.context.outputs.source }}
+          GATE_STATUS: ${{ needs.native-platform.result }}
+        run: |
+          python3 -m build.publish_candidate publish --directory dist/publication \
+            --branch "$CANDIDATE_BRANCH" --source "$CANDIDATE_SOURCE" --gate-status "$GATE_STATUS"
+      - name: Clear registry credentials
+        if: always()
+        run: docker logout ghcr.io
+
+  promote:
+    needs: context
+    if: needs.context.outputs.mode == 'promote' && github.repository == 'intrusiveai/attack_harness'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: read
+    concurrency:
+      group: attack-harness-registry-publication
+      cancel-in-progress: false
+      queue: max
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install OCI copy tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - name: Authenticate to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+          DOCKER_CONFIG: ${{ runner.temp }}/harness-registry
+        run: |
+          printf 'DOCKER_CONFIG=%s\nREGISTRY_AUTH_FILE=%s/config.json\n' "$DOCKER_CONFIG" "$DOCKER_CONFIG" >> "$GITHUB_ENV"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Promote the merged candidate's approved image
+        env:
+          RELEASE_PR: ${{ needs.context.outputs.pr }}
+        run: python3 -m build.publish_candidate promote --pr "$RELEASE_PR"
+      - name: Clear registry credentials
+        if: always()
+        run: docker logout ghcr.io

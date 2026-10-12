@@ -45,6 +45,7 @@ RUN --network=none python3 /source/build/prepare_release.py --verify \
 
 FROM gcr.io/distroless/python3-debian13@sha256:8ee214843129f43e2ebf5e0ca9f2e4e6d8292143d1b8a6787f169b5898578884 AS runtime
 ARG SOURCE_DATE_EPOCH
+LABEL org.opencontainers.image.source="https://github.com/intrusiveai/attack_harness"
 COPY --from=test --chown=0:0 /release /
 USER 65532:65532
 WORKDIR /run/operator/work

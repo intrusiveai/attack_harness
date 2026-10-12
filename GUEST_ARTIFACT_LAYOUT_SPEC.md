@@ -1,6 +1,6 @@
 # Attack Harness Container Artifact Specification
 
-Status: runtime and deterministic Go/Python process integration implemented; release publication and native qualification outstanding — see [current coverage](IMPLEMENTATION_STATUS.md)
+Status: runtime, deterministic Go/Python process integration, and candidate publication workflow implemented; native qualification occurs during post-publication QA — see [current coverage](IMPLEMENTATION_STATUS.md)
 Date: 2026-09-28\
 Harness identity: `operator-native`  
 Runtime ABI: `operator-container/v1` — Docker with Linux FIFO / macOS file-spool transport; qualification pending  
@@ -257,18 +257,28 @@ release assembly. For example, an implementation may provide `make verify-contra
 `make test`, `make image PLATFORM=linux/amd64`, `make qualify PLATFORM=linux/amd64`
 and `make release`. These are future command interfaces, not runnable commands yet.
 
-The pipeline must run these gates in dependency order:
+Candidate publication MUST run the automated build gates below. Passing those
+gates MUST permit publication of both the candidate image and its Operator
+admission records before runtime QA. Native runtime, live provider/target, and
+full host-matrix qualification MUST NOT block candidate publication or admission;
+they are QA activities performed against the published candidate. A passed
+`candidate-qa/v1` result means the automated candidate gates passed, not that the
+full acceptance matrix passed. This policy supersedes the earlier requirement
+that candidates satisfy every final-release qualification gate.
+
+The candidate pipeline MUST retain accurate results for these stages:
 
 | Gate | Required output and failure behavior |
 |---|---|
 | Contract/source lock verification | No missing pins, incompatible shared versions, altered generated schemas or unresolved placeholder digests. Source archive digest is required if no Git commit identifies the build. |
 | Python and contract tests | Strict codecs/framing, exact skills/prompts, artifact/attempt/observation handling and adaptive fake-host tests; failures prevent candidate promotion. |
 | Per-platform build | OCI layout/archive and exact manifest/config/layer identities. Bound caches to verified inputs; no credential or cache mount contents copied into outputs. |
-| Final-image checks | Declared executable/library/import inventory, native ABI/linkage, file ownership, fixed entrypoint, SBOM/licenses and dependency review. Ordinary unit-test success is insufficient. |
-| Native runtime qualification | Launch the exact Linux image through Operator on Linux/macOS amd64 and arm64 hosts with the selected FIFO/spool transport, read-only/nonroot/no-network/startup/live profiles and durable journal. Exercise control responsiveness, denied syscalls, journal failures and direct Docker termination including unavailable-daemon outcomes. |
-| Integration qualification | Actual advertised provider routes and target adapters, including HC-02 observation byte access and HC-03/HC-04 contracts. Mark unavailable native dependencies not-run; do not publish them as supported. |
+| Final-image checks | Existing OCI config/layer identity, fixed runtime metadata, canonical source label, SBOM/provenance and Operator stopped-image inspection MUST pass. Full executable/library/import inventory, ABI/linkage and license/dependency qualification SHOULD be recorded during QA; these additional reviews do not block candidate admission. |
+| Native runtime qualification (post-publication QA) | Launch the exact Linux image through Operator on Linux/macOS amd64 and arm64 hosts with the selected FIFO/spool transport, read-only/nonroot/no-network/startup/live profiles and durable journal. Exercise control responsiveness, denied syscalls, journal failures and direct Docker termination including unavailable-daemon outcomes. This is not a candidate admission gate. |
+| Integration qualification (post-publication QA) | Actual advertised provider routes and target adapters, including HC-02 observation byte access and HC-03/HC-04 contracts. Mark unavailable native dependencies not-run; do not publish them as supported. This is not a candidate admission gate. |
 | Rebuild comparison | Build again from identical pinned inputs and compare runtime payloads and OCI identities. Pin/normalize timestamps, ordering, ownership, compression and build epoch. Explain any attestation timestamp variability separately; never claim bit-for-bit reproducibility without evidence. |
-| Release publication | After qualification, publish the image and one HTTPS compatibility response per platform Docker image ID at releases.intrusive.ai/sha256/<hex>. Bind minimum Operator version, exact contract version/digest and installed runtime profile/platform; archive provenance/SBOM and qualification evidence. |
+| Candidate publication and admission | After automated candidate gates pass, publish the image and one HTTPS compatibility response per platform config digest at releases.intrusive.ai/sha256/<hex>. Bind the inspected Operator source's version, exact contract version/digest and runtime profile/platform; retain provenance/SBOM and actual gate evidence. The existing protected-environment approval remains the publication approval. |
+| Promotion | Merging a candidate PR into main authorizes promotion after QA. Preserve the candidate image bytes and existing admission records; verify source/tree identity and public records, then assign latest. No additional live-test gate is imposed by CI. |
 
 BuildKit can attach provenance and SBOM attestations to image outputs; select and
 verify the supported exporter/storage behavior rather than assume every local
