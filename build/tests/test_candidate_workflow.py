@@ -1,7 +1,9 @@
 import copy
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -213,6 +215,50 @@ class CandidateWorkflowTest(unittest.TestCase):
         self.assertEqual(self.github.dispatches[-1], {"workflow": "publish-catalog.yml", "ref": "v1.2.3"})
         with self.assertRaisesRegex(ValueError, "frozen"):
             self.publish("124.1")
+
+    def test_generated_candidate_and_promotion_match_local_publisher_contract(self):
+        """Pass real source-pipeline outputs through the bundled Go entry points."""
+        publisher = Path(__file__).resolve().parents[2] / "tools/release-publisher"
+
+        def run(command, *arguments):
+            result = subprocess.run(
+                ["go", "run", "./cmd/" + command, *map(str, arguments)],
+                cwd=publisher, capture_output=True, text=True,
+                env=dict(os.environ, GOWORK="off", GOPROXY="off", GOTOOLCHAIN="local"))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        self.publish()
+        tag = "v1.2.3-candidate.123.1"
+        context = release.approval_context(self.github, tag, SOURCE, self.directory)
+        records = {}
+        for item in json.loads(context["matrix"])["include"]:
+            raw = (item["record_json"] + "\n").encode()
+            path = self.directory / (item["platform"].replace("/", "-") + ".json")
+            path.write_bytes(raw)
+            run("release-publisher", "record", "validate", "--file", path)
+            self.assertEqual(path.read_bytes(), raw)
+            records["https://releases.intrusive.ai/sha256/" + item["image_config_digest"][7:]] = raw
+
+        entry = self.directory / "entry.json"
+        catalog = self.directory / "catalog.json"
+        entry.write_text(release.catalog_context(
+            self.github, self.registry, tag, SOURCE, self.directory)["entry_json"])
+        run("catalog-publisher", "catalog", "merge", "--product", "attack_harness",
+            "--entry", entry, "--output", catalog)
+        candidate = json.loads(catalog.read_bytes())["releases"][0]
+        self.assertEqual(candidate["tags"], ["rc"])
+        with patch.object(release.urllib.request, "urlopen", side_effect=lambda url, timeout: io.BytesIO(records[url])):
+            release.promote(self.github, self.registry, 42, self.directory)
+            entry.write_text(release.catalog_context(
+                self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
+        run("catalog-publisher", "catalog", "merge", "--product", "attack_harness",
+            "--entry", entry, "--current", catalog, "--output", catalog)
+        final, retained_candidate = json.loads(catalog.read_bytes())["releases"]
+        self.assertEqual(final["tags"], ["release"])
+        self.assertEqual(final["digest"], candidate["digest"])
+        self.assertEqual(final["digest"], release.digest(self.registry.raw(release.IMAGE + ":latest")))
+        self.assertEqual(retained_candidate, dict(candidate, latest=False))
+        self.assertEqual(final["image"], release.IMAGE + ":v1.2.3")
 
     def test_stale_build_preserves_immutable_evidence_without_moving_version(self):
         self.publish()

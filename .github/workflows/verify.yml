@@ -18,7 +18,7 @@ concurrency:
 jobs:
   context:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       mode: ${{ steps.release.outputs.mode }}
       version: ${{ steps.release.outputs.version }}
@@ -29,8 +29,22 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/release-publisher/go.mod
+          cache-dependency-path: tools/release-publisher/go.mod
       - name: Test candidate publication and promotion
         run: python3 -m unittest discover -s build/tests -v
+      - name: Test local publishers without external Go dependencies
+        working-directory: tools/release-publisher
+        env:
+          GOWORK: 'off'
+          GOPROXY: 'off'
+          GOTOOLCHAIN: local
+        run: |
+          go test -race ./...
+          go vet ./...
+          python3 -m unittest discover -s scripts/tests -v
       - id: release
         run: python3 -m build.publish_candidate context
 

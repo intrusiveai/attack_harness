@@ -33,38 +33,52 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 -m build.publish_candidate approval-context
-      - name: Check out the reviewed record validator
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: intrusiveai-engineering/releases
-          ref: ba4049627fa4a6602c5ea63efab6fb74c8643a61
-          path: releases-service
-          persist-credentials: false
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version-file: releases-service/go.mod
-          cache-dependency-path: releases-service/go.mod
-      - name: Validate canonical records using the releases service
-        working-directory: releases-service
-        run: |
-          go run ./cmd/releasectl record validate --file ../dist/publication/linux-amd64.json
-          go run ./cmd/releasectl record validate --file ../dist/publication/linux-arm64.json
 
   approve:
     needs: evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.evidence.outputs.matrix) }}
     permissions:
       contents: read
       id-token: write
-    uses: intrusiveai-engineering/releases/.github/workflows/publish-record.yml@ba4049627fa4a6602c5ea63efab6fb74c8643a61
-    with:
-      record_json: ${{ matrix.record_json }}
-      build_evidence_url: ${{ needs.evidence.outputs.evidence_url }}
-      source_commit: ${{ github.sha }}
-      image_reference: ${{ needs.evidence.outputs.image_reference }}
-      platform: ${{ matrix.platform }}
-      platform_manifest_digest: ${{ matrix.platform_manifest_digest }}
-      image_config_digest: ${{ matrix.image_config_digest }}
-      index_digest: ${{ needs.evidence.outputs.index_digest }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: tools/release-publisher
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CONTENT_BUCKET: ${{ vars.CONTENT_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      GOWORK: 'off'
+      GOPROXY: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/release-publisher/go.mod
+          cache-dependency-path: tools/release-publisher/go.mod
+      - name: Verify candidate identity and public build evidence
+        env:
+          RECORD_JSON: ${{ matrix.record_json }}
+          EVIDENCE_URL: ${{ needs.evidence.outputs.evidence_url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          IMAGE_REFERENCE: ${{ needs.evidence.outputs.image_reference }}
+          PLATFORM: ${{ matrix.platform }}
+          PLATFORM_MANIFEST_DIGEST: ${{ matrix.platform_manifest_digest }}
+          IMAGE_CONFIG_DIGEST: ${{ matrix.image_config_digest }}
+          INDEX_DIGEST: ${{ needs.evidence.outputs.index_digest }}
+        run: bash scripts/prepare-record.sh "$RUNNER_TEMP/candidate-record.json"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.RECORD_PUBLISHER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
+      - name: Publish immutable record and verify public delivery
+        run: bash scripts/publish-record.sh "$RUNNER_TEMP/candidate-record.json"

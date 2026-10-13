@@ -18,8 +18,8 @@ Each build also publishes a unique `v1.2.3-candidate.<run-id>.<attempt>` image t
 and GitHub prerelease with exact platform/config/index identities and reports.
 The OCI images retain their SBOM and provenance attestations. The workflow
 dispatches `approve-candidate.yml` at that unique Git tag; it independently checks
-the completed build jobs and calls the pinned releases-service publisher once per
-platform using the public build evidence. It also dispatches `publish-catalog.yml`
+the completed build jobs and runs the local record publisher once per platform
+using the public build evidence. It also dispatches `publish-catalog.yml`
 to register that immutable candidate version with `tags: ["rc"]`, hidden from the
 website. The rolling `:v1.2.3` image remains available for convenient QA pulls.
 Approve the existing `production` environment deployments when prompted.
@@ -48,14 +48,9 @@ them. Native runners retain the existing
 Python 3.13.15, Go 1.26.5, Docker 29.0.1 and Buildx 0.29.1. The GHCR package must be
 public and grant this repository Actions write access. Protect `candidate-v*` and
 `v*` against unauthorized changes; keep the existing `production` environment's
-`v*` tag policy and its `AWS_REGION`, `CONTENT_BUCKET`,
-`CLOUDFRONT_DISTRIBUTION_ID`, and `RECORD_PUBLISHER_ROLE_ARN` variables.
-Catalog publication uses `CATALOG_PUBLISHER_ROLE_ARN` when configured, otherwise
-the existing `RECORD_PUBLISHER_ROLE_ARN`. The releases service's one-time catalog
-infrastructure and site migration must already be deployed; routine publication
-does not apply Terraform or redeploy the website.
-Only the reusable publishers receive OIDC permission; no AWS keys or extra
-cross-repository write token are required.
+`v*` tag policy. Configure the production variables and OIDC subject described
+below before running these local publishers. Only the ordinary publishing jobs
+receive OIDC permission; no AWS keys or cross-repository token are required.
 
 Approval failure does not discard the image. Inspect the failure, fix its cause,
 then rerun the approval workflow at the same candidate tag. If a merge races a
@@ -65,8 +60,8 @@ unique image/evidence but do not replace the rolling version tag. Registry write
 are serialized across publication and promotion.
 
 Each GitHub Release includes `release-index-entry.json`, which the catalog caller
-downloads and verifies against the public image before passing it to the releases
-service. That publisher merges one entry directly into the S3 catalog, preserves
+downloads and verifies against the public image before passing it to the local
+publisher. That publisher merges one entry directly into the S3 catalog, preserves
 history, and verifies public delivery. No releases-repository edit, PR, site build,
 or site deployment is part of this release cycle. Unique candidate catalog versions
 prevent a delayed candidate retry from replacing a newer candidate or final entry.
@@ -79,3 +74,83 @@ tag. Verify the entry in
 hidden on the website, while the first two entries labeled `release` are displayed.
 The production environment approval for candidate admission does not certify QA;
 merging the candidate PR after QA is the separate promotion decision.
+
+## Local publisher and one-time configuration
+
+Both publishing workflows check out only this repository and execute the complete
+reviewed bundle in `tools/release-publisher`. Its `publisher-source.json` records
+source revision `c651c5fa47346f1ca02abe33791667f838b59e03` and per-file SHA-256
+hashes. Updates must replace the bundle from a reviewed commit export and review
+the provenance and code diff. Never fetch the private releases repository at
+workflow runtime or use a working-tree export. The bundle uses only the Go
+standard library, with workspace, proxy, and automatic toolchain fetching disabled.
+
+Both jobs run on protected `v*` tags in `production`. Candidate records pass
+`prepare-record.sh` (canonical record, published OCI identity, public evidence)
+before acquiring AWS credentials. Catalog entries pass local validation before
+acquiring credentials. The existing source pipeline additionally verifies the
+contents and provenance of build evidence. Publication checks S3 readback and
+public delivery; records also probe a genuinely unknown digest for a 404.
+
+Set these **production environment** variables:
+
+| Variable | Value |
+| --- | --- |
+| `AWS_REGION` | `us-west-2` |
+| `CONTENT_BUCKET` | `intrusiveai-releases` |
+| `CLOUDFRONT_DISTRIBUTION_ID` | `E1ET1MODBEJLY6` |
+| `CATALOG_PUBLISHER_ROLE_ARN` | `arn:aws:iam::389547485478:role/releases-record-publisher` |
+| `RECORD_PUBLISHER_ROLE_ARN` | `arn:aws:iam::389547485478:role/releases-record-publisher` |
+
+After an authorized administrator verifies the deployed role's migration to local
+workflow trust, configure the repository's custom OIDC subject with this exact
+ordered template:
+
+```json
+{"use_default":false,"include_claim_keys":["repository_id","repository_owner_id","environment","ref","workflow_ref"]}
+```
+
+This changes every OIDC job in the repository; inventory other cloud consumers
+before applying it. The current workflows grant OIDC only to the two publishers.
+The resulting subject must be:
+
+```text
+repository_id:1384026211:repository_owner_id:296295422:environment:production:ref:refs/tags/<TAG>:workflow_ref:intrusiveai/attack_harness/.github/workflows/<FILE>@refs/tags/<TAG>
+```
+
+Both tag positions must start with `v`; the role must accept only
+`approve-candidate.yml` and `publish-catalog.yml` at those exact workflow paths,
+retain its numeric repository/owner, environment and tag conditions, and require
+audience `sts.amazonaws.com`. Ordinary jobs use `workflow_ref`, not the reusable
+workflow claim `job_workflow_ref`. Both jobs share this existing role's catalog
+and record permissions. Local test success does not establish that this migration
+has been deployed. No site redeployment or data reset is required.
+
+Install these workflow changes on `main` before creating the next candidate tag;
+do not move an existing immutable tag to install the new publisher. Old tags keep
+their old workflows and cannot be assumed to work with migrated trust.
+
+## Verification
+
+CI runs the candidate lifecycle tests and the bundle's Go race tests, vet checks,
+and shell publisher tests against simulated S3 and local HTTP. From the bundle:
+
+```sh
+export GOWORK=off GOPROXY=off GOTOOLCHAIN=local
+go test -race ./...
+go vet ./...
+python3 -m unittest discover -s scripts/tests -v
+```
+
+These tests do not publish to AWS or prove a live GitHub OIDC exchange. For the
+first real candidate, follow both tagged runs through successful completion;
+verify both public records and the candidate catalog entry against the generated
+release evidence. The candidate remains absent from the website. After QA and
+promotion, verify the final entry and website visibility, unchanged image/config
+digests and record bytes, and preservation of older catalog history. Probe each
+downloaded canonical platform record with the local publisher:
+
+```sh
+go run ./cmd/release-publisher remote verify \
+  --origin https://releases.intrusive.ai --record /absolute/path/record.json
+```

@@ -278,7 +278,7 @@ The candidate pipeline MUST retain accurate results for these stages:
 | Integration qualification (post-publication QA) | Actual advertised provider routes and target adapters, including HC-02 observation byte access and HC-03/HC-04 contracts. Mark unavailable native dependencies not-run; do not publish them as supported. This is not a candidate admission gate. |
 | Rebuild comparison | Build again from identical pinned inputs and compare runtime payloads and OCI identities. Pin/normalize timestamps, ordering, ownership, compression and build epoch. Explain any attestation timestamp variability separately; never claim bit-for-bit reproducibility without evidence. |
 | Candidate publication and admission | After automated candidate gates pass, publish the image and one HTTPS compatibility response per platform config digest at releases.intrusive.ai/sha256/<hex>. Bind the inspected Operator source's version, exact contract version/digest and runtime profile/platform; retain provenance/SBOM and actual gate evidence. The existing protected-environment approval remains the publication approval. |
-| Catalog publication | Publish each immutable candidate's generated entry with `tags: ["rc"]` through the pinned reusable catalog publisher from its `v*` tag. The source repository MUST own direct catalog updates; no releases-repository PR or site deployment is required per release. |
+| Catalog publication | Publish each immutable candidate's generated entry with `tags: ["rc"]` through the reviewed publisher committed in `tools/release-publisher`, using an ordinary local job from its protected `v*` tag and `production` environment. The source repository MUST own direct catalog updates; no private releases-repository checkout, workflow call, PR or site deployment is required per release. |
 | Promotion | Maintainers MUST retain actual QA results and evidence links in the candidate PR before merging it into main as their QA sign-off. Preserve the candidate image bytes and existing admission records; verify source/tree identity and public records, then assign latest and dispatch a final catalog entry with `tags: ["release"]`. Retain the PR identity and QA notes with the final release. No additional live-test gate is imposed by CI. |
 
 BuildKit can attach provenance and SBOM attestations to image outputs; select and
@@ -334,7 +334,8 @@ Campaign bindings separately identify the exact skills, prompt, scenario,
 supporting inventory, target-capability projection and host-computed limits.
 They do not require an executable image rebuild. Attack Harness approval uses the
 [host-only release contract](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md).
-The publisher serves immutable metadata over HTTPS after qualification; Operator
+The publisher serves immutable compatibility metadata over HTTPS before candidate
+QA; qualification gates later production promotion. Operator
 checks minimum Operator application version, exact installed contract package version/digest and
 runtime/platform requirements before launch. The response is cached locally while
 that image is installed/in use.

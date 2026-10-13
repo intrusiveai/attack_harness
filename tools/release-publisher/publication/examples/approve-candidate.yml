@@ -1,0 +1,88 @@
+# Copy into attack_harness as .github/workflows/approve-candidate.yml.
+# Dispatch once per platform; qualification happens AFTER record admission.
+name: admit candidate image
+on:
+  workflow_dispatch:
+    inputs:
+      record_json:
+        description: Canonical seven-field record for the built platform image
+        required: true
+        type: string
+      image_reference:
+        description: Published ghcr.io/intrusiveai/attack_harness version tag
+        required: true
+        type: string
+      platform:
+        description: linux/amd64 or linux/arm64
+        required: true
+        type: string
+      platform_manifest_digest:
+        description: Published platform manifest SHA-256
+        required: true
+        type: string
+      image_config_digest:
+        description: Platform config SHA-256 (Docker image ID)
+        required: true
+        type: string
+      index_digest:
+        description: Enclosing index SHA-256 when the tag is multi-platform
+        required: false
+        type: string
+      source_commit:
+        description: Full lowercase source commit SHA
+        required: true
+        type: string
+      build_evidence_url:
+        description: Public build and compatibility evidence in intrusiveai/attack_harness
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+        working-directory: tools/release-publisher
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CONTENT_BUCKET: ${{ vars.CONTENT_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      GOWORK: 'off'
+      GOPROXY: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/release-publisher/go.mod
+          cache-dependency-path: tools/release-publisher/go.mod
+      - name: Verify candidate identity and public build evidence
+        env:
+          PRODUCT_REPOSITORY: ${{ github.repository }}
+          RECORD_JSON: ${{ inputs.record_json }}
+          IMAGE_REFERENCE: ${{ inputs.image_reference }}
+          PLATFORM: ${{ inputs.platform }}
+          PLATFORM_MANIFEST_DIGEST: ${{ inputs.platform_manifest_digest }}
+          IMAGE_CONFIG_DIGEST: ${{ inputs.image_config_digest }}
+          INDEX_DIGEST: ${{ inputs.index_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EVIDENCE_URL: ${{ inputs.build_evidence_url }}
+        run: |
+          test "$PRODUCT_REPOSITORY" = intrusiveai/attack_harness
+          bash scripts/prepare-record.sh "$RUNNER_TEMP/candidate-record.json"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.RECORD_PUBLISHER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
+      - name: Publish immutable record and verify public delivery
+        run: bash scripts/publish-record.sh "$RUNNER_TEMP/candidate-record.json"

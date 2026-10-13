@@ -37,10 +37,42 @@ jobs:
 
   publish:
     needs: entry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
     permissions:
       contents: read
       id-token: write
-    uses: intrusiveai-engineering/releases/.github/workflows/publish-catalog.yml@ba4049627fa4a6602c5ea63efab6fb74c8643a61
-    with:
-      product: attack_harness
-      entry_json: ${{ needs.entry.outputs.json }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: tools/release-publisher
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CONTENT_BUCKET: ${{ vars.CONTENT_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      GOWORK: 'off'
+      GOPROXY: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/release-publisher/go.mod
+          cache-dependency-path: tools/release-publisher/go.mod
+      - name: Validate catalog entry before assuming AWS role
+        env:
+          ENTRY_JSON: ${{ needs.entry.outputs.json }}
+        run: |
+          printf '%s\n' "$ENTRY_JSON" > "$RUNNER_TEMP/catalog-entry.json"
+          go run ./cmd/catalog-publisher catalog merge --product attack_harness \
+            --entry "$RUNNER_TEMP/catalog-entry.json" --output "$RUNNER_TEMP/validated-catalog.json"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.CATALOG_PUBLISHER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
+      - name: Publish catalog entry and verify public delivery
+        run: bash scripts/publish-catalog.sh "$RUNNER_TEMP/catalog-entry.json" attack_harness
