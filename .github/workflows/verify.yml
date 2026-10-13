@@ -56,12 +56,12 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: X64
+            runner: ubuntu-24.04
             slug: linux-amd64
           - platform: linux/arm64
-            runner: ARM64
+            runner: ubuntu-24.04-arm
             slug: linux-arm64
-    runs-on: [self-hosted, Linux, attack-harness-release, "${{ matrix.runner }}"]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
       - name: Check out harness
@@ -76,6 +76,25 @@ jobs:
           ref: 396a90d215e57b582ee0a71c3a0802ee2ed278f4
           path: operator_sandbox
           persist-credentials: false
+      - name: Install pinned Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.15'
+      - name: Install pinned Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.5'
+          cache: false
+      - name: Install pinned Docker
+        uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
+        with:
+          version: v29.0.1
+          set-host: true
+      - name: Install pinned Buildx and start BuildKit
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.29.1
+          driver-opts: image=moby/buildkit:v0.25.2@sha256:0f63d66f8d2de0bd16438284831a3e9ee6ca7cd57b6eb3ed6e38a7a456590fa7
       - name: Verify runner toolchain
         working-directory: attack_harness
         run: |
@@ -83,6 +102,7 @@ jobs:
           test "$(go version | awk '{print $3}')" = go1.26.5
           docker version --format '{{.Client.Version}}' | grep -Fx 29.0.1
           docker buildx version | grep -F 'v0.29.1'
+          docker buildx inspect --bootstrap | grep -F 'BuildKit version: v0.25.2'
       - name: Install locked test dependencies
         working-directory: attack_harness
         run: |
@@ -101,14 +121,6 @@ jobs:
         working-directory: attack_harness
         run: |
           make -C ../operator_sandbox test-integration PYTHON="$(pwd)/.ci-venv/bin/python"
-      - name: Start pinned BuildKit
-        working-directory: attack_harness
-        run: |
-          docker buildx create --name "harness-${{ github.run_id }}-${{ matrix.slug }}" \
-            --driver docker-container \
-            --driver-opt image=moby/buildkit:v0.25.2@sha256:0f63d66f8d2de0bd16438284831a3e9ee6ca7cd57b6eb3ed6e38a7a456590fa7 \
-            --use
-          docker buildx inspect --bootstrap | grep -F 'BuildKit version: v0.25.2'
       - name: Build twice and compare runtime identity
         working-directory: attack_harness
         run: |
@@ -124,9 +136,6 @@ jobs:
         run: |
           make inspect-stopped-image PLATFORM=${{ matrix.platform }} \
             OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
-      - name: Remove ephemeral builder
-        if: always()
-        run: docker buildx rm "harness-${{ github.run_id }}-${{ matrix.slug }}" || true
       - name: Retain inspected candidate and evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

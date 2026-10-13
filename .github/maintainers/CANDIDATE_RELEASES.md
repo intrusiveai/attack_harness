@@ -30,15 +30,15 @@ must already exist; routine publication does not deploy infrastructure or the si
 
 1. Open **Settings → Actions → General** and enable Actions. If an allowlist is
    enforced, allow the pinned `actions/checkout`, `actions/setup-go`,
-   `actions/upload-artifact`, and `aws-actions/configure-aws-credentials` actions.
+   `actions/upload-artifact`, `actions/setup-python`, `docker/setup-docker-action`,
+   `docker/setup-buildx-action`, and `aws-actions/configure-aws-credentials` actions.
    Use the exact SHAs in the three workflow files. The publishers run local code
    and need no exception for a private releases-repository workflow.
-2. Provide native Linux runners with the labels `self-hosted`, `Linux`,
-   `attack-harness-release`, and respectively `X64` or `ARM64`. Install
-   Python 3.13.15, Go 1.26.5, Docker 29.0.1, and Buildx 0.29.1 on both.
-   Install GitHub Actions runner v2.327.1 or newer, the
-   [minimum for checkout's Node.js 24 runtime](https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/README.md#checkout-v5).
-   Confirm the runners are online under **Settings → Actions → Runners**.
+2. Allow GitHub-hosted `ubuntu-24.04` (AMD64) and `ubuntu-24.04-arm` (ARM64)
+   runners. Each native build installs Python 3.13.15, Go 1.26.5, Docker 29.0.1,
+   and Buildx 0.29.1, then starts the digest-pinned BuildKit v0.25.2 image.
+   No self-hosted runner registration or emulation is required; the setup actions
+   use Node.js 24 and remove the temporary builder and Docker daemon after the job.
 3. Open the `attack_harness` package settings in GHCR. Make the package public
    and grant this repository Actions write access. Confirm that unauthenticated
    clients can inspect published image manifests; candidate admission checks
