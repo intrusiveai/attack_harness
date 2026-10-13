@@ -102,7 +102,7 @@ jobs:
           test "$(go version | awk '{print $3}')" = go1.26.5
           docker version --format '{{.Client.Version}}' | grep -Fx 29.0.1
           docker buildx version | grep -F 'v0.29.1'
-          docker buildx inspect --bootstrap | grep -F 'BuildKit version: v0.25.2'
+          docker buildx inspect --bootstrap | grep -E '^BuildKit version:[[:space:]]+v0\.25\.2$'
       - name: Install locked test dependencies
         working-directory: attack_harness
         run: |
