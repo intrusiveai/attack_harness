@@ -36,6 +36,8 @@ must already exist; routine publication does not deploy infrastructure or the si
 2. Provide native Linux runners with the labels `self-hosted`, `Linux`,
    `attack-harness-release`, and respectively `X64` or `ARM64`. Install
    Python 3.13.15, Go 1.26.5, Docker 29.0.1, and Buildx 0.29.1 on both.
+   Install GitHub Actions runner v2.327.1 or newer, the
+   [minimum for checkout's Node.js 24 runtime](https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/README.md#checkout-v5).
    Confirm the runners are online under **Settings → Actions → Runners**.
 3. Open the `attack_harness` package settings in GHCR. Make the package public
    and grant this repository Actions write access. Confirm that unauthenticated
