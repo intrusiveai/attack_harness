@@ -19,6 +19,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read # Verify the candidate's native build results.
     outputs:
       json: ${{ steps.entry.outputs.entry_json }}
     steps:

@@ -179,32 +179,28 @@ class CandidateWorkflowTest(unittest.TestCase):
         self.assertEqual(release.context({"deleted": True}, "push", "refs/heads/" + BRANCH, SOURCE, release.REPOSITORY)["mode"], "ignore")
         self.assertEqual(release.context({}, "push", "refs/heads/main", SOURCE, release.REPOSITORY)["mode"], "verify")
 
-    def test_complete_candidate_approval_and_promotion_preserves_bytes(self):
+    @patch("urllib.request.urlopen", side_effect=AssertionError("compatibility API must not be queried"))
+    def test_complete_candidate_and_promotion_preserves_bytes_without_records(self, remote):
         self.publish()
         tag = "v1.2.3-candidate.123.1"
         candidate = self.registry.raw(release.IMAGE + ":v1.2.3")
         self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
         self.assertEqual(self.github.dispatches, [
-            {"workflow": "approve-candidate.yml", "ref": tag},
             {"workflow": "publish-catalog.yml", "ref": tag}])
         candidate_entry = json.loads(release.catalog_context(
             self.github, self.registry, tag, SOURCE, self.directory)["entry_json"])
         self.assertEqual(candidate_entry["tags"], ["rc"])
         self.assertEqual(candidate_entry["image"], release.IMAGE + ":" + tag)
-        context = release.approval_context(self.github, tag, SOURCE, self.directory)
-        self.assertNotIn("qualification_status", context)
-        matrix = json.loads(context["matrix"])["include"]
-        self.assertEqual({m["platform"] for m in matrix}, set(release.PLATFORMS))
-        records = {"https://releases.intrusive.ai/sha256/" + m["image_config_digest"][7:]:
-                   (m["record_json"] + "\n").encode() for m in matrix}
-        with patch.object(release.urllib.request, "urlopen", side_effect=lambda url, timeout: io.BytesIO(records[url])):
-            release.promote(self.github, self.registry, 42, self.directory)
-            snapshot = self.github.releases["v1.2.3"]["body"]
-            self.github.pr["body"] = "Later edits must not change the retained QA sign-off."
-            release.promote(self.github, self.registry, 42, self.directory)
-            self.assertEqual(self.github.releases["v1.2.3"]["body"], snapshot)
-            final_entry = json.loads(release.catalog_context(
-                self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
+        evidence = json.loads(self.github.releases[tag]["files"]["candidate.json"])
+        self.assertTrue(all("record" not in p for p in evidence["platforms"]))
+        release.promote(self.github, self.registry, 42, self.directory)
+        snapshot = self.github.releases["v1.2.3"]["body"]
+        self.github.pr["body"] = "Later edits must not change the retained QA sign-off."
+        release.promote(self.github, self.registry, 42, self.directory)
+        self.assertEqual(self.github.releases["v1.2.3"]["body"], snapshot)
+        final_entry = json.loads(release.catalog_context(
+            self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
+        remote.assert_not_called()
         self.assertEqual(self.registry.raw(release.IMAGE + ":latest"), candidate)
         self.assertEqual(self.github.tags["v1.2.3"], SOURCE)
         final = json.loads(self.github.releases["v1.2.3"]["files"]["release-index-entry.json"])
@@ -229,16 +225,6 @@ class CandidateWorkflowTest(unittest.TestCase):
 
         self.publish()
         tag = "v1.2.3-candidate.123.1"
-        context = release.approval_context(self.github, tag, SOURCE, self.directory)
-        records = {}
-        for item in json.loads(context["matrix"])["include"]:
-            raw = (item["record_json"] + "\n").encode()
-            path = self.directory / (item["platform"].replace("/", "-") + ".json")
-            path.write_bytes(raw)
-            run("release-publisher", "record", "validate", "--file", path)
-            self.assertEqual(path.read_bytes(), raw)
-            records["https://releases.intrusive.ai/sha256/" + item["image_config_digest"][7:]] = raw
-
         entry = self.directory / "entry.json"
         catalog = self.directory / "catalog.json"
         entry.write_text(release.catalog_context(
@@ -247,10 +233,9 @@ class CandidateWorkflowTest(unittest.TestCase):
             "--entry", entry, "--output", catalog)
         candidate = json.loads(catalog.read_bytes())["releases"][0]
         self.assertEqual(candidate["tags"], ["rc"])
-        with patch.object(release.urllib.request, "urlopen", side_effect=lambda url, timeout: io.BytesIO(records[url])):
-            release.promote(self.github, self.registry, 42, self.directory)
-            entry.write_text(release.catalog_context(
-                self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
+        release.promote(self.github, self.registry, 42, self.directory)
+        entry.write_text(release.catalog_context(
+            self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
         run("catalog-publisher", "catalog", "merge", "--product", "attack_harness",
             "--entry", entry, "--current", catalog, "--output", catalog)
         final, retained_candidate = json.loads(catalog.read_bytes())["releases"]
@@ -297,18 +282,33 @@ class CandidateWorkflowTest(unittest.TestCase):
             self.publish()
         self.assertEqual(self.registry.copies, [])
 
-    def test_approval_rechecks_real_job_results_and_source(self):
+    def test_catalog_and_promotion_recheck_real_build_results(self):
         self.publish()
         self.github.jobs[1]["conclusion"] = "failure"
         with self.assertRaisesRegex(ValueError, "did not both succeed"):
-            release.approval_context(self.github, "v1.2.3-candidate.123.1", SOURCE, self.directory)
-        with self.assertRaisesRegex(ValueError, "build identity"):
-            release.approval_context(self.github, "v1.2.3-candidate.123.1", "f" * 40, self.directory)
+            release.catalog_context(self.github, self.registry, "v1.2.3-candidate.123.1", SOURCE, self.directory)
+        with self.assertRaisesRegex(ValueError, "did not both succeed"):
+            release.promote(self.github, self.registry, 42, self.directory)
+        self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
+
+    def test_catalog_rejects_wrong_source_or_incomplete_platform_evidence(self):
+        self.publish()
+        tag = "v1.2.3-candidate.123.1"
+        with self.assertRaisesRegex(ValueError, "source differs"):
+            release.catalog_context(self.github, self.registry, tag, "f" * 40, self.directory)
+        candidate = self.github.releases[tag]
+        evidence = json.loads(candidate["body"].removeprefix(release.MARKER + "\n"))
+        evidence["platforms"].pop()
+        candidate["body"] = release.MARKER + "\n" + json.dumps(evidence)
+        with self.assertRaisesRegex(ValueError, "requires both platforms"):
+            release.catalog_context(self.github, self.registry, tag, SOURCE, self.directory)
+        with self.assertRaisesRegex(ValueError, "requires both platforms"):
+            release.promote(self.github, self.registry, 42, self.directory)
 
     def test_failed_publication_retry_reuses_successful_build_jobs(self):
         self.publish("123.2")
-        result = release.approval_context(self.github, "v1.2.3-candidate.123.2", SOURCE, self.directory)
-        self.assertEqual(len(json.loads(result["matrix"])["include"]), 2)
+        result = release.catalog_context(self.github, self.registry, "v1.2.3-candidate.123.2", SOURCE, self.directory)
+        self.assertEqual(json.loads(result["entry_json"])["tags"], ["rc"])
 
     def test_delayed_candidate_catalog_keeps_immutable_identity_after_new_build(self):
         self.publish()
@@ -339,25 +339,30 @@ class CandidateWorkflowTest(unittest.TestCase):
 
     def test_final_catalog_requires_matching_merged_pr_and_candidate_bytes(self):
         self.publish()
-        with patch.object(release, "verify_approvals"):
-            release.promote(self.github, self.registry, 42, self.directory)
-            self.github.pr["merged"] = False
-            with self.assertRaisesRegex(ValueError, "QA sign-off"):
-                release.catalog_context(self.github, self.registry, "v1.2.3", SOURCE, self.directory)
-            self.github.pr["merged"] = True
-            final = self.github.releases["v1.2.3"]
-            evidence = json.loads(final["body"].removeprefix(release.MARKER + "\n"))
-            evidence["index_digest"] = "sha256:" + "f" * 64
-            final["body"] = release.MARKER + "\n" + json.dumps(evidence)
-            with self.assertRaisesRegex(ValueError, "promotion changed"):
-                release.catalog_context(self.github, self.registry, "v1.2.3", SOURCE, self.directory)
+        release.promote(self.github, self.registry, 42, self.directory)
+        self.github.pr["merged"] = False
+        with self.assertRaisesRegex(ValueError, "QA sign-off"):
+            release.catalog_context(self.github, self.registry, "v1.2.3", SOURCE, self.directory)
+        self.github.pr["merged"] = True
+        final = self.github.releases["v1.2.3"]
+        evidence = json.loads(final["body"].removeprefix(release.MARKER + "\n"))
+        evidence["index_digest"] = "sha256:" + "f" * 64
+        final["body"] = release.MARKER + "\n" + json.dumps(evidence)
+        with self.assertRaisesRegex(ValueError, "promotion changed"):
+            release.catalog_context(self.github, self.registry, "v1.2.3", SOURCE, self.directory)
 
-    def test_missing_or_different_approval_blocks_latest(self):
+    @patch("urllib.request.urlopen", side_effect=AssertionError("compatibility API must not be queried"))
+    def test_historical_candidate_records_do_not_require_remote_verification(self, remote):
         self.publish()
-        with patch.object(release.urllib.request, "urlopen", return_value=io.BytesIO(b"{}\n")):
-            with self.assertRaisesRegex(ValueError, "approval differs"):
-                release.promote(self.github, self.registry, 42, self.directory)
-        self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
+        tag = "v1.2.3-candidate.123.1"
+        candidate = self.github.releases[tag]
+        evidence = json.loads(candidate["body"].removeprefix(release.MARKER + "\n"))
+        for platform in evidence["platforms"]:
+            platform["record"] = {"image_digest": platform["image_digest"]}
+        candidate["body"] = release.MARKER + "\n" + json.dumps(evidence)
+        release.promote(self.github, self.registry, 42, self.directory)
+        release.catalog_context(self.github, self.registry, "v1.2.3", SOURCE, self.directory)
+        remote.assert_not_called()
 
     def test_unsafe_versions_are_rejected(self):
         for branch in ("candidate-v1.2", "candidate-v01.2.3", "candidate-v1.2.3\n", "candidate-v1.2.3;echo bad", "feature-v1.2.3", "candidate-v1.2.3-01", "candidate-v1.2.3-rc..1"):

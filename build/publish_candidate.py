@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import re
 import subprocess
-import urllib.request
 
 from build.inspect_oci import inspect
 
@@ -17,8 +16,6 @@ IMAGE = "ghcr.io/" + REPOSITORY
 PLATFORMS = ("linux/amd64", "linux/arm64")
 MARKER = "<!-- attack-harness-candidate/v1 -->"
 QA_PENDING = ["native-runtime", "live-provider-target-integration", "full-host-matrix"]
-RECORD_FIELDS = ("api_version", "image_digest", "minimum_operator_version",
-                 "contract_package_version", "contract_package_digest", "runtime_profile", "platform")
 
 
 def version_for(branch):
@@ -155,9 +152,6 @@ def check_reports(directory):
             raise ValueError("runtime reproducibility gate failed")
         if inspection["operator_commit"] != json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]:
             raise ValueError("inspection used an unpinned Operator")
-        record = dict(report["compatibility_candidate"])
-        record["minimum_operator_version"] = inspection["operator_version"]
-        report["approval_record"] = {field: record[field] for field in RECORD_FIELDS}
         reports.append(report)
         files.extend(paths)
     if reports[0]["contract"] != reports[1]["contract"]:
@@ -175,7 +169,7 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
     if not re.fullmatch(r"[0-9a-f]{40}", source) or not re.fullmatch(r"[0-9]+\.[0-9]+", run_id):
         raise ValueError("invalid source or run identity")
     if gate_status != "success":
-        raise ValueError("both native build jobs must succeed before candidate approval")
+        raise ValueError("both native build jobs must succeed before candidate publication")
     if github.api("git/ref/tags/" + version, missing=True):
         raise ValueError("version has been frozen for promotion; use a new candidate version")
     reports, files = check_reports(directory)
@@ -198,8 +192,7 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
                 "evidence_tag": tag, "build_status": gate_status,
                 "qa_pending": QA_PENDING,
                 "build_run_id": run_id.split(".")[0], "build_run_attempt": run_id.split(".")[1],
-                "platforms": [{"platform": r["platform"], **r["oci"],
-                               "record": r["approval_record"]} for r in reports]}
+                "platforms": [{"platform": r["platform"], **r["oci"]} for r in reports]}
     handoff, record = directory / "release-index-entry.json", directory / "candidate.json"
     # Catalog immutable candidate versions so delayed publication cannot replace
     # a newer build's entry or disagree with the rolling branch-version tag.
@@ -207,7 +200,6 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
     write_json(record, evidence)
     github.create_release(tag, source, evidence, files + [handoff, record], prerelease=True)
     # workflow_dispatch runs even with GITHUB_TOKEN; tag-push events do not.
-    github.api("actions/workflows/approve-candidate.yml/dispatches", "POST", {"ref": tag})
     github.api("actions/workflows/publish-catalog.yml/dispatches", "POST", {"ref": tag})
     # Keep every run's immutable evidence; only the current branch head moves the rolling tag.
     branch_ref = github.api("git/ref/heads/" + branch, missing=True)
@@ -218,7 +210,7 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
     registry.copy("docker://" + IMAGE + "@" + image_digest, version)
     if digest(registry.raw(IMAGE + ":" + version)) != image_digest:
         raise ValueError("version tag differs from the published candidate")
-    return "candidate image published; record and catalog workflows dispatched at " + tag
+    return "candidate image published; catalog workflow dispatched at " + tag
 
 
 def promote(github, registry, number, directory):
@@ -250,7 +242,7 @@ def promote(github, registry, number, directory):
     # An old promotion rerun must not roll latest back after a subsequent main merge.
     if github.api("git/ref/heads/main")["object"]["sha"] != pr["merge_commit_sha"]:
         raise ValueError("main has advanced; refusing stale promotion")
-    verify_approvals(evidence)
+    verify_candidate_build(github, tag, source, evidence)
     directory.mkdir(parents=True, exist_ok=True)
     handoff, record = directory / "release-index-entry.json", directory / "candidate.json"
     write_json(handoff, catalog_entry(version, image_digest, promoted=True))
@@ -273,7 +265,7 @@ def promote(github, registry, number, directory):
     if digest(registry.raw(IMAGE + ":latest")) != image_digest:
         raise ValueError("latest does not resolve to the candidate index")
     github.api("actions/workflows/publish-catalog.yml/dispatches", "POST", {"ref": version})
-    return "approved candidate promoted to latest; final catalog workflow dispatched at " + version
+    return "qualified candidate promoted to latest; final catalog workflow dispatched at " + version
 
 
 def catalog_context(github, registry, tag, source, directory):
@@ -305,10 +297,10 @@ def catalog_context(github, registry, tag, source, directory):
         original = json.loads(candidate["body"].removeprefix(MARKER + "\n"))
         if {k: v for k, v in evidence.items() if k != "promotion"} != original:
             raise ValueError("promotion changed the candidate evidence or image identity")
-        verify_approvals(evidence)
     elif (not release["prerelease"] or tag != evidence["evidence_tag"]
           or tag != evidence["version"] + "-candidate." + evidence["build_run_id"] + "." + evidence["build_run_attempt"]):
         raise ValueError("catalog candidate tag differs from its build evidence")
+    verify_candidate_build(github, evidence["evidence_tag"], source, evidence)
     entry = github.download_entry(tag, directory)
     if entry != catalog_entry(tag, evidence["index_digest"], promoted=promoted):
         raise ValueError("catalog entry differs from the released image identity or lifecycle stage")
@@ -317,28 +309,8 @@ def catalog_context(github, registry, tag, source, directory):
     return {"entry_json": json.dumps(entry, separators=(",", ":"))}
 
 
-def verify_approvals(evidence):
-    if len(evidence["platforms"]) != 2 or {p["platform"] for p in evidence["platforms"]} != set(PLATFORMS):
-        raise ValueError("approval requires both platforms")
-    for platform in evidence["platforms"]:
-        record = platform["record"]
-        if (list(record) != list(RECORD_FIELDS) or record["platform"] != platform["platform"]
-                or record["image_digest"] != platform["image_digest"]
-                or not re.fullmatch(r"sha256:[0-9a-f]{64}", record["image_digest"])):
-            raise ValueError("approval record differs from platform identity")
-        canonical = (json.dumps(record, separators=(",", ":")) + "\n").encode()
-        url = "https://releases.intrusive.ai/sha256/" + record["image_digest"].removeprefix("sha256:")
-        with urllib.request.urlopen(url, timeout=30) as response:
-            if response.read(65537) != canonical:
-                raise ValueError("published approval differs from the candidate record")
-
-
-def approval_context(github, tag, source, directory):
-    """Verify the completed build jobs before handing records to the service."""
-    release = github.release(tag)
-    if not release or release["draft"] or not release["body"].startswith(MARKER + "\n"):
-        raise ValueError("approval requires public candidate evidence")
-    evidence = json.loads(release["body"].removeprefix(MARKER + "\n"))
+def verify_candidate_build(github, tag, source, evidence):
+    """Retain source and build-gate checks without remote compatibility records."""
     version = evidence["version"]
     version_for("candidate-" + version)
     run_id, attempt = evidence["build_run_id"], evidence["build_run_attempt"]
@@ -367,26 +339,11 @@ def approval_context(github, tag, source, directory):
         raise ValueError("candidate build gates did not both succeed")
     if len(evidence["platforms"]) != 2 or {p["platform"] for p in evidence["platforms"]} != set(PLATFORMS):
         raise ValueError("candidate evidence requires both platforms")
-    directory.mkdir(parents=True, exist_ok=True)
-    matrix = []
-    for platform in evidence["platforms"]:
-        record = platform["record"]
-        if (list(record) != list(RECORD_FIELDS) or record["platform"] != platform["platform"]
-                or record["image_digest"] != platform["image_digest"]):
-            raise ValueError("approval record does not match platform evidence")
-        canonical = json.dumps(record, separators=(",", ":"))
-        write_json(directory / (platform["platform"].replace("/", "-") + ".json"), record)
-        matrix.append({"platform": platform["platform"], "record_json": canonical,
-                       "image_config_digest": platform["image_digest"],
-                       "platform_manifest_digest": platform["manifest_digest"]})
-    return {"matrix": json.dumps({"include": matrix}, separators=(",", ":")),
-            "evidence_url": release["html_url"], "index_digest": evidence["index_digest"],
-            "image_reference": IMAGE + ":" + tag}
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("context", "publish", "promote", "approval-context", "catalog-context"))
+    parser.add_argument("operation", choices=("context", "publish", "promote", "catalog-context"))
     parser.add_argument("--directory", type=Path, default=Path("dist/publication"))
     parser.add_argument("--branch")
     parser.add_argument("--source")
@@ -405,15 +362,11 @@ def main():
         return
     if os.environ["GITHUB_REPOSITORY"] != REPOSITORY:
         raise ValueError("publication is restricted to the canonical repository")
-    if args.operation in ("approval-context", "catalog-context"):
+    if args.operation == "catalog-context":
         if not os.environ["GITHUB_REF"].startswith("refs/tags/v"):
-            raise ValueError("record and catalog publication must run from a v* tag")
-        if args.operation == "approval-context":
-            result = approval_context(GitHub(), os.environ["GITHUB_REF_NAME"],
-                                      os.environ["GITHUB_SHA"], args.directory)
-        else:
-            result = catalog_context(GitHub(), Registry(), os.environ["GITHUB_REF_NAME"],
-                                     os.environ["GITHUB_SHA"], args.directory)
+            raise ValueError("catalog publication must run from a v* tag")
+        result = catalog_context(GitHub(), Registry(), os.environ["GITHUB_REF_NAME"],
+                                 os.environ["GITHUB_SHA"], args.directory)
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             for key, value in result.items():
                 if "\n" in value or "\r" in value:
