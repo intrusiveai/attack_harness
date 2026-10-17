@@ -141,8 +141,11 @@ def check_reports(directory):
         if report != inspect(archive, platform, Path("build/contract-lock.json")):
             raise ValueError("archive differs from its build report")
         if (inspection["status"] != "passed" or inspection["platform"] != platform
+                or inspection["native_platform"] is not True
                 or inspection["oci_config_digest"] != report["oci"]["image_digest"]
                 or inspection["layer_digests"] != report["oci"]["layer_digests"]
+                or inspection["compatibility_digest"] != report["compatibility"]["digest"]
+                or inspection["operator_local_compatibility"] != "passed"
                 or inspection["operator_stopped_image_inspection"] != "passed"
                 or inspection["inspection_container_cleanup"] != "passed"):
             raise ValueError("stopped-image inspection does not match the published bytes")
@@ -192,7 +195,8 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
                 "evidence_tag": tag, "build_status": gate_status,
                 "qa_pending": QA_PENDING,
                 "build_run_id": run_id.split(".")[0], "build_run_attempt": run_id.split(".")[1],
-                "platforms": [{"platform": r["platform"], **r["oci"]} for r in reports]}
+                "platforms": [{"platform": r["platform"], **r["oci"],
+                               "compatibility": r["compatibility"]} for r in reports]}
     handoff, record = directory / "release-index-entry.json", directory / "candidate.json"
     # Catalog immutable candidate versions so delayed publication cannot replace
     # a newer build's entry or disagree with the rolling branch-version tag.

@@ -7,11 +7,11 @@ they are not part of installing or running Attack Harness through Operator.
 Complete the one-time setup before your first release. For later releases, start
 at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
-These workflows publish images and the website's release catalog. They no longer
-publish or query compatibility records at `/sha256/<digest>`. The replacement
-in-image compatibility mechanism is a separate change; Operators that still
-require the releases-service check may reject newly built images without a record.
-Existing public records remain untouched.
+These workflows publish images and the website's release catalog. Each image
+contains its own compatibility file; workflows do not publish or query records at
+`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.4`.
+Older images without the embedded file require rebuilding. Existing public records
+remain untouched; catalog publication still requires the production reviewer.
 
 Deliver workflow changes to `main` first, then merge `main` into the candidate
 branch before its next publication. Existing immutable tags retain their original
@@ -150,6 +150,55 @@ identify the repository, environment, tag, and workflow file.
    path and ref, not its contents, so review workflow and publisher changes.
 5. Follow the candidate procedure below to confirm a real OIDC exchange and
    public delivery. Passing local tests alone does not establish live readiness.
+
+## Verify local compatibility before publication
+
+1. Check out Operator commit `cb43a919bda9b8689c11e20b7a09db35d2a98f89`
+   in a separate clean directory. This is the immutable contract source in
+   `build/contract-lock.json`; its package is `0.0.4`, digest
+   `sha256:750deac00ebece408dd7514ceae75e090f458f07ed1988b26859f7332ade32be`.
+   Move any older generated `build/context/contracts` aside before rebuilding.
+2. Install the locked test dependencies, verify the contract package, and run
+   Harness/publication tests:
+
+   ```sh
+   python3 -m venv .ci-venv
+   .ci-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-runtime.lock
+   make verify-contracts OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make test OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   python3 -m unittest discover -s build/tests -v
+   ```
+
+   In the pinned Operator checkout, run `go test ./contracts ./internal/imagerelease
+   ./internal/dockercontrol ./cmd/operatorctl`. Run its shared Python fixtures with
+   `PYTHONPATH=contracts/python /path/to/harness/.ci-venv/bin/python -m unittest
+   discover -s contracts/python/tests -v`.
+
+3. Build and inspect each platform with the pinned BuildKit configuration from
+   `verify.yml`. Repeat the build, saving the first build report, and run
+   `build/compare_builds.py` as CI does:
+
+   ```sh
+   make image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make inspect-stopped-image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   ```
+
+   Repeat for `linux/amd64`. Prefer native hosts. For local file inspection on a
+   different architecture, explicitly set
+   `INSPECTION_FLAGS=--allow-cross-platform-inspection`; this records a non-native
+   check and does not qualify runtime execution or satisfy native CI evidence.
+4. Confirm each build report identifies the exact embedded compatibility bytes
+   and raw digest separately from the OCI config, manifest and index. The stopped
+   check uses updated Operator's real reader with external HTTP disabled, verifies
+   all five fixed files, and confirms inspection-container removal. It records the
+   independently resolved Docker image ID separately: containerd-backed Docker can
+   expose a manifest-based ID while classic Docker exposes the config ID.
+5. Run Operator's process integration suite with this Harness checkout (see its
+   `docs/PROCESS_INTEGRATION.md`). Check frozen startup, attempt-generator and
+   conclusion bindings. The release digest hashes the exact compatibility bytes,
+   not normalized JSON. Record fixture/cross-platform results separately from
+   native runtime and live-provider QA; neither latter activity blocks candidate
+   publication.
 
 ## Publish and qualify a candidate
 

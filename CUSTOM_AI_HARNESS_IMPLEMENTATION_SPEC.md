@@ -76,11 +76,16 @@ conformance and native integration pass.
 Never present a fake-only schema, shim or passing fixture as native compatibility.
 
 Operator selects an administrator-installed local Docker image and validates its
-[HTTPS release record](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md)
-before guest execution. Registry authentication, pulling and updates are deployment
-work, not harness or Operator startup operations. The release service identifies
-the exact contract package already installed on both ends; guest network access
-or runtime schema download is never required.
+[embedded compatibility file](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md)
+and fixed resource digests before guest execution. Registry authentication, pulling
+and updates are deployment operations. Both ends install the exact locked shared
+package `0.0.4`; no releases-service approval or runtime download is required.
+Operator retains the exact compatibility bytes and passes their raw SHA-256 as
+`release_record_digest`. The Harness preserves that frozen startup/conclusion
+binding and uses it as `generator.release_digest` in attempts. The independently
+resolved Docker image ID remains a separate binding. See the
+[image contract](GUEST_ARTIFACT_LAYOUT_SPEC.md#5-release-tuple-and-manifest-ownership)
+for the exact package pin and six-field record.
 
 ## 3. Implementation layout and component responsibilities
 
