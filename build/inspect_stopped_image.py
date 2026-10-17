@@ -55,7 +55,23 @@ def _candidate(archive_path, build_report):
         for digest in set(layers):
             _read_member(archive, members,
                          "blobs/sha256/" + digest.removeprefix("sha256:"), 256 << 20)
-        return manifest_digest, config_digest, layers
+    return manifest_digest, config_digest, layers
+
+
+def _local_image_id(docker, platform, manifest_digest, config_digest):
+    # Classic Docker exposes the config ID; containerd-backed Docker can expose
+    # the single-image manifest ID. Preserve the daemon's independently resolved
+    # identity, while checking the archive's config/layers separately above.
+    for selector in (config_digest, manifest_digest):
+        result = subprocess.run(
+            [docker, "image", "inspect", "--platform", platform, "--format",
+             "{{.Id}}", "--", selector], capture_output=True, text=True)
+        if result.returncode == 0:
+            image_id = result.stdout.strip()
+            if image_id not in (config_digest, manifest_digest):
+                raise ValueError("Docker resolved an unexpected image identity")
+            return image_id
+    raise ValueError("Docker cannot resolve the loaded inspection image")
 
 
 def _host_platform():
@@ -79,23 +95,38 @@ def inspect(args):
     selector, config_digest, layers = _candidate(args.archive, report)
     subprocess.run([docker, "image", "load", "--platform", args.platform,
                     "--input", str(args.archive)], check=True)
+    selector = _local_image_id(docker, args.platform, selector, config_digest)
     endpoint = json.loads(subprocess.run(
         [docker, "context", "inspect", "--format",
          "{{json .Endpoints.docker.Host}}"], check=True, capture_output=True,
         text=True).stdout)
     operator_root = args.operator_root.resolve()
+    host_platform = _host_platform()
+    native_platform = host_platform.split("/")[1] == args.platform.split("/")[1]
+    if not native_platform and not args.allow_cross_platform_inspection:
+        raise ValueError("non-native stopped inspection requires --allow-cross-platform-inspection")
+    inspection_host = host_platform.split("/")[0] + "/" + args.platform.split("/")[1]
     backing = (args.source_root / "build/operator_stopped_image_test.go").resolve()
     target = operator_root / "internal/dockercontrol/candidate_stopped_image_test.go"
     with tempfile.TemporaryDirectory(prefix="attack-harness-operator-overlay-") as directory:
         overlay = Path(directory) / "overlay.json"
         overlay.write_text(json.dumps({"Replace": {str(target): str(backing)}}),
                            encoding="utf-8")
+        expected = Path(directory) / "compatibility.json"
+        raw = report["compatibility"]["raw"].encode("utf-8")
+        if "sha256:" + hashlib.sha256(raw).hexdigest() != report["compatibility"]["digest"]:
+            raise ValueError("build report compatibility bytes differ from their digest")
+        expected.write_bytes(raw)
         environment = os.environ.copy()
         environment.update({
             "ATTACK_HARNESS_DOCKER": docker,
             "ATTACK_HARNESS_DOCKER_ENDPOINT": endpoint,
             "ATTACK_HARNESS_IMAGE_SELECTOR": selector,
-            "ATTACK_HARNESS_HOST_PLATFORM": _host_platform(),
+            "ATTACK_HARNESS_HOST_PLATFORM": inspection_host,
+            "ATTACK_HARNESS_EXPECTED_COMPATIBILITY": str(expected),
+            "ATTACK_HARNESS_CONTRACT_ROOT": str((args.source_root / "build/context/contracts").resolve()),
+            "ATTACK_HARNESS_CONTRACT_VERSION": report["contract"]["package_version"],
+            "ATTACK_HARNESS_CONTRACT_DIGEST": report["contract"]["package_digest"],
         })
         subprocess.run([go, "test", "-overlay", str(overlay),
                         "./internal/dockercontrol", "-run",
@@ -112,12 +143,16 @@ def inspect(args):
         "api_version": "intrusive.ai/stopped-image-inspection/v1alpha1",
         "status": "passed",
         "platform": args.platform,
-        "host_platform": _host_platform(),
+        "host_platform": host_platform,
+        "inspection_host_platform": inspection_host,
+        "native_platform": native_platform,
         "operator_commit": operator_commit,
         "operator_version": version_match[1],
         "docker_image_id": selector,
         "oci_config_digest": config_digest,
         "layer_digests": layers,
+        "compatibility_digest": report["compatibility"]["digest"],
+        "operator_local_compatibility": "passed",
         "operator_stopped_image_inspection": "passed",
         "inspection_container_cleanup": "passed",
     }
@@ -134,6 +169,8 @@ def main():
     parser.add_argument("--build-report", type=Path, required=True)
     parser.add_argument("--platform", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--allow-cross-platform-inspection", action="store_true",
+                        help="inspect foreign-architecture files without claiming native runtime qualification")
     inspect(parser.parse_args())
 
 

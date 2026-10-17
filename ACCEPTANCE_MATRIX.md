@@ -1,12 +1,69 @@
 # Attack Harness acceptance matrix
 
-Evidence recorded 2026-09-28. `Pass (component)` means deterministic component
+Current compatibility evidence recorded 2026-10-17; earlier results are dated below. `Pass (component)` means deterministic component
 coverage; `Pass (process)` means the listed behavior passed across real Go/Python
 processes. Neither status qualifies production containers or live infrastructure.
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
 
-## Historical process evidence identity
+## Embedded compatibility verification (2026-10-17)
+
+These local results cover the changes on `feat/local-harness-compatibility`,
+created from `candidate-v0.1.0` and updated with the already merged workflow cleanup.
+The runtime source lock identifies the uncommitted tested runtime independently
+of this documentation. No GHCR image or website catalog was published by this run.
+
+| Input/check | Identity or result |
+|---|---|
+| Harness runtime source lock | `sha256:1cd4917b5a4aecd75f346a30f442f374dd1dc30c14c742a36911d4ea7ecc3c07` |
+| Contract and CI Operator source | `cb43a919bda9b8689c11e20b7a09db35d2a98f89`, tree `1fcded221a5fa02d2cb60f493e57dcd8150adcc1` |
+| Updated Operator used for local verification | `9dfc8f6f4e913d5f9fcbfa8eb8af6fe070fe8ac2` (follow-up package-lock/handoff commit) |
+| Exact contract package | `0.0.4`, `sha256:750deac00ebece408dd7514ceae75e090f458f07ed1988b26859f7332ade32be`; complete receipt verified |
+| Harness tests | 86 passed on host and in each image builder |
+| Publication/inspection tests | 22 passed, including candidate-to-final catalog/image preservation without external records |
+| Shared and admission checks | 28 Python fixtures and Go `contracts`, `internal/imagerelease`, `internal/dockercontrol`, `cmd/operatorctl` suites passed |
+| Operator process integration | Complete `make test-integration` passed against this Harness source |
+| Image builds | Both architectures rebuilt twice with BuildKit v0.25.2; config, platform manifest and layers identical within each pair; SBOM/provenance verified |
+| Stopped-image preparation | Both variants passed actual updated Operator `imagerelease.Prepare`, five-file inspection, exact compatibility bytes/digest and confirmed cleanup with external HTTP disabled |
+| `amd64` OCI config | `sha256:521aab977a40770230bdba7d3c2b13c5df233eb5c9206f69bd8a36c92c03c8d1` |
+| `amd64` OCI platform manifest | `sha256:0e3159b575bcdba4f85441b52e6007464c229f067261901186ffb148a0c9a6ef` |
+| `amd64` embedded compatibility raw digest | `sha256:35f075b079095d9eb90a9a3fa52e9c24b51cae2e156fce9e57ba341bc45ee0f5` |
+| `amd64` resolved local Docker ID | `sha256:96ed6101df27fe108c6a37afc22472ff0e7448538cc3829717d2db612350b6dd` |
+| `arm64` OCI config | `sha256:3526f4a754fee368bf2de511cc8ab79e522b741b8b298ce185eaf83957f94465` |
+| `arm64` OCI platform manifest | `sha256:8c6a478dcae94defb1e34f2df776a7f5080dd14f915b122b78cc4ea97d83a8f0` |
+| `arm64` embedded compatibility raw digest | `sha256:c6c31a5524257676894d49f9b4cde443f58bb2b613460e55187751ff2b3ed1ee` |
+| `arm64` resolved local Docker ID | `sha256:f07f4954c654f6914d5722425a0411d18f4fdf0c416d687f919fd801267a8e2b` |
+
+The local host was macOS ARM64 with Docker Desktop 4.95.0 / Docker 29.8.2,
+Go 1.26.5 and Python 3.14.7; image builders use locked Python 3.13.15. ARM64
+inspection matched host architecture. AMD64 was built under emulation and inspected
+with the explicit cross-platform file-inspection option; no AMD64 execution or
+native qualification is claimed. Publication still requires native CI evidence.
+Containerd-backed Docker reports a local manifest-based ID here; reports preserve
+that independently resolved ID and the separate OCI config digest. OCI attestations
+and enclosing archive/index digests can vary between builds without changing runtime
+bytes; comparison reports record that distinction.
+
+Missing, malformed, oversized, duplicate/extra-field, wrong-version/package/platform
+records and altered resources fail closed in Harness and updated Operator fixtures.
+Operator's diagnostic tests verify rejection before attachment/execution and local
+admission without release-service access or an approval cache.
+
+Focused representative Go/Python campaigns use the exact built ARM64 compatibility
+bytes, resolved image ID and installed package `0.0.4`, across FIFO/spool and
+objectives-only, scenario, exploratory and local HTTPS fixtures. A temporary Go test
+overlay replaces development-package/image fixtures and adds assertions for retained
+raw bytes, frozen startup identities, two attempt generator digests and the conclusion
+binding. It journals compatibility through the real campaign writer, modeling the
+worker's release retention; Docker/target/model and confinement remain fixtures in
+these process campaigns. This does not claim a launched-image or live-provider QA
+pass. Historical campaign identities are not rewritten.
+
+Build archives, reports and the exact-package campaign overlay are retained locally
+under ignored `dist/`; ordinary CI retains its own build/inspection evidence. Native
+four-host runtime and live integration qualification remain post-publication QA.
+
+## Historical process evidence identity (2026-09-28)
 
 | Item | Identity |
 |---|---|
@@ -26,9 +83,8 @@ Interceptor, Docker and release approval are fixtures. HTTPS uses the production
 adapter against a local TLS server. Physical FIFO tests on macOS demonstrate wire
 behavior, not the native Linux container profile. CI pins the matching Operator
 commit and runs the combined suite; this record reports local execution, not an
-observed CI run. The current workflow's Operator checkout still selects that
-historical revision, not the newer build pin; it requires alignment before current
-candidate validation.
+observed CI run. These are historical results; the current workflow selects the
+`0.0.4` contract source listed in the current evidence below.
 
 ## Additional local container evidence (2026-10-07)
 
@@ -93,7 +149,7 @@ Candidate files and reports remain under ignored `dist/`.
 
 | ID | Status | Evidence / remaining gate |
 |---|---|---|
-| AHC-AC-001 | Not run | No final approved image has run on all four native host tuples. |
+| AHC-AC-001 | Partial | Both new image variants pass updated Operator stopped-image compatibility inspection. No final image has run on all four native host tuples. |
 | AHC-AC-002 | Partial | Minimal Distroless release tree, locked dependencies and build inventory checks pass; final forbidden-file inventory qualification remains. |
 | AHC-AC-003 | Partial | Production isolated entrypoint completes real host startup using test-only path/confinement shims; full launched production image qualification remains. |
 | AHC-AC-004 | Partial | ARM64 feasibility image denied representative exec/fork/socket/namespace/memory/kernel probes; final image and AMD64 probe matrix remain. |

@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 396a90d215e57b582ee0a71c3a0802ee2ed278f4
+          ref: cb43a919bda9b8689c11e20b7a09db35d2a98f89
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python
@@ -157,7 +157,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-      actions: write # Download build artifacts and dispatch approval at the candidate tag.
+      actions: write # Download build artifacts and dispatch the catalog at the candidate tag.
     concurrency:
       group: attack-harness-registry-publication
       cancel-in-progress: false
@@ -185,7 +185,7 @@ jobs:
         run: |
           printf 'DOCKER_CONFIG=%s\nREGISTRY_AUTH_FILE=%s/config.json\n' "$DOCKER_CONFIG" "$DOCKER_CONFIG" >> "$GITHUB_ENV"
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - name: Publish candidate and request per-platform approval
+      - name: Publish candidate and dispatch release catalog
         env:
           CANDIDATE_BRANCH: ${{ needs.context.outputs.branch }}
           CANDIDATE_SOURCE: ${{ needs.context.outputs.source }}
@@ -229,7 +229,7 @@ jobs:
         run: |
           printf 'DOCKER_CONFIG=%s\nREGISTRY_AUTH_FILE=%s/config.json\n' "$DOCKER_CONFIG" "$DOCKER_CONFIG" >> "$GITHUB_ENV"
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - name: Promote the merged candidate's approved image
+      - name: Promote the merged candidate's qualified image
         env:
           RELEASE_PR: ${{ needs.context.outputs.pr }}
         run: python3 -m build.publish_candidate promote --pr "$RELEASE_PR"

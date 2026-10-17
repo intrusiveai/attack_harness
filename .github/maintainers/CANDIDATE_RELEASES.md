@@ -7,6 +7,16 @@ they are not part of installing or running Attack Harness through Operator.
 Complete the one-time setup before your first release. For later releases, start
 at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
+These workflows publish images and the website's release catalog. Each image
+contains its own compatibility file; workflows do not publish or query records at
+`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.4`.
+Older images without the embedded file require rebuilding. Existing public records
+remain untouched; catalog publication still requires the production reviewer.
+
+Deliver workflow changes to `main` first, then merge `main` into the candidate
+branch before its next publication. Existing immutable tags retain their original
+workflow code; do not rerun the retired record-publishing workflow on those tags.
+
 ## One-time repository setup
 
 Perform these steps in [`intrusiveai/attack_harness`](https://github.com/intrusiveai/attack_harness)
@@ -17,11 +27,10 @@ must already exist; routine publication does not deploy infrastructure or the si
 
 1. Merge or push the release-workflow commits to the default branch, `main`.
 2. In the **Code** tab, confirm that `main` contains
-   `.github/workflows/verify.yml`, `.github/workflows/approve-candidate.yml`,
-   `.github/workflows/publish-catalog.yml`, `build/publish_candidate.py`, and the
-   complete `tools/release-publisher` directory.
-3. Create candidate branches from a commit containing those files. Both dispatched
-   publisher workflows and the bundle must exist on `main` and on the eventual
+   `.github/workflows/verify.yml`, `.github/workflows/publish-catalog.yml`,
+   `build/publish_candidate.py`, and the complete `tools/release-publisher` directory.
+3. Create candidate branches from a commit containing those files. The catalog
+   publisher workflow and the bundle must exist on `main` and on the eventual
    release tag. For an existing candidate, merge the updated `main` into it and
    let the resulting push build a new candidate. Rerunning an old run uses its
    old workflow code; do not move an existing immutable tag to install updates.
@@ -32,8 +41,8 @@ must already exist; routine publication does not deploy infrastructure or the si
    enforced, allow the pinned `actions/checkout`, `actions/setup-go`,
    `actions/upload-artifact`, `actions/setup-python`, `docker/setup-docker-action`,
    `docker/setup-buildx-action`, and `aws-actions/configure-aws-credentials` actions.
-   Use the exact SHAs in the three workflow files. The publishers run local code
-   and need no exception for a private releases-repository workflow.
+   Use the exact SHAs in the two workflow files. The catalog publisher runs local
+   code and needs no exception for a private releases-repository workflow.
 2. Allow GitHub-hosted `ubuntu-24.04` (AMD64) and `ubuntu-24.04-arm` (ARM64)
    runners. Each native build installs Python 3.13.15, Go 1.26.5, Docker 29.0.1,
    and Buildx 0.29.1, then starts the digest-pinned BuildKit v0.25.2 image.
@@ -41,11 +50,11 @@ must already exist; routine publication does not deploy infrastructure or the si
    use Node.js 24 and remove the temporary builder and Docker daemon after the job.
 3. Open the `attack_harness` package settings in GHCR. Make the package public
    and grant this repository Actions write access. Confirm that unauthenticated
-   clients can inspect published image manifests; candidate admission checks
+   clients can inspect published image manifests; catalog publication checks
    public image identity and public build evidence.
 4. Keep the automatic `GITHUB_TOKEN`; do not create a secret with that name.
    The workflows request Contents, Packages, and Actions write access for image
-   publication/promotion. Publisher jobs request read access and `id-token: write`
+   publication/promotion. The catalog job requests read access and `id-token: write`
    for temporary AWS credentials. Default workflow permissions can remain
    read-only. These workflows do not read a `RELEASE_TOKEN` secret.
 
@@ -70,17 +79,18 @@ must already exist; routine publication does not deploy infrastructure or the si
    `arn:aws:iam::389547485478:role/releases-record-publisher`. It must accept this
    repository's numeric ID `1384026211`, owner ID `296295422`, the `production`
    environment, protected `v*` tags, audience `sts.amazonaws.com`, and the exact
-   local workflow paths `approve-candidate.yml` and `publish-catalog.yml` under
-   `.github/workflows/`. Step 5 supplies the matching custom subject.
-   Retain the existing role and its catalog and create-only record permissions.
+   local workflow path `.github/workflows/publish-catalog.yml`.
+   Step 5 supplies the matching custom subject. Retain the existing role for
+   catalog publication; its name does not imply that records are still published.
+   Removing obsolete record permissions and workflow trust is separate service
+   administration, not a prerequisite for this workflow change.
 2. Open **Settings → Environments → production**, creating the environment if
    necessary. Under **Deployment branches and tags**, select **Selected branches
    and tags** and add a **Tag** rule for `v*`. After checking other consumers,
    remove any branch rules or other tag patterns. This is not a rule for the
    `candidate-v*` branches.
-3. Retain required reviewer approval. Candidate record publication must be
-   approvable before Operator QA; approving this deployment permits QA to begin
-   and does not certify that QA passed.
+3. Retain required reviewer approval for catalog publication. Approving a candidate
+   catalog entry does not certify that QA passed.
 4. Under **Environment variables**, add or verify each value below. These are
    variables, not secrets. Confirm the values against the deployed service.
 
@@ -90,10 +100,10 @@ must already exist; routine publication does not deploy infrastructure or the si
    | `CONTENT_BUCKET` | `intrusiveai-releases` |
    | `CLOUDFRONT_DISTRIBUTION_ID` | `E1ET1MODBEJLY6` |
    | `CATALOG_PUBLISHER_ROLE_ARN` | `arn:aws:iam::389547485478:role/releases-record-publisher` |
-   | `RECORD_PUBLISHER_ROLE_ARN` | `arn:aws:iam::389547485478:role/releases-record-publisher` |
 
-Both publishers use the same existing role. Do not substitute another product's
-role or add AWS access keys. The environment belongs to this product repository.
+`RECORD_PUBLISHER_ROLE_ARN` is no longer used by these workflows. Do not substitute
+another product's catalog role or add AWS access keys. The environment belongs to
+this product repository.
 
 ### 5. Set and verify the repository's OIDC subject
 
@@ -108,7 +118,7 @@ identify the repository, environment, tag, and workflow file.
    ```
 
    Every OIDC job must declare an environment with this template. The checked-in
-   workflows grant OIDC only to the two publishers.
+   workflows grant OIDC only to the catalog publisher.
 2. Authenticate `gh` with repository administrator access. Read and retain the
    existing configuration with your change record:
 
@@ -129,17 +139,66 @@ identify the repository, environment, tag, and workflow file.
 
 4. Repeat the GET command. Confirm `use_default` is `false` and all five keys
    appear in exactly that order. Ordinary jobs use `workflow_ref`, not
-   `job_workflow_ref`. For each publishing workflow, AWS must accept this subject:
+   `job_workflow_ref`. For catalog publication, AWS must accept this subject:
 
    ```text
    repository_id:1384026211:repository_owner_id:296295422:environment:production:ref:refs/tags/<TAG>:workflow_ref:intrusiveai/attack_harness/.github/workflows/<FILE>@refs/tags/<TAG>
    ```
 
-   Replace `<FILE>` with `approve-candidate.yml` or `publish-catalog.yml`; both
-   `<TAG>` positions contain the same `v*` tag. The subject binds the workflow
+   Replace `<FILE>` with `publish-catalog.yml`; both `<TAG>` positions contain
+   the same `v*` tag. The subject binds the workflow
    path and ref, not its contents, so review workflow and publisher changes.
 5. Follow the candidate procedure below to confirm a real OIDC exchange and
    public delivery. Passing local tests alone does not establish live readiness.
+
+## Verify local compatibility before publication
+
+1. Check out Operator commit `cb43a919bda9b8689c11e20b7a09db35d2a98f89`
+   in a separate clean directory. This is the immutable contract source in
+   `build/contract-lock.json`; its package is `0.0.4`, digest
+   `sha256:750deac00ebece408dd7514ceae75e090f458f07ed1988b26859f7332ade32be`.
+   Move any older generated `build/context/contracts` aside before rebuilding.
+2. Install the locked test dependencies, verify the contract package, and run
+   Harness/publication tests:
+
+   ```sh
+   python3 -m venv .ci-venv
+   .ci-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-runtime.lock
+   make verify-contracts OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make test OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   python3 -m unittest discover -s build/tests -v
+   ```
+
+   In the pinned Operator checkout, run `go test ./contracts ./internal/imagerelease
+   ./internal/dockercontrol ./cmd/operatorctl`. Run its shared Python fixtures with
+   `PYTHONPATH=contracts/python /path/to/harness/.ci-venv/bin/python -m unittest
+   discover -s contracts/python/tests -v`.
+
+3. Build and inspect each platform with the pinned BuildKit configuration from
+   `verify.yml`. Repeat the build, saving the first build report, and run
+   `build/compare_builds.py` as CI does:
+
+   ```sh
+   make image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make inspect-stopped-image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   ```
+
+   Repeat for `linux/amd64`. Prefer native hosts. For local file inspection on a
+   different architecture, explicitly set
+   `INSPECTION_FLAGS=--allow-cross-platform-inspection`; this records a non-native
+   check and does not qualify runtime execution or satisfy native CI evidence.
+4. Confirm each build report identifies the exact embedded compatibility bytes
+   and raw digest separately from the OCI config, manifest and index. The stopped
+   check uses updated Operator's real reader with external HTTP disabled, verifies
+   all five fixed files, and confirms inspection-container removal. It records the
+   independently resolved Docker image ID separately: containerd-backed Docker can
+   expose a manifest-based ID while classic Docker exposes the config ID.
+5. Run Operator's process integration suite with this Harness checkout (see its
+   `docs/PROCESS_INTEGRATION.md`). Check frozen startup, attempt-generator and
+   conclusion bindings. The release digest hashes the exact compatibility bytes,
+   not normalized JSON. Record fixture/cross-platform results separately from
+   native runtime and live-provider QA; neither latter activity blocks candidate
+   publication.
 
 ## Publish and qualify a candidate
 
@@ -158,37 +217,29 @@ identify the repository, environment, tag, and workflow file.
    inspection. Runtime Operator campaigns and live provider/target tests follow
    publication as QA.
 
-### 2. Approve and confirm candidate publication
+### 2. Approve and confirm catalog publication
 
 1. Open the resulting GitHub **Pre-release**. Record its unique tag
    `v1.2.3-candidate.<run-id>.<attempt>`, source commit, and the image index digest
    in `candidate.json`. Confirm that the source is the candidate branch head
    you intend to test.
-2. Open **Actions → approve candidate for Operator QA** and **Actions → publish
-   release catalog**. Select the runs at that unique tag. When prompted, choose
-   **Review deployments**, select `production`, and approve the deployments after
-   reviewing the candidate's build evidence.
-3. Wait for **both platform approval jobs and the catalog run** to succeed.
-   The parent build dispatches these runs but does not wait for their completion.
-   A green parent run or dispatch acknowledgement alone does not mean that
-   Operator can admit the image or that the catalog has been updated.
+2. Open **Actions → publish release catalog** and select the run at that unique
+   tag. When prompted, choose **Review deployments**, select `production`, and
+   approve the deployment after reviewing the candidate's build evidence.
+3. Wait for the **catalog run** to succeed. It verifies the candidate's source,
+   successful native build jobs, and published image digest. The parent build
+   dispatches this run but does not wait for completion; a green parent run alone
+   does not mean that the catalog has been updated.
 4. Download `candidate.json` and `release-index-entry.json` from the prerelease.
    Confirm the [public catalog](https://releases.intrusive.ai/docs/releases/attack_harness.json)
    contains that unique candidate version with `tags: ["rc"]`, its unique GHCR
    tag, and the same index digest. It must remain absent from the stable listing
    on the [releases website](https://releases.intrusive.ai/).
-5. For each platform in `candidate.json`, open
-   `https://releases.intrusive.ai/sha256/<config-digest-without-sha256-prefix>`.
-   Compare the response with that platform's `record`: it must contain the exact
-   seven fields, in order, as compact JSON with one terminal newline. Use the
-   platform config digest (`image_digest`), not its manifest or index digest.
-   The publisher verifies the response bytes, JSON content type, immutable cache
-   header, absence of content encoding, and a true unknown-digest 404.
 
 The rolling image `ghcr.io/intrusiveai/attack_harness:v1.2.3` is convenient for QA
 pulls. The unique candidate image tag and recorded index digest identify the exact
-build even after another push changes the rolling tag. Approval records permit
-Operator use; their seven-field format has no QA-only restriction or QA status.
+build even after another push changes the rolling tag. Catalog entries retain
+image digests to identify the published bytes; they are not compatibility records.
 
 ### 3. Run QA against the published image
 
@@ -196,8 +247,8 @@ Operator use; their seven-field format has no QA-only restriction or QA status.
    host/runtime and live provider/target scenarios. Retain the unique candidate
    tag, index/config digests, test results, and evidence links.
 2. If a fix is needed, push it to the candidate branch. Repeat publication,
-   approval, and QA for the replacement image. Do not claim the previous build's
-   QA results qualify different bytes.
+   catalog approval, and QA for the replacement image. Do not claim the previous
+   build's QA results qualify different bytes.
 3. Open or update a pull request from the same repository's candidate branch to
    `main`. Put the actual QA results and evidence links in the PR description;
    promotion retains that description, PR URL, and merge commit.
@@ -207,14 +258,14 @@ Operator use; their seven-field format has no QA-only restriction or QA status.
 
 ## Promote the qualified candidate
 
-1. Confirm that the PR head is the source recorded in the tested candidate, both
-   public approval records exist, and its catalog publication succeeded. Have
-   the maintainer review the recorded QA evidence.
+1. Confirm that the PR head is the source recorded in the tested candidate and
+   its catalog publication succeeded. Have the maintainer review the recorded
+   QA evidence.
 2. Merge the same-repository candidate PR into `main`. This merge is the QA
    sign-off. A direct local merge pushed to `main`, an ordinary `main` push, or
    closing a PR without merging it does not trigger promotion.
 3. Open the merge's **verify-candidate** run and wait for promotion to succeed.
-   It verifies source and tree identity and both public records, copies the exact
+   It verifies source and tree identity and successful build jobs, copies the exact
    OCI index to `:latest` without rebuilding, and creates the final GitHub Release
    at `v1.2.3`. The unique candidate prerelease remains as evidence.
 4. Open the **publish release catalog** run at `v1.2.3`, approve its `production`
@@ -222,9 +273,8 @@ Operator use; their seven-field format has no QA-only restriction or QA status.
    the candidate catalog publication.
 5. Confirm the public catalog has a final `v1.2.3` entry with `tags: ["release"]`,
    image `ghcr.io/intrusiveai/attack_harness:v1.2.3`, and the tested index digest.
-   Verify `:latest` resolves to that same digest, both approval records are
-   unchanged, and older catalog entries remain. The unique candidate entry stays
-   labeled `rc`; the final entry is separate.
+   Verify `:latest` resolves to that same digest and older catalog entries remain.
+   The unique candidate entry stays labeled `rc`; the final entry is separate.
 6. Reload the releases website. The version is eligible for its stable listing,
    which displays the first two entries labeled exactly `release`. No site build
    or redeployment is needed. Use a new version for further candidate work;
@@ -233,30 +283,24 @@ Operator use; their seven-field format has no QA-only restriction or QA status.
 ## Recover from a failed publication
 
 1. Open the failed job and identify whether the failure occurred during the
-   build, GHCR publication, record admission, promotion, or catalog publication.
+   build, GHCR publication, promotion, or catalog publication.
    Check the selected source/tag and fix the reported cause before retrying.
 2. For a failed build or interrupted image publication, rerun the failed jobs
    in **verify-candidate**. If the fix changes source or workflow code, push the
    change to the candidate instead so a new run uses it. An older build keeps
    its unique evidence but cannot replace a newer branch head's rolling tag.
-3. If the image exists but record or catalog publication failed, retry the
-   affected publisher at the **same unique candidate tag**. For example, replace
-   the example tag below with the tag from that build and run only the command
-   for the failed publisher:
+3. If the image exists but catalog publication failed, retry the catalog publisher
+   at the **same unique candidate tag**. Replace the example tag below with the
+   tag from that build:
 
    ```sh
-   gh workflow run approve-candidate.yml --repo intrusiveai/attack_harness \
-     --ref v1.2.3-candidate.123456.1
    gh workflow run publish-catalog.yml --repo intrusiveai/attack_harness \
      --ref v1.2.3-candidate.123456.1
    ```
 
-   These workflows derive their inputs from the published release; do not supply
-   invented record JSON or qualification status. Approve the new deployment if
-   prompted and wait for success. Identical record bytes are safe to retry. A
-   conflicting record is immutable: stop and investigate; a compatibility change
-   normally requires rebuilding to obtain a new config digest.
-4. If a merge raced a build or admission, finish those runs and rerun the merge's
+   The workflow derives its entry from the published release. Approve the new
+   deployment if prompted and wait for success.
+4. If a merge raced a build or publication, finish those runs and rerun the merge's
    failed promotion job. Promotion refuses to roll back `latest` once `main` has
    advanced; do not bypass that check or move an old tag to force a retry.
 5. If promotion succeeded but the final catalog failed, retry only the catalog
@@ -271,14 +315,17 @@ Operator use; their seven-field format has no QA-only restriction or QA status.
 
 The local catalog publisher merges one generated entry, preserves unrelated
 history, and refuses final-image replacement or demotion. Never upload a full
-catalog reconstructed from an old local copy. A failed approval does not discard
-an already published image; a failed QA candidate stays outside the stable list.
+catalog reconstructed from an old local copy. A failed catalog publication does
+not discard an already published image; a failed QA candidate stays outside the
+stable list.
 
 ## Verify locally and update the publisher
 
 The reviewed bundle in `tools/release-publisher` comes from releases commit
 `c651c5fa47346f1ca02abe33791667f838b59e03`. Its `publisher-source.json` records the
-revision and per-file SHA-256 hashes. It includes both catalog and record code.
+revision and per-file SHA-256 hashes. The reviewed bundle still includes record
+utilities, but these workflows use only catalog publication. Keep its provenance
+intact until a reviewed catalog-only export is available.
 
 1. Install Go 1.26.5, Python 3, Bash, jq, and curl. From the repository root, run:
 
@@ -295,23 +342,15 @@ revision and per-file SHA-256 hashes. It includes both catalog and record code.
    using simulated GitHub, GHCR, S3, and local HTTP. They do not publish to AWS or
    prove a live OIDC exchange. Actual publication also requires AWS CLI v2 with
    conditional `put-object` support.
-2. To independently verify a published platform record, save its expected canonical
-   JSON from the build evidence and run from `tools/release-publisher`:
-
-   ```sh
-   go run ./cmd/release-publisher remote verify \
-     --origin https://releases.intrusive.ai --record /absolute/path/record.json
-   ```
-
-3. For a publisher update, obtain a complete `attack_harness` export from an
+2. For a publisher update, obtain a complete `attack_harness` export from an
    authorized releases maintainer at an explicitly reviewed commit. Require the
    provenance manifest; never use a `--working-tree` export or install just a
    shell script. Review the full diff, including deletions, and replace the old
    bundle with the complete export.
-4. Adapt its workflow examples while retaining this repository's real build
+3. Adapt its catalog workflow example while retaining this repository's real build
    evidence and promotion checks. Keep execution product-local: no runtime
    checkout, reusable workflow call, or dependency fetch from the private releases
    repository. Preserve the offline Go settings shown above.
-5. Run the local checks, review and commit the changes, and deliver them to `main`
+4. Run the local checks, review and commit the changes, and deliver them to `main`
    and the next candidate before its tag is created. Repeat the candidate
    publication checks to verify live authentication and public delivery.

@@ -56,7 +56,7 @@ commands.
 
 The administrator makes a compatible harness image available in local Docker and
 selects it in Operator's `engine.image` configuration. Operator verifies the image's
-release compatibility, supplies campaign inputs, and manages container startup
+embedded image compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
 **Development status:** the harness and deterministic integration tests are

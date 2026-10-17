@@ -47,7 +47,7 @@ published complete schema package or a working runtime.
 1. Run one product-owned Python process/thread in a disposable nonroot Linux OCI
    container on a Linux or macOS amd64/arm64 host meeting the runtime capabilities. Operator host code is Go;
    macOS uses Docker Desktop with a matching native-architecture Linux image.
-2. Use a prebuilt release-approved local Docker image containing only the interpreter, required runtime
+2. Use a prebuilt compatible administrator-selected local Docker image containing only the interpreter, required runtime
    libraries and the fixed harness. No runtime install, source checkout, package
    download, tool discovery or executable plugin activation.
 3. Expose only reviewed typed tools for staged references, payload artifacts,
@@ -107,10 +107,11 @@ permission to read the full host manifest.
 | Tool catalog/model codecs/skill loader | Fixed in-process components with packaged metadata | Versions, schema/implementation digests and conformance vectors. |
 | Embedded default prompt | `/opt/operator/engine/share/default-system-prompt.txt` | Exact UTF-8 bytes, size and raw SHA-256. |
 | Shared schema copies | `/opt/operator/engine/share/schemas/` | Generated/packaged from the Operator-owned version; no runtime schema fetch. |
-| HTTPS release record, SBOM and provenance | Host verifies approval/compatibility; only safe metadata reaches guest | Release response binds local Docker image ID, minimum Operator version, exact contract and runtime/platform requirements. |
+| Embedded compatibility | `/opt/operator/engine/share/compatibility.json` | Host checks minimum Operator version, exact installed contract and runtime/platform before execution; no releases-service call. |
+| SBOM and provenance | OCI attestations and release evidence | Describe the built image independently of local compatibility admission. |
 
 A base/runtime layer and application layer may be built separately, but the
-resulting full image is one release-approved compatible image. Updating the harness or
+resulting full image is one locally validated compatible image. Updating the harness or
 base produces a new image digest. Keep the selected image immutable throughout the campaign.
 
 ### 3.3 Campaign inputs and active target revision
@@ -167,9 +168,10 @@ The release pipeline MUST:
    nonroot, read-only, no-network startup/live profiles before qualification.
 
 Administrators login/pull/load the published image into the same local Docker
-Engine Operator uses, then set Operator's `engine.image`. The selected full Docker image ID must
-have a matching HTTPS release response under the shared host release contract;
-Operator validates/caches that record and launches by the immutable local ID.
+Engine Operator uses, then set Operator's `engine.image`. Operator resolves its full
+immutable local image ID and reads the five fixed release files from a stopped
+container. It validates the embedded compatibility record and resource digests,
+confirms inspection-container removal, and launches by that immutable local ID.
 The guest never fetches release metadata or the shared contract.
 
 No exact image size or production digest is selected by this draft. Minimal
@@ -193,9 +195,9 @@ The implementation session must create:
 | `pyproject.toml` and dependency locks | Python package/build metadata; separate runtime and development/build dependencies; hashes and exact versions for every distribution and build backend. |
 | `build/image-lock.json` | Reviewed per-platform base and builder digests, actual CPython version/ABI, build frontend/BuildKit/buildx/native toolchain versions, source identity and repeatability settings. No floating fallback. |
 | Contract lock and generation command | Operator schema source/version/content digest, native schema/profile identities, offline generated Python package/catalog and Go/Python fixture identities; reject generated drift. |
-| Build and verification scripts | Reproducible local and CI entrypoints for tests, wheel/native-module construction, OCI output, inventory, SBOM, provenance, HTTPS release metadata and qualification. |
+| Build and verification scripts | Reproducible local and CI entrypoints for tests, wheel/native-module construction, OCI output, inventory, SBOM, provenance, embedded compatibility metadata and qualification. |
 | CI configuration | Platform matrix, isolated dependency acquisition, tests and artifact publication gates; bind runner/tool/action versions. Provider credentials belong only to the host integration environment. |
-| Release output and compatibility report | Per-platform OCI artifacts/digests, optional index, embedded-manifest digest, SBOM/licenses, build provenance, HTTPS compatibility response keyed by Docker image ID, acceptance status and native qualification evidence. |
+| Release output and compatibility report | Per-platform OCI artifacts/digests, optional index, embedded-manifest digest, SBOM/licenses, build provenance, exact embedded compatibility bytes and raw digest, recorded separately from Docker image ID, acceptance status and native qualification evidence. |
 
 Choose the CI provider from the implementation repository's existing convention;
 this specification does not assume that this currently non-Git directory has
@@ -253,13 +255,15 @@ directories/files in the builder and copy exact outputs.
 
 Expose documented equivalent commands for contract verification, unit/contract
 tests, per-platform image build, final-image inspection, native qualification and
-release assembly. For example, an implementation may provide `make verify-contracts`,
-`make test`, `make image PLATFORM=linux/amd64`, `make qualify PLATFORM=linux/amd64`
-and `make release`. These are future command interfaces, not runnable commands yet.
+release assembly. Current entrypoints include `make verify-contracts`, `make test`,
+`make image PLATFORM=linux/amd64`, `make inspect-stopped-image PLATFORM=linux/amd64`,
+and the publication commands in `build/publish_candidate.py`. Follow the
+[maintainer release guide](.github/maintainers/CANDIDATE_RELEASES.md) for prerequisites,
+repeat-build comparison and publication. Native qualification remains separate QA.
 
 Candidate publication MUST run the automated build gates below. Passing those
-gates MUST permit publication of both the candidate image and its Operator
-admission records before runtime QA. Native runtime, live provider/target, and
+gates MUST permit publication of the candidate image containing its embedded
+compatibility record before runtime QA. Native runtime, live provider/target, and
 full host-matrix qualification MUST NOT block candidate publication or admission;
 they are QA activities performed against the published candidate. A successful
 build result means the automated candidate gates passed, not that the full
@@ -277,23 +281,22 @@ The candidate pipeline MUST retain accurate results for these stages:
 | Native runtime qualification (post-publication QA) | Launch the exact Linux image through Operator on Linux/macOS amd64 and arm64 hosts with the selected FIFO/spool transport, read-only/nonroot/no-network/startup/live profiles and durable journal. Exercise control responsiveness, denied syscalls, journal failures and direct Docker termination including unavailable-daemon outcomes. This is not a candidate admission gate. |
 | Integration qualification (post-publication QA) | Actual advertised provider routes and target adapters, including HC-02 observation byte access and HC-03/HC-04 contracts. Mark unavailable native dependencies not-run; do not publish them as supported. This is not a candidate admission gate. |
 | Rebuild comparison | Build again from identical pinned inputs and compare runtime payloads and OCI identities. Pin/normalize timestamps, ordering, ownership, compression and build epoch. Explain any attestation timestamp variability separately; never claim bit-for-bit reproducibility without evidence. |
-| Candidate publication and admission | After automated candidate gates pass, publish the image and one HTTPS compatibility response per platform config digest at releases.intrusive.ai/sha256/<hex>. Bind the inspected Operator source's version, exact contract version/digest and runtime profile/platform; retain provenance/SBOM and actual gate evidence. The existing protected-environment approval remains the publication approval. |
+| Candidate publication and admission | After automated candidate gates pass, publish the image containing the verified compatibility file. Operator admits a compatible administrator-selected local image without external approval records or a cache. Retain provenance/SBOM and actual gate evidence. |
 | Catalog publication | Publish each immutable candidate's generated entry with `tags: ["rc"]` through the reviewed publisher committed in `tools/release-publisher`, using an ordinary local job from its protected `v*` tag and `production` environment. The source repository MUST own direct catalog updates; no private releases-repository checkout, workflow call, PR or site deployment is required per release. |
-| Promotion | Maintainers MUST retain actual QA results and evidence links in the candidate PR before merging it into main as their QA sign-off. Preserve the candidate image bytes and existing admission records; verify source/tree identity and public records, then assign latest and dispatch a final catalog entry with `tags: ["release"]`. Retain the PR identity and QA notes with the final release. No additional live-test gate is imposed by CI. |
+| Promotion | Maintainers MUST retain actual QA results and evidence links in the candidate PR before merging it into main as their QA sign-off. Preserve the candidate image and embedded compatibility bytes; verify source/tree identity and build evidence, then assign latest and dispatch a final catalog entry with `tags: ["release"]`. Retain the PR identity and QA notes with the final release. No additional live-test gate is imposed by CI. |
 
 BuildKit can attach provenance and SBOM attestations to image outputs; select and
 verify the supported exporter/storage behavior rather than assume every local
 image store retains them. Attestations document a build; they do not replace
-Operator's HTTPS release approval or runtime qualification. See [Docker build
+Operator's local compatibility checks or runtime qualification. See [Docker build
 attestations](https://docs.docker.com/build/metadata/attestations/).
 
 Test the platform image bytes that will actually be released. If final index or
 attestation assembly changes enclosing metadata, record its final digest and
 verify that every platform manifest/config/layer still matches tested bytes.
-The HTTPS response is keyed by the platform image's Docker image/config ID,
-not the enclosing index or registry manifest digest. Record those separately;
-never embed the image's own ID in bytes used to calculate it. Release-service
-publishing credentials and registry/provider credentials never enter layers,
+The compatibility record's raw digest is separate from the independently resolved
+Docker image ID, OCI config, platform manifest and index digests. Never embed the
+image's own ID in bytes used to calculate it. Catalog publishing credentials and registry/provider credentials never enter layers,
 build arguments, public provenance fields or guest environment.
 
 Record the initial feasibility outcomes for each host OS/architecture and transport,
@@ -332,20 +335,40 @@ a host update MUST NOT be treated as a repair of immutable image metadata.
 
 Campaign bindings separately identify the exact skills, prompt, scenario,
 supporting inventory, target-capability projection and host-computed limits.
-They do not require an executable image rebuild. Attack Harness approval uses the
-[host-only release contract](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md).
-The publisher serves immutable compatibility metadata over HTTPS before candidate
-QA; qualification gates later production promotion. Operator
-checks minimum Operator application version, exact installed contract package version/digest and
-runtime/platform requirements before launch. The response is cached locally while
-that image is installed/in use.
+They do not require an executable image rebuild. Attack Harness admission uses the
+[embedded compatibility contract](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md).
+Before launch, Operator checks minimum application version, exact installed package
+version/digest, runtime profile and native image platform. No external approval,
+publisher authentication or compatibility cache participates in admission.
+
+The build MUST emit deterministic UTF-8 `share/compatibility.json`, at most 64 KiB,
+as a root-owned regular file with mode `0444`, containing exactly these six fields:
+`api_version` (`operator.dev/harness-compatibility/v1alpha1`),
+`minimum_operator_version` (stable SemVer, currently `0.1.0`),
+`contract_package_version`, `contract_package_digest`, `runtime_profile`
+(`operator-container/v1`), and `platform` (`linux/amd64` or `linux/arm64`). Package
+fields MUST come from the actual verified installed package. Duplicate/unknown
+fields and image/config/manifest/index/self digests MUST be rejected. The package,
+runtime and platform MUST agree with the engine manifest. The exact shared package
+is `0.0.4`, digest
+`sha256:750deac00ebece408dd7514ceae75e090f458f07ed1988b26859f7332ade32be`, from
+Operator commit `cb43a919bda9b8689c11e20b7a09db35d2a98f89`.
+
+Wire field names remain unchanged: `image_digest` is Operator's independently
+resolved full Docker image ID; `release_record_digest` is raw SHA-256 of the exact
+embedded compatibility bytes, including whitespace/newlines. Generated attempts
+MUST use the frozen `EngineContext.release.release_record_digest` for
+`generator.release_digest`; startup and conclusions MUST echo their frozen
+bindings. Neither reserialized JSON nor the image ID may replace this raw digest.
+Operator retains the original bytes. Historical campaigns retain their identities.
+
 Skill bundles MUST satisfy Operator's content-validation and frozen-input rules.
 Skills MUST NOT select a different executable/runtime profile.
 
 An embedded engine manifest describes the fixed package, entrypoint, paths,
 protocol, native catalog, codecs, loader, prompt and required host features.
-The external HTTPS record approves the full Docker image ID, which binds the
-embedded manifest and installed content. The embedded manifest and fixed file inventory
+The independently resolved Docker image ID binds the embedded compatibility file,
+engine manifest and installed content. The embedded manifest and fixed file inventory
 MUST implement [Operator's embedded-file admission contract](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md#5-embedded-image-files).
 The build MUST install the default prompt, UTF-8 skill loader implementation and
 all five native tool projections at the fixed paths in that contract. The native
@@ -381,6 +404,7 @@ before integration; no independent local schema registry is introduced here.
   bootstrap.py                             fixed trusted startup code
   lib/                                    harness and pinned dependencies
   share/
+    compatibility.json
     default-system-prompt.txt
     engine-manifest.json
     tool-catalog.json
@@ -1045,7 +1069,7 @@ replacement harness. The direct CLI path does not depend on the campaign worker.
 
 | Trigger | Required outcome |
 |---|---|
-| Missing/corrupt/revoked/incompatible release/profile | Host rejects before launch; no mutable or unapproved fallback. |
+| Missing/corrupt/incompatible embedded compatibility/profile | Host rejects before attachment or execution; no remote or mutable fallback. |
 | Missing/extra/writable/corrupt input or skill; prompt mismatch | Fail before the adaptive loop; no partial skill set, unapproved omission or host source mount. |
 | Bootstrap confinement/journal/admission gate fails | Destroy revision; no weaker-policy retry or initialization anyway. |
 | Unknown local tool or correctable pre-dispatch argument error | Bounded correlated error without target contact; bounded correction under existing limits. |
@@ -1108,7 +1132,7 @@ do not qualify a host tuple.
 
 | ID | Required evidence |
 |---|---|
-| AHC-AC-001 | Final digest-pinned image starts on all four host OS/architecture tuples with exact Python ABI/imports; release approval, Operator application/contract compatibility, architecture and actual runtime capabilities are checked; unlisted OS/Docker versions alone do not fail preflight. |
+| AHC-AC-001 | Final digest-pinned image starts on all four host OS/architecture tuples with exact Python ABI/imports; embedded compatibility, Operator application/contract compatibility, architecture and actual runtime capabilities are checked; unlisted OS/Docker versions alone do not fail preflight. |
 | AHC-AC-002 | Final image inventory excludes forbidden executables/installers/credentials and contains only declared dependencies; no runtime download/install occurs. |
 | AHC-AC-003 | Fixed bootstrap imports only release code, installs final confinement before untrusted input and obeys host readiness gates; failed gates stop. |
 | AHC-AC-004 | Additional exec/fork/clone, socket, namespace/mount, privilege, process-memory and kernel-control probes demonstrate enforcement. |
@@ -1130,7 +1154,7 @@ do not qualify a host tuple.
 | AHC-AC-020 | Crash/stop/completion and lost replies retain committed journal evidence with explicit gaps; no reconnect, automatic restart, checkpoint or journal/chat continuation. |
 | AHC-AC-021 | Successful restore skips the remaining model-tool batch with exactly one correlated not-executed result per skipped call and supplies complete context to the next model turn (shared Section 9.1); duplicate results and terminate races cannot repeat or reopen dispatch. Healthy target restore retains the same harness process/context/scratch/channels, advances the confirmed target revision once and preserves cumulative limits. Known preflight rejection leaves the old binding usable; post-closure failure/uncertainty remains terminal. Snapshot create/list/inspect preserve campaign ID/description and include earlier source sessions. |
 | AHC-AC-022 | Adaptive hypothesis/payload/feedback refinement and structured conclusions work without shell/code tools; coverage gaps and unsupported claims are reported honestly. |
-| AHC-AC-023 | Dockerfile/CI builds use locked platform/ABI/dependency/schema inputs, exclude builder/test contents, produce installable Docker images with SBOM/provenance and matching HTTPS release metadata and demonstrate repeatability against tested platform digests. |
+| AHC-AC-023 | Dockerfile/CI builds use locked platform/ABI/dependency/schema inputs, exclude builder/test contents, produce installable Docker images with SBOM/provenance and matching embedded compatibility metadata and demonstrate repeatability against tested platform digests. |
 | AHC-AC-024 | HC-02 observation reads return actual bounded filtered bytes with campaign/receipt membership, range/integrity checks and explicit assurance; unknown/protected/cross-campaign references fail; earlier worker/revision provenance alone does not deny same-campaign content without disclosing protected content. Cover empty versus unavailable output, truncated EOF, selection/profile boundaries, exact invocation attribution and retained receipts after restore. |
 | AHC-AC-025 | HC-05 manifests larger than one control frame initialize from bounded verified immutable files outside their own inventories; forged descriptors, oversized manifests and self-reference fail. |
 | AHC-AC-026 | Exact shared package pin, five-message startup, envelope IDs/digests/errors/deadlines, restore/control ordering and conclusion/stop acknowledgement pass shared Go/Python vectors and real FIFO and file-spool fake-peer traces; expected EOF after accepted stop is normal teardown. |

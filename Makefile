@@ -1,9 +1,10 @@
 OPERATOR_ROOT ?= ../operator_sandbox
 PYTHON ?= $(OPERATOR_ROOT)/.venv/bin/python
 PLATFORM ?= linux/arm64
+INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-CONTRACT_COMMIT := 396a90d215e57b582ee0a71c3a0802ee2ed278f4
+CONTRACT_COMMIT := cb43a919bda9b8689c11e20b7a09db35d2a98f89
 
 .PHONY: test verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
@@ -19,7 +20,7 @@ $(CONTRACT_PACKAGE)/package.json:
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.0.3
+		--package-version 0.0.4
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \
@@ -54,4 +55,4 @@ inspect-stopped-image: verify-source verify-contracts
 		--operator-root "$(OPERATOR_ROOT)" --platform "$(PLATFORM)" \
 		--archive "dist/attack-harness-$(PLATFORM_SLUG).inspection.tar" \
 		--build-report "dist/attack-harness-$(PLATFORM_SLUG).build-report.json" \
-		--output "dist/attack-harness-$(PLATFORM_SLUG).inspection-report.json"
+		--output "dist/attack-harness-$(PLATFORM_SLUG).inspection-report.json" $(INSPECTION_FLAGS)
