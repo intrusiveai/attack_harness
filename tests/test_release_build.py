@@ -11,7 +11,7 @@ from build.prepare_release import (CODECS, COMPATIBILITY_PATH, _descriptor, _too
 
 class FakeProtocol:
     def package_identity(self):
-        return {"package_version": "0.0.5", "package_digest": "sha256:" + "a" * 64}
+        return {"package_version": "0.0.6", "package_digest": "sha256:" + "a" * 64}
 
     def operations(self):
         return [{"name": "engine.z"}, {"name": "engine.a"}]
@@ -64,7 +64,7 @@ class ReleaseBuildTest(unittest.TestCase):
                 manifest = json.loads((path.parent / "engine-manifest.json").read_bytes())
                 self.assertEqual(manifest["contract"], FakeProtocol().package_identity())
                 verify(output, contract, lock, require_native=False)
-                manifest["contract"] = {"version": "0.0.5", "digest": "sha256:" + "a" * 64}
+                manifest["contract"] = {"version": "0.0.6", "digest": "sha256:" + "a" * 64}
                 _write_json(path.parent / "engine-manifest.json", manifest)
                 with self.assertRaisesRegex(ValueError, "runtime configuration identity mismatch"):
                     verify(output, contract, lock, require_native=False)

@@ -6,6 +6,53 @@ processes. Neither status qualifies production containers or live infrastructure
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
 
+## Conclusion validation rebuild — contract 0.0.6 (2026-10-18 UTC)
+
+Branch `fix/conclusion-contract-0.0.6` starts from candidate commit `2bdc060`,
+following Operator's [conclusion validation handoff](../operator_sandbox/docs/CONCLUSION_VALIDATION_HANDOFF.md).
+The updated shared Python validator is shipped in both images. Harness dispatcher,
+error-envelope handling, startup bindings and release/catalog publication are
+unchanged; no synthetic hypothesis records or prior-tool requirement is introduced.
+
+| Input/check | Identity or result |
+|---|---|
+| Contract source and inspection Operator | `d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b`, tree `cc3fc482a4c4811704bc28a4976083194745825a`; source confirmed on GitHub |
+| Exact contract | `0.0.6`, `sha256:0d181b3a52ed77482e6b517426246302a32abebe712cc87964eca2c5c9d6ce60`; full receipt verified, 271 files / 7,552,160 bytes |
+| Runtime source lock | `sha256:3b4a822b34ae50342d311488f79c1d543886856c7d9f2745bcc94cbce678b110` |
+| Component checks | 86 Harness tests, 29 shared Python tests, full Go `contracts` suite and 22 publication/inspection tests passed |
+| Process regression checks | All four conclusion acceptance/rejection cases and eight ordinary campaign cases passed, together with focused host reference-resolution and cycle tests |
+| Build checks | Both architectures built twice with identical runtime config, platform manifest and layers; SBOM/provenance verified |
+| Actual Operator inspection | Both images passed embedded compatibility/package/resource checks, exact raw digest retention and confirmed cleanup with external HTTP disabled |
+| `amd64` image config | `sha256:48b4a25dcfd39ef8cb07e1939fa2dace317c412b921265dd90c83260971ed07f` |
+| `amd64` platform manifest | `sha256:daf1e1a2ccfe7c150e53884c6b2cb15ed268a28f887f7d5d4179bab817864611` |
+| `amd64` compatibility raw digest | `sha256:99e771f7f2f2cb46796670a656268398de98f4b210025f547e681c15645eb584` |
+| `arm64` image config | `sha256:e6574ed3421572c0f0be3f5da983f783c0c7fefad3bf71472ed1fb65c2f9f564` |
+| `arm64` platform manifest | `sha256:724668a1e8ee35cf248bcddf0a3cb3c0033914916dcd374cc1484732ceedb4dc` |
+| `arm64` compatibility raw digest | `sha256:b795ebb88b97941c4b116627f8c3c5c5a79808636406783530522bde0bb8225b` |
+
+Focused conclusion tests exercise new local definitions without prior records,
+forward/historical reference resolution, duplicate/self/cycle rejection, and
+existing binding/evidence checks. `TestPythonProcessConclusionAndSeparateInspection`
+passes accepted and unresolved-parent cases over both FIFO and spool through the
+production Harness entrypoint. It verifies a single model request, no synthesized
+history, target cleanup, refusal to resume, and retained diagnostic details in
+separate inspection/status/report/export processes. Unknown nonlocal references
+are resolved by the host rather than blanket-rejected by the guest.
+
+These are controlled model/target process fixtures using a temporary development
+package from the exact pinned source. Stopped-image checks separately verify the
+actual `0.0.6` release package in each built image. Local builds ran on macOS ARM64;
+AMD64 used emulation and explicit cross-platform file inspection, not native AMD64
+runtime qualification. Runtime bytes reproduce, while attestation/archive envelopes
+can vary. No live provider calls, cloud writes, GHCR publication or catalog updates
+were performed. Deploy the matching rebuilt Operator/Harness pair and start a new
+campaign; retained records remain readable, but failed campaigns are not replayed.
+
+Per-platform archives and reports are under ignored `dist/`; test/build logs are
+under `dist/contract-0.0.6-evidence/`. Prior `0.0.5` artifacts remain separately in
+`dist/contract-0.0.5-previous/`. Native CI publication runs after merging this branch
+into `candidate-v0.1.0`; full native/cloud qualification remains separate.
+
 ## OpenAI tool declaration rebuild (2026-10-18 UTC)
 
 Branch `fix/openai-tools-contract-0.0.5` starts from candidate commit
@@ -140,7 +187,7 @@ adapter against a local TLS server. Physical FIFO tests on macOS demonstrate wir
 behavior, not the native Linux container profile. CI pins the matching Operator
 commit and runs the combined suite; this record reports local execution, not an
 observed CI run. These are historical results; the current workflow selects the
-`0.0.5` contract source listed in the current evidence above.
+`0.0.6` contract source listed in the current evidence above.
 
 ## Additional local container evidence (2026-10-07)
 

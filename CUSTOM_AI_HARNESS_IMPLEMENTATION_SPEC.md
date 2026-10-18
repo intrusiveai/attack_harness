@@ -79,7 +79,7 @@ Operator selects an administrator-installed local Docker image and validates its
 [embedded compatibility file](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md)
 and fixed resource digests before guest execution. Registry authentication, pulling
 and updates are deployment operations. Both ends install the exact locked shared
-package `0.0.5`; no releases-service approval or runtime download is required.
+package `0.0.6`; no releases-service approval or runtime download is required.
 Operator retains the exact compatibility bytes and passes their raw SHA-256 as
 `release_record_digest`. The Harness preserves that frozen startup/conclusion
 binding and uses it as `generator.release_digest` in attempts. The independently
@@ -809,6 +809,14 @@ coverage if history cannot fit; commit detailed history separately. Retain statu
 verification establishes that evidence exists, not that a model's interpretation
 is correct. Mark unsupported evidence claims as inconclusive or reject the draft
 for bounded correction; never manufacture an observation ID.
+
+Conclusions MAY define hypotheses without earlier hypothesis records. All local
+definitions are visible throughout the conclusion, including forward references.
+The shared validator MUST reject duplicate IDs, self-parenting and local cycles;
+unknown nonlocal parents remain host-resolved against campaign history. The
+Harness MUST NOT synthesize history or require earlier hypothesis tools as an
+admission workaround. Preserve Operator's existing `CONCLUSION_INVALID` error
+envelope and `instance_path`; there is no new wire field or operation.
 
 Graceful finalization is ordered and uses the same ordinary-operation scheduler:
 

@@ -9,14 +9,17 @@ at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
 These workflows publish images and the website's release catalog. Each image
 contains its own compatibility file; workflows do not publish or query records at
-`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.5`.
+`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.6`.
 Older images without the embedded file require rebuilding. Existing public records
 remain untouched; catalog publication still requires the production reviewer.
 
-Contract `0.0.5` ships corrected OpenAI Chat Completions and Responses tool
-declarations in the image's shared Python package. Select the rebuilt image with
-the matching Operator candidate and start a new campaign. Do not resume a campaign
-that failed with the older declarations or relax compatibility/declaration pins.
+Contract `0.0.6` adds conclusion-local hypothesis validation while preserving the
+corrected OpenAI tool declarations. Local definitions may refer forward to each
+other; duplicates, self-parenting and cycles remain invalid. Historical references
+remain host-resolved. Do not add synthetic hypothesis records or require earlier
+hypothesis tools as a workaround. Select the rebuilt image with the matching
+Operator candidate and start a new campaign; do not replay an existing failed
+campaign or relax compatibility/declaration pins.
 
 Deliver workflow changes to `main` first, then merge `main` into the candidate
 branch before its next publication. Existing immutable tags retain their original
@@ -158,10 +161,10 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `1eaca1da7ad236353cb86d8799c93c679389ca4f`
+1. Check out Operator commit `d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b`
    in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.0.5`, digest
-   `sha256:3b5690013ca4e0bb5f7e7c904b26df401f113ec61ef6158ad948db337ef13198`.
+   `build/contract-lock.json`; its package is `0.0.6`, digest
+   `sha256:0d181b3a52ed77482e6b517426246302a32abebe712cc87964eca2c5c9d6ce60`.
    Move any older generated `build/context/contracts` aside before rebuilding.
 2. Install the locked test dependencies, verify the contract package, and run
    Harness/publication tests:

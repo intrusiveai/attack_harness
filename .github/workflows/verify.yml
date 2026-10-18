@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 1eaca1da7ad236353cb86d8799c93c679389ca4f
+          ref: d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python
