@@ -79,7 +79,7 @@ Operator selects an administrator-installed local Docker image and validates its
 [embedded compatibility file](../operator_sandbox/schemas/ENGINE_RELEASE_CONTRACT.md)
 and fixed resource digests before guest execution. Registry authentication, pulling
 and updates are deployment operations. Both ends install the exact locked shared
-package `0.0.4`; no releases-service approval or runtime download is required.
+package `0.0.5`; no releases-service approval or runtime download is required.
 Operator retains the exact compatibility bytes and passes their raw SHA-256 as
 `release_record_digest`. The Harness preserves that frozen startup/conclusion
 binding and uses it as `generator.release_digest` in attempts. The independently
