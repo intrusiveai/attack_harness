@@ -9,9 +9,14 @@ at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
 These workflows publish images and the website's release catalog. Each image
 contains its own compatibility file; workflows do not publish or query records at
-`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.4`.
+`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.5`.
 Older images without the embedded file require rebuilding. Existing public records
 remain untouched; catalog publication still requires the production reviewer.
+
+Contract `0.0.5` ships corrected OpenAI Chat Completions and Responses tool
+declarations in the image's shared Python package. Select the rebuilt image with
+the matching Operator candidate and start a new campaign. Do not resume a campaign
+that failed with the older declarations or relax compatibility/declaration pins.
 
 Deliver workflow changes to `main` first, then merge `main` into the candidate
 branch before its next publication. Existing immutable tags retain their original
@@ -153,10 +158,10 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `cb43a919bda9b8689c11e20b7a09db35d2a98f89`
+1. Check out Operator commit `1eaca1da7ad236353cb86d8799c93c679389ca4f`
    in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.0.4`, digest
-   `sha256:750deac00ebece408dd7514ceae75e090f458f07ed1988b26859f7332ade32be`.
+   `build/contract-lock.json`; its package is `0.0.5`, digest
+   `sha256:3b5690013ca4e0bb5f7e7c904b26df401f113ec61ef6158ad948db337ef13198`.
    Move any older generated `build/context/contracts` aside before rebuilding.
 2. Install the locked test dependencies, verify the contract package, and run
    Harness/publication tests:

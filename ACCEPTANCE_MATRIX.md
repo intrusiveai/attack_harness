@@ -1,10 +1,66 @@
 # Attack Harness acceptance matrix
 
-Current compatibility evidence recorded 2026-10-17; earlier results are dated below. `Pass (component)` means deterministic component
+Current contract rebuild evidence recorded 2026-10-18 UTC; earlier results are dated below. `Pass (component)` means deterministic component
 coverage; `Pass (process)` means the listed behavior passed across real Go/Python
 processes. Neither status qualifies production containers or live infrastructure.
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
+
+## OpenAI tool declaration rebuild (2026-10-18 UTC)
+
+Branch `fix/openai-tools-contract-0.0.5` starts from candidate commit
+`a3747af`. It follows Operator's
+[qualification handoff](../operator_sandbox/docs/qualification/openai-tools-2026-10-18/README.md).
+The correction is shipped by the shared package; Harness dispatcher code and
+startup/compatibility/declaration-digest checks are unchanged. Local evidence below
+does not repeat or extend the handoff's live-provider qualification.
+
+| Input/check | Identity or result |
+|---|---|
+| Contract source and inspection Operator | `1eaca1da7ad236353cb86d8799c93c679389ca4f`, tree `0b5aed5fcba919f46366d20b04487aca5a4e1bb6`; source confirmed available on GitHub |
+| Exact contract | `0.0.5`, `sha256:3b5690013ca4e0bb5f7e7c904b26df401f113ec61ef6158ad948db337ef13198`; receipt matches all lock fields, 270 files / 7,533,149 bytes |
+| Harness runtime source lock | `sha256:de8bbe5fb8b3cfede50bf01158096a1e4bc593a4edb579505c35239e6468df57` |
+| Component checks | 86 Harness tests, 22 publication/inspection tests, both specified Go model-tool tests and both shared Python model-tool tests passed |
+| Process checks | Eight `TestPythonProcessCampaigns` cases and both FIFO/spool `TestPythonProcessToolSchemaRejections` cases passed |
+| Build checks | Both architectures built twice; config, platform manifest and layers identical within each pair; SBOM/provenance verified |
+| Actual Operator inspection | Both built images passed the stopped-image reader, embedded contract/resource checks, exact compatibility bytes/digest and confirmed container cleanup with external HTTP disabled |
+| `amd64` image config | `sha256:198ac8548130089b278ab8344743d65f4ab8259810c95b62e6d1e97da315271f` |
+| `amd64` platform manifest | `sha256:6a2bb7339bfa94c70470a7fda513bc79a58bc2e1b536d23cc68886ac0ca54002` |
+| `amd64` embedded compatibility raw digest | `sha256:60247af7a0e14b2448503170e7db0239584a83b741297c81695f0bc63bf0c603` |
+| `arm64` image config | `sha256:e75337ab0f0af78a906f0f9d6acaa23d58d91558369e193f429051905b4dc07f` |
+| `arm64` platform manifest | `sha256:1adbe15ae9c9602346e2bf93190c1704aeb80aa789c31c1809493312d883e58e` |
+| `arm64` embedded compatibility raw digest | `sha256:715c792e2083ee4e15487ea757fb88c313995da29b31ab137a2f749899ae0156` |
+
+The tool arrays extracted from both final OCI images match the installed `0.0.5`
+package and the handoff's exact declarations, with all eleven tools enabled:
+
+| Projection | Canonical bytes | SHA-256 |
+|---|---:|---|
+| Chat Completions | 58,000 | `ace7da1e99d0dc197dad729b479267c1c3674ef5b27a20900e3813f0a6a5631b` |
+| Responses | 57,857 | `6d43b72d94ae1c8c18c5fb3982ed8f499b55b604d02ae160c6992d08d11dd3e0` |
+
+The generated model-tool schema also matches
+`sha256:59dd92ce5124538ec83bdfa0649905d0acab9b9e3232cbe613b31549c2dc583b`.
+Each OpenAI declaration has an ordinary object root. Shared/runtime tests retain
+scenario, generation, carrier and record-kind constraints. The process rejection
+case proves invalid calls do not reach target execution or refund the submission
+index; the subsequent valid attempt succeeds at index 2 and concludes normally.
+These process tests use a temporary development package from the pinned source and
+controlled model/target peers; actual image inspection separately verifies the
+locked release package `0.0.5`.
+
+The local host is macOS ARM64 with Docker 29.8.2 and pinned BuildKit v0.25.2.
+AMD64 builds used emulation and explicit cross-platform stopped-file inspection;
+this is not native AMD64 runtime qualification. Attestation/archive envelopes vary
+between builds; runtime bytes match. No live API calls, GHCR publication or catalog
+writes were performed. Merge into the candidate branch to run the existing native
+CI build/publication workflow. Select the rebuilt image and matching Operator
+candidate, then start a new campaign; do not resume a previously failed campaign.
+
+Archives and per-platform reports are under ignored `dist/`. Declaration evidence
+is `dist/contract-0.0.5-tool-declarations.json`; test/build logs are under
+`dist/contract-0.0.5-evidence/`. Prior `0.0.4` artifacts were moved to
+`dist/contract-0.0.4-previous/` to keep their evidence distinct.
 
 ## Embedded compatibility verification (2026-10-17)
 
@@ -84,7 +140,7 @@ adapter against a local TLS server. Physical FIFO tests on macOS demonstrate wir
 behavior, not the native Linux container profile. CI pins the matching Operator
 commit and runs the combined suite; this record reports local execution, not an
 observed CI run. These are historical results; the current workflow selects the
-`0.0.4` contract source listed in the current evidence below.
+`0.0.5` contract source listed in the current evidence above.
 
 ## Additional local container evidence (2026-10-07)
 
