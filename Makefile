@@ -4,7 +4,7 @@ PLATFORM ?= linux/arm64
 INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-CONTRACT_COMMIT := 1eaca1da7ad236353cb86d8799c93c679389ca4f
+CONTRACT_COMMIT := d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b
 
 .PHONY: test verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
@@ -20,7 +20,7 @@ $(CONTRACT_PACKAGE)/package.json:
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.0.5
+		--package-version 0.0.6
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \

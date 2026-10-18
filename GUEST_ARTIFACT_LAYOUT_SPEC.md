@@ -350,9 +350,9 @@ as a root-owned regular file with mode `0444`, containing exactly these six fiel
 fields MUST come from the actual verified installed package. Duplicate/unknown
 fields and image/config/manifest/index/self digests MUST be rejected. The package,
 runtime and platform MUST agree with the engine manifest. The exact shared package
-is `0.0.5`, digest
-`sha256:3b5690013ca4e0bb5f7e7c904b26df401f113ec61ef6158ad948db337ef13198`, from
-Operator commit `1eaca1da7ad236353cb86d8799c93c679389ca4f`.
+is `0.0.6`, digest
+`sha256:0d181b3a52ed77482e6b517426246302a32abebe712cc87964eca2c5c9d6ce60`, from
+Operator commit `d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b`.
 
 Wire field names remain unchanged: `image_digest` is Operator's independently
 resolved full Docker image ID; `release_record_digest` is raw SHA-256 of the exact
