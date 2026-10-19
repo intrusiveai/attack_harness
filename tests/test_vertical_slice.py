@@ -61,7 +61,7 @@ class ScriptedHost:
         self.operations=frozenset({
             "engine.model_generate","engine.artifact_begin","engine.artifact_put_part",
             "engine.artifact_commit","engine.attempt_execute","engine.observation_read",
-            "engine.record_append","engine.request_stop",
+            "engine.record_append","engine.finish",
         })
         self.serial=0;self.model_turn=0;self.uploads={};self.attempt_ids=[]
         self.events=[];self.model_requests=[];self.conclusion_raw=None
@@ -100,17 +100,9 @@ class ScriptedHost:
         }
 
     def _attempt(self,descriptor,generation,parent=None):
-        value={
-            "origin":"scenario","scenario_id":"scenario-marker",
-            "thread_id":"thread-marker","generation":generation,
-            "payload":descriptor,"pre_actions":[],
-            "invocation":{"operation_id":"invoke","input_source":"payload",
-                          "media_type":"application/json"},
-            "cleanup":{"delete_actions_after_observation":True},
-            "strategy_provenance_ref":"record-1",
-            "rationale":"Change only the benign marker instruction after observed output.",
-        }
-        if parent is not None:value["parent_attempt_id"]=parent
+        value={"scenario_id":"scenario-marker", "operation_id":"invoke",
+               "input":{"artifact_receipt":descriptor}}
+        if parent is not None:value["parent_attempt_receipt_id"]=parent
         return value
 
     def _draft(self):
@@ -157,7 +149,7 @@ class ScriptedHost:
                 "record_refs":[]}}
             return [("hypothesis","record_append",record),
                     ("payload-1","artifact_publish",publish({"query":"baseline"})),
-                    ("attempt-1","attempt_execute",self._attempt(descriptor(self.payloads[0]),1))]
+                    ("attempt-1","attempt_execute",self._attempt("artifact-1",1))]
         if turn==2:
             return [("observe-1","observation_read",{
                 "receipt_id":"attempt-receipt-1","entry_id":"target-output",
@@ -165,7 +157,7 @@ class ScriptedHost:
         if turn==3:
             return [("payload-2","artifact_publish",publish({"query":"return MARKER"})),
                     ("attempt-2","attempt_execute",self._attempt(
-                        descriptor(self.payloads[1]),2,self.attempt_ids[0]))]
+                        "artifact-2",2,"attempt-receipt-1"))]
         if turn==4:
             coverage={"record_kind":"coverage","record":{"entries":[{
                 "objective_id":"objective-marker","hypothesis_id":"hypothesis-marker",
@@ -176,7 +168,9 @@ class ScriptedHost:
                 "receipt_id":"attempt-receipt-2","entry_id":"target-output",
                 "offset":0,"max_bytes":4096}),
                     ("coverage","record_append",coverage)]
-        if turn==5:return [("finish","request_stop",self._draft())]
+        if turn==5:
+            draft=self._draft();reason=draft.pop("finish_reason")
+            return [("finish","finish",{"finish_reason":reason,"assessment":draft})]
         raise AssertionError("unexpected model turn")
 
     def request(self,operation,body,*,operation_id):
@@ -206,13 +200,13 @@ class ScriptedHost:
                 "artifact_receipt":receipt,"purpose":begin["purpose"],
                 "artifact":deepcopy(begin["artifact"])})
         if operation=="engine.attempt_execute":
-            index=len(self.attempt_ids);self.attempt_ids.append(body["attempt_id"])
+            index=len(self.attempt_ids);self.attempt_ids.append(f"host-attempt-{index+1}")
             receipt=f"attempt-receipt-{index+1}";content=self.observations[index]
             artifact={"digest":raw_digest(content),"size_bytes":len(content),
                       "media_type":"application/json"}
             result={"api_version":"operator.dev/engine-attempt-result/v1alpha2",
-                "kind":"EngineAttemptResult","request_id":body["request_id"],
-                "attempt_id":body["attempt_id"],"receipt_id":receipt,"status":"completed",
+                "kind":"EngineAttemptResult","request_id":operation_id,
+                "attempt_id":self.attempt_ids[-1],"receipt_id":receipt,"status":"completed",
                 "stage":"complete","target_contact":"attempted","invocation_state":"succeeded",
                 "cleanup_state":"not-needed","retry_disposition":"do-not-retry","errors":[],
                 "feedback":{"profile":"black-box","collection_state":"complete",
@@ -241,9 +235,13 @@ class ScriptedHost:
                 "record_kind":body["record_kind"],"assertion_origin":"harness",
                 "attribution":{"campaign_id":self.campaign_id,"launch_id":self.launch_id,
                                "run_revision":self.run_revision}})
-        if operation=="engine.request_stop":
+        if operation=="engine.finish":
+            from operator_contracts.simple import normalize_assessment
+            conclusion=normalize_assessment(self.protocol, _canonical_value(body["assessment"],2<<20),
+                _canonical_value(Inputs({}).conclusion_binding(self.run_revision),2<<20),body["finish_reason"])
+            self.conclusion_raw=_canonical_value(conclusion,2<<20)
             return self._checked(operation,{"status":"accepted","stop_receipt":"stop-1",
-                "execution_admission":"closed","conclusion_state":body["conclusion"]["state"],
+                "execution_admission":"closed","assessment_state":"committed",
                 "exit_required":True,"exit_within_ms":5000,"finalization_status":"pending"})
         raise AssertionError(operation)
 
@@ -290,8 +288,8 @@ class VerticalSliceTest(unittest.TestCase):
         self.assertNotEqual(client.attempt_ids[0],client.attempt_ids[1])
         attempts_sent=[body for operation,body,_ in client.events
                        if operation=="engine.attempt_execute"]
-        self.assertEqual(attempts_sent[1]["parent_attempt_id"],attempts_sent[0]["attempt_id"])
-        self.assertEqual(attempts_sent[1]["generation"],2)
+        self.assertEqual(attempts_sent[1]["parent_attempt_receipt_id"],"attempt-receipt-1")
+        self.assertNotIn("generation", attempts_sent[1])
         committed=[bytes(value["content"]) for value in client.uploads.values()
                    if value["begin"]["purpose"]=="payload"]
         self.assertEqual(committed,payloads)
@@ -300,9 +298,8 @@ class VerticalSliceTest(unittest.TestCase):
         conclusion=self.protocol.validate_conclusion(client.conclusion_raw)
         self.assertEqual(conclusion["claims"][0]["observation_refs"][0]
                          ["attempt_receipt_id"],"attempt-receipt-2")
-        tail=[operation for operation,_,_ in client.events[-5:]]
-        self.assertEqual(tail,["engine.artifact_begin","engine.artifact_put_part",
-            "engine.artifact_commit","engine.record_append","engine.request_stop"])
+        self.assertEqual(client.events[-1][0], "engine.finish")
+        self.assertFalse(any(value["begin"]["purpose"] == "conclusion" for value in client.uploads.values()))
 
 
 if __name__=="__main__":unittest.main()

@@ -817,10 +817,10 @@ Bind its local wrapper schemas and handlers in the release before implementation
 | `reference_read` | Read a bounded byte range of one exact manifest-listed input/skill reference ID; no arbitrary path, URL, directory listing or host artifact lookup. |
 | `artifact_publish` | Accept bounded declared text/JSON/bytes as data, construct canonical payload bytes and wrap the host begin/part/commit protocol; return its committed receipt. |
 | `injection_delete` | Remove one retained injection by `attempt_receipt_id` and `action_id`; Operator resolves the ID in the current campaign target. Confirmed absence succeeds. |
-| `attempt_execute` | Validate and submit the complete structured EngineAttemptRequest; no inferred tactic or target route. |
+| `attempt_execute` | Submit the shared simple request with operation and direct input or committed artifact receipt; no inferred tactic or target route. |
 | `observation_read` | Adopted HC-02 contract: read bounded, already-filtered feedback by attempt receipt and entry ID, with explicit availability/truncation; no general artifact-store access. |
 | `record_append` | Append bounded hypothesis/progress/evidence-reference data labeled as guest assertions. |
-| `request_stop` | Validate a structured conclusion and finish through artifact/record/stop operations; no signal, host command or restart authority. Uses the accepted v1alpha2 conclusion and stop contract; schema publication remains HC-04 work. |
+| `finish` | Submit one assessment, assessment artifact receipt, or unavailable reason; accepted closure does not establish completed cleanup. |
 | `restore_request` | Restore an explicit permitted checkpoint while keeping the harness alive. |
 | `snapshot_request` | Create a checkpoint with optional label/description and host-supplied campaign ID. |
 | `snapshot_list`, `snapshot_inspect` | Discover and inspect campaign checkpoint metadata across retained source sessions. |
@@ -845,7 +845,8 @@ engine.attempt_execute
 engine.injection_delete    # typed attempt-receipt/action handle; current target
 engine.observation_read    # adopted shared feedback contract; runtime implementation pending
 engine.record_append
-engine.request_stop
+engine.finish
+engine.diagnostic_report   # runtime-only retained local diagnostics; never a model tool
 engine.snapshot_request    # conditional; label, description; campaign bound by host
 engine.snapshot_list       # conditional; paged campaign inventory
 engine.snapshot_inspect    # conditional; source/checkpoint handle pair
@@ -973,27 +974,23 @@ retains exact permitted request/result forms without host credentials. The guest
 consumes receipts; it cannot mark a host command successful, write authoritative
 journal state, inspect protected audit storage.
 
-Use `operator.dev/engine-conclusion/v1alpha2` from the accepted shared contract
-Sections 10–11. It binds campaign/launch/final revision and input/release/skill/
-prompt/contract identities, objectives/hypotheses, evidence-backed claims,
-coverage, uncertainties, record references and finish reason. Its 1 MiB encoded
-ceiling and field/count limits apply. `completed` describes report completion,
-not exploitation; claims remain guest assessment rather than protected evidence.
+Shared package 0.1.0 and its
+[SIMPLE_CAMPAIGN_CONTRACT.md](../operator_sandbox/schemas/SIMPLE_CAMPAIGN_CONTRACT.md)
+MUST govern execution, defaults, assessment and completion. This supersedes the
+former mandatory conclusion artifact/record/stop sequence. Harness MUST send one
+`engine.finish` carrying a reason and exactly one assessment, committed assessment
+draft artifact receipt, or explicit unavailable reason. Operator binds and retains
+the assessment, closes execution and performs cleanup through existing facilities.
+Minimal drafts require summary and objectives; optional collections default empty.
+Local hypotheses require no prior records. Unsupported evidence claims remain
+invalid, and no-attempt assessments may use empty references and honest outcomes.
 
-Publish the conclusion artifact, append its typed conclusion record, then send
-`engine.request_stop` with matching finish reason and both receipts. If conclusion
-production is impossible, send the explicit unavailable variant. The ordinary
-accepted acknowledgement includes the saved stop receipt, closed execution
-admission, conclusion state, required exit within 5,000 ms and finalization pending.
-Exit without further ordinary requests; Operator independently confirms teardown.
-The acknowledgement does not certify completed export or assessment.
-
-Reserve up to 1 MiB of the existing artifact budget and one conclusion slot, with
-up to 30 seconds inside the campaign hard deadline for finalization. This phase
-admits only conclusion artifact/record/stop operations. Lost/ambiguous replies
-never authorize resubmission or a new operation ID. Hard stop does not wait for
-reporting or extend time. Interrupted/missing conclusions preserve partial host
-evidence; protected post-run evidence stays outside the harness.
+Accepted finish requires exit within 5,000 ms and reports finalization pending.
+Harness MUST NOT report cleanup complete or retry ambiguous delivery. Runtime-only
+`engine.diagnostic_report` retains bounded local failures and stopping counts;
+it MUST NOT expose request bodies or credentials. Diagnostic/finish work remains
+inside existing finalization and campaign deadlines. Missing assessments MUST NOT
+prevent deadlines or owned cleanup. Operator retains authoritative final state.
 
 ## 14. Journaling and resource behavior
 

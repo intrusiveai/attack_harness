@@ -168,7 +168,7 @@ class NativeConversation:
         self._request[field].extend(segment)
         self._segments += 1
 
-    def prompt_again(self, text="Continue with the next useful tool action or request_stop."):
+    def prompt_again(self, text="Continue with the next useful tool action or finish."):
         require(type(text) is str and text)
         if self.codec == "openai-responses-text-tools-v1":
             item = {"role": "user", "content": text}
@@ -184,7 +184,8 @@ class NativeConversation:
 class AdaptiveHarness:
     """Run admitted model turns until conclusion, graceful exhaustion, or failure."""
 
-    def __init__(self, protocol, client, loop, dispatcher, conversation, finalizer):
+    def __init__(self, protocol, client, loop, dispatcher, conversation, finalizer, *, limits=None):
+        self.limits = limits or {}
         self.protocol = protocol
         self.client = client
         self.loop = loop
@@ -193,10 +194,36 @@ class AdaptiveHarness:
         self.finalizer = finalizer
 
     def _unavailable_reason(self):
-        reason = self.loop.snapshot()["reason"]
-        if reason == "budget-limit":
-            return "budget-limit"
-        return "local-error"
+        state = self.loop.snapshot()
+        for counter in ("consecutive_invalid_tool_calls", "invalid_tool_calls"):
+            if "max_" + counter in self.limits and state[counter] >= self.limits["max_" + counter]:
+                return "invalid-call-limit"
+        return "budget-limit" if state["reason"] == "budget-limit" else "local-error"
+
+    def _finish_unavailable(self, reason):
+        state = self.loop.snapshot()
+        if state["mode"] == "exploring":
+            self.loop.stop("budget-limit" if reason == "budget-limit" else "harness-error")
+        if self.limits:
+            condition, observed, limit = reason, None, None
+            for counter, kind in (
+                ("consecutive_invalid_tool_calls", "invalid-call-limit"),
+                ("invalid_tool_calls", "invalid-call-limit"),
+                ("tool_calls", "tool-call-limit"), ("model_turns", "model-turn-limit"),
+                ("no_progress_turns", "local-error"), ("read_bytes", "budget-limit"),
+            ):
+                maximum = self.limits["max_" + counter]
+                if state[counter] >= maximum:
+                    condition, observed, limit = kind, state[counter], maximum
+                    break
+            if observed is None and reason == "budget-limit":
+                if state["skipped_calls"] > self.limits["max_tool_calls_per_response"]:
+                    condition, observed, limit = "tool-call-limit", state["skipped_calls"], self.limits["max_tool_calls_per_response"]
+                else:
+                    observed, limit = state["read_bytes"], self.limits["max_read_bytes"]
+            self.dispatcher.report_stopping(condition, observed, limit,
+                self.finalizer.budget(), self.finalizer.clock())
+        return self.finalizer.finish_unavailable(reason)
 
     def run(self):
         while self.loop.snapshot()["mode"] == "exploring":
@@ -209,11 +236,11 @@ class AdaptiveHarness:
                     body, request_raw, source_digest, omitted = \
                         self.conversation.compaction_body()
                 except ContractError:
-                    if self.loop.snapshot()["mode"] == "model":
+                    if self.loop.snapshot()["phase"] == "model":
                         self.loop.accept_response(0)
                         self.loop.stop("no-useful-next-experiment")
                         self.loop.end_turn()
-                    return self.finalizer.finish_unavailable("context-limit")
+                    return self._finish_unavailable("context-limit")
                 try:
                     reply = self.client.request(
                         "engine.model_generate", body,
@@ -234,14 +261,14 @@ class AdaptiveHarness:
                 if batch.disposition != "text":
                     self.loop.stop("no-useful-next-experiment")
                     self.loop.end_turn()
-                    return self.finalizer.finish_unavailable("context-limit")
+                    return self._finish_unavailable("context-limit")
                 try:
                     self.conversation.apply_compaction(
                         batch.text(), source_digest, omitted)
                 except ContractError:
                     self.loop.stop("no-useful-next-experiment")
                     self.loop.end_turn()
-                    return self.finalizer.finish_unavailable("context-limit")
+                    return self._finish_unavailable("context-limit")
                 self.loop.end_turn()
                 continue
             try:
@@ -254,7 +281,7 @@ class AdaptiveHarness:
                 self.loop.accept_response(0)
                 self.loop.stop("no-useful-next-experiment")
                 self.loop.end_turn()
-                return self.finalizer.finish_unavailable("context-limit")
+                return self._finish_unavailable("context-limit")
             try:
                 reply = self.client.request(
                     "engine.model_generate", body,
@@ -277,12 +304,13 @@ class AdaptiveHarness:
                     results = self.dispatcher.dispatch(list(batch.calls))
                 except LoopStopped:
                     if self.loop.snapshot()["mode"] == "finalizing":
+                        if self.dispatcher.last_results:
+                            self.conversation.extend(batch.continuation(self.dispatcher.last_results))
                         break
                     raise
+                self.conversation.extend(batch.continuation(results))
                 if self.finalizer.pending:
                     return self.finalizer.finish()
-                if self.loop.snapshot()["mode"] == "exploring":
-                    self.conversation.extend(batch.continuation(results))
                 continue
 
             self.loop.accept_response(0)
@@ -295,5 +323,5 @@ class AdaptiveHarness:
             self.loop.end_turn()
 
         if self.loop.snapshot()["mode"] == "finalizing":
-            return self.finalizer.finish_unavailable(self._unavailable_reason())
+            return self._finish_unavailable(self._unavailable_reason())
         raise RuntimeStopped("closed")

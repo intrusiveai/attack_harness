@@ -144,7 +144,7 @@ class OrdinaryClient:
         Unknown effects, terminal dispositions, timeout, or channel/protocol loss
         stop the runtime and are never converted into a replacement operation.
         """
-        require(not self._stopped and not self._active)
+        require(not self._active)
         require(operation in self.operations and type(body) is dict)
         metadata = self._registry[operation]
         if timeout_ms is None:
@@ -161,6 +161,7 @@ class OrdinaryClient:
             require(previous[0] == identity)
             return previous[1]
 
+        require(not self._stopped)
         call_id = self._identifier("call")
         request = {
             "api_version": "operator.dev/engine-pipe/v1alpha1",
@@ -205,7 +206,7 @@ class OrdinaryClient:
                             result["harness_disposition"] != "continue"):
                         self._close("protocol-error")
                     self.run_revision = result["run_revision"]
-                if operation == "engine.request_stop" and error is None:
+                if operation == "engine.finish" and error is None:
                     result = message["result"]
                     if result["status"] != "accepted" or not result["exit_required"]:
                         self._close("protocol-error")

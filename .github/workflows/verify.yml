@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b
+          ref: b719ea36c0817552746820ab96ae0e3090786476
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python
@@ -120,7 +120,7 @@ jobs:
       - name: Verify Go and Python process integration
         working-directory: attack_harness
         run: |
-          make -C ../operator_sandbox test-integration PYTHON="$(pwd)/.ci-venv/bin/python"
+          make test-integration OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
       - name: Build twice and compare runtime identity
         working-directory: attack_harness
         run: |

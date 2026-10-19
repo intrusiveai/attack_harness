@@ -9,17 +9,18 @@ at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
 These workflows publish images and the website's release catalog. Each image
 contains its own compatibility file; workflows do not publish or query records at
-`/sha256/<digest>`. Use the matching updated Operator and shared package `0.0.6`.
+`/sha256/<digest>`. Use the matching updated Operator and shared package `0.1.0`.
 Older images without the embedded file require rebuilding. Existing public records
 remain untouched; catalog publication still requires the production reviewer.
 
-Contract `0.0.6` adds conclusion-local hypothesis validation while preserving the
-corrected OpenAI tool declarations. Local definitions may refer forward to each
-other; duplicates, self-parenting and cycles remain invalid. Historical references
-remain host-resolved. Do not add synthetic hypothesis records or require earlier
-hypothesis tools as a workaround. Select the rebuilt image with the matching
-Operator candidate and start a new campaign; do not replay an existing failed
-campaign or relax compatibility/declaration pins.
+Contract `0.1.0` is a coordinated breaking update: ordinary campaigns use direct
+input, evidence reads and one finish assessment. Use Operator with the exact
+package version/digest in the lock; older combinations must fail before execution.
+Optional artifacts, injection, snapshots/restores and historical records remain.
+Local hypotheses need no prior registration. Start a new campaign after selecting
+the matching rebuilt image; never replay a failed campaign. Default trusted
+operating guidance is in `assets/default-system-prompt.txt`; custom prompt owners
+should preserve that guidance. Harness cannot alter an Operator-bound prompt.
 
 Deliver workflow changes to `main` first, then merge `main` into the candidate
 branch before its next publication. Existing immutable tags retain their original
@@ -161,10 +162,10 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `d9e50beb784f4ce1c7b9006c5aff03bd660e8e4b`
+1. Check out Operator commit `b719ea36c0817552746820ab96ae0e3090786476`
    in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.0.6`, digest
-   `sha256:0d181b3a52ed77482e6b517426246302a32abebe712cc87964eca2c5c9d6ce60`.
+   `build/contract-lock.json`; its package is `0.1.0`, digest
+   `sha256:a9e65f23eda2fe5f578a4da8a1128da45b7ee8f623cfd0a38066332877a61b0b`.
    Move any older generated `build/context/contracts` aside before rebuilding.
 2. Install the locked test dependencies, verify the contract package, and run
    Harness/publication tests:
@@ -174,8 +175,16 @@ identify the repository, environment, tag, and workflow file.
    .ci-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-runtime.lock
    make verify-contracts OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
    make test OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make test-integration OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
    python3 -m unittest discover -s build/tests -v
    ```
+
+   `make test-integration` uses a test-only Go overlay to replace the pinned
+   Operator fixture that still expects an invalid assessment to terminate. The
+   replacement verifies correction, exhaustion and separate CLI/report/export
+   evidence through the production Harness over FIFO and spool. It does not
+   change Operator runtime or contract bytes. Remove this overlay when Operator
+   includes the updated fixture and the pin advances.
 
    In the pinned Operator checkout, run `go test ./contracts ./internal/imagerelease
    ./internal/dockercontrol ./cmd/operatorctl`. Run its shared Python fixtures with

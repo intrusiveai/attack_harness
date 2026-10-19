@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import unittest
 
-from operator_contracts import Protocol
+from operator_contracts import Protocol, ContractError
 from operator_contracts.loop import HarnessLoop
 
 from attack_harness.artifacts import CommittedArtifact
@@ -74,7 +74,7 @@ class Client:
     run_revision = 4
     operations = frozenset({"engine.artifact_begin", "engine.artifact_put_part",
                             "engine.artifact_commit", "engine.record_append",
-                            "engine.request_stop"})
+                            "engine.finish"})
 
     def __init__(self, events, *, bad_stop=False):
         self.events = events
@@ -88,19 +88,16 @@ class Client:
 
     def request(self, operation, body, *, operation_id):
         self.events.append((operation, deepcopy(body)))
-        if operation == "engine.record_append":
-            return Reply({"receipt_id": "record-1", "record_kind": "conclusion",
-                "assertion_origin": "harness", "attribution": {
-                    "campaign_id": self.campaign_id, "launch_id": self.launch_id,
-                    "run_revision": self.run_revision}})
-        if operation == "engine.request_stop":
-            requested_state = body["conclusion"]["state"]
+        if operation == "engine.finish":
+            if self.bad_stop:
+                reply = Reply(None)
+                reply.error = {"code": "INVALID_ARGUMENTS", "effect_state": "none",
+                    "disposition": "correct-and-resubmit", "message": "Unknown receipt.",
+                    "diagnostic": {"source": "operator", "field_path": "/assessment/objectives/0/attempt_receipt_refs/0"}}
+                return reply
             return Reply({"status": "accepted", "stop_receipt": "stop-1",
-                "execution_admission": "closed",
-                "conclusion_state": ("unavailable" if self.bad_stop
-                                     else requested_state),
-                "exit_required": True, "exit_within_ms": 5000,
-                "finalization_status": "pending"})
+                "execution_admission": "closed", "assessment_state": "unavailable" if "unavailable" in body else "committed",
+                "exit_required": True, "exit_within_ms": 5000, "finalization_status": "pending"})
         self.fail("unexpected-operation")
 
     def fail(self, reason, *, receipt=None):
@@ -113,21 +110,15 @@ class Artifacts:
         self.events = events
         self.raw = None
 
-    def publish(self, purpose, media_type, content, *, canonicalization, before_request):
-        self.raw = content
-        for operation, body in (
-            ("engine.artifact_begin", {"purpose": purpose}),
-            ("engine.artifact_put_part", {"offset": 0}),
-            ("engine.artifact_commit", {"upload_id": "upload-1"}),
-        ):
-            before_request(operation, body)
-            self.events.append((operation, deepcopy(body)))
-        return CommittedArtifact("artifact-1", purpose, "sha256:" + "8" * 64,
-                                 len(content), media_type, canonicalization, True)
+    def artifact(self, receipt):
+        if receipt == "artifact-1": return object()
+        raise ContractError("unknown receipt")
 
 
 class Attempts:
     receipts = frozenset({"attempt-1"})
+    def reference_category(self, value):
+        return {"attempt-1": "execution receipt", "rejected-call": "rejected submission"}.get(value)
 
 
 class Observations:
@@ -141,17 +132,9 @@ class ConclusionTest(unittest.TestCase):
         cls.protocol = Protocol(Path(os.environ["OPERATOR_CONTRACT_SOURCE"]))
 
     def draft(self):
-        return {
-            "status": "completed", "finish_reason": "objectives-addressed",
-            "summary": "Bounded assessment completed.",
-            "objectives": [{"objective_id": "objective-1", "outcome": "inconclusive",
-                "summary": "One experiment ran.", "attempt_receipt_refs": ["attempt-1"],
-                "record_refs": ["record-previous"]}],
-            "hypotheses": [], "claims": [],
-            "coverage": [{"objective_id": "objective-1", "status": "tested",
-                "reason": "One attempt completed.", "attempt_receipt_refs": ["attempt-1"]}],
-            "uncertainties": [], "record_refs": ["record-previous"],
-        }
+        return {"finish_reason": "objectives-addressed", "assessment": {
+            "summary": "No attempt was needed.", "objectives": [{"objective_id": "objective-1",
+                "outcome": "not-tested", "summary": "Not tested."}]}}
 
     def setup_finalizer(self, *, bad_stop=False):
         events = []
@@ -168,59 +151,48 @@ class ConclusionTest(unittest.TestCase):
         )
         return events, loop, client, artifacts, finalizer
 
-    def test_stages_in_batch_then_commits_artifact_record_and_stop(self):
-        events, loop, _, artifacts, finalizer = self.setup_finalizer()
-        dispatcher = Dispatcher(self.protocol, loop, {"request_stop": finalizer.stage})
-        results = dispatcher.dispatch([ToolCall("finish-1", "request_stop",
-            json.dumps(self.draft(), separators=(",", ":")).encode())])
-        self.assertEqual(results[0].outcome, "success")
-        self.assertTrue(finalizer.pending)
-        self.assertEqual(loop.snapshot()["mode"], "finalizing")
-        self.assertEqual(events, [])
+    def dispatch(self, loop, finalizer, arguments):
+        return Dispatcher(self.protocol, loop, {"finish": finalizer.stage}).dispatch([
+            ToolCall("finish-1", "finish", json.dumps(arguments).encode())])[0]
 
-        acknowledgement = finalizer.finish()
-        self.assertEqual(acknowledgement["stop_receipt"], "stop-1")
-        self.assertEqual([event[0] for event in events], [
-            "engine.artifact_begin", "engine.artifact_put_part", "engine.artifact_commit",
-            "engine.record_append", "engine.request_stop",
-        ])
-        conclusion = self.protocol.validate_conclusion(artifacts.raw)
-        self.assertEqual(conclusion["binding"]["run_revision"], 4)
-        self.assertFalse(finalizer.pending)
-
-    def test_unknown_receipt_is_a_local_invalid_without_finalization(self):
+    def test_minimal_zero_attempt_finishes_once_with_cleanup_pending(self):
         events, loop, _, _, finalizer = self.setup_finalizer()
-        draft = self.draft()
-        draft["objectives"][0]["attempt_receipt_refs"] = ["unknown-attempt"]
-        dispatcher = Dispatcher(self.protocol, loop, {"request_stop": finalizer.stage})
-        results = dispatcher.dispatch([ToolCall("finish-1", "request_stop",
-            json.dumps(draft, separators=(",", ":")).encode())])
-        self.assertEqual(results[0].outcome, "invalid")
-        self.assertFalse(finalizer.pending)
+        result = self.dispatch(loop, finalizer, self.draft())
+        self.assertEqual(result.outcome, "success")
+        self.assertEqual([e[0] for e in events], ["engine.finish"])
+        self.assertEqual(finalizer.finish()["finalization_status"], "pending")
+        self.assertEqual(loop.snapshot()["mode"], "finalizing")
+        self.assertEqual(finalizer.finish(), result.value if hasattr(result, "value") else json.loads(result.content))
+        self.assertEqual(len(events), 1)
+
+    def test_rejected_submission_and_artifact_are_not_execution_receipts(self):
+        for ref in ("rejected-call", "artifact-1"):
+            events, loop, _, _, finalizer = self.setup_finalizer()
+            draft = self.draft()
+            draft["assessment"]["objectives"][0]["attempt_receipt_refs"] = [ref]
+            result = self.dispatch(loop, finalizer, draft)
+            diagnostic = json.loads(result.content)["diagnostic"]
+            self.assertEqual(diagnostic["reason"], "reference_category")
+            self.assertEqual(diagnostic["field_path"], "/objectives/0/attempt_receipt_refs/0")
+            self.assertFalse(finalizer.pending)
+            self.assertFalse(events)
+
+    def test_host_rejection_remains_correctable_and_keeps_diagnostic(self):
+        events, loop, _, _, finalizer = self.setup_finalizer(bad_stop=True)
+        result = self.dispatch(loop, finalizer, self.draft())
+        self.assertEqual(result.outcome, "preflight-rejected")
+        self.assertEqual(json.loads(result.content)["diagnostic"]["source"], "operator")
         self.assertEqual(loop.snapshot()["mode"], "exploring")
-        self.assertEqual(events, [])
+        self.assertFalse(finalizer.pending)
 
-    def test_conflicting_stop_acknowledgement_is_terminal(self):
-        _, loop, client, _, finalizer = self.setup_finalizer(bad_stop=True)
-        dispatcher = Dispatcher(self.protocol, loop, {"request_stop": finalizer.stage})
-        dispatcher.dispatch([ToolCall("finish-1", "request_stop",
-            json.dumps(self.draft(), separators=(",", ":")).encode())])
-        with self.assertRaises(RuntimeStopped):
-            finalizer.finish()
-        self.assertEqual(client.failed, ("finalization-failed", None))
-
-    def test_explicit_unavailable_stop_has_no_artifact_or_record(self):
+    def test_explicit_unavailable_finish_preserves_specific_reason(self):
         events, loop, _, _, finalizer = self.setup_finalizer()
         loop.accept_response(0)
         loop.end_turn()
-        result = finalizer.finish_unavailable("context-limit")
-        self.assertEqual(result["conclusion_state"], "unavailable")
-        self.assertEqual([event[0] for event in events], ["engine.request_stop"])
-        self.assertEqual(events[0][1], {
-            "finish_reason": "context-limit",
-            "conclusion": {"state": "unavailable", "reason": "context-limit"},
-        })
+        result = finalizer.finish_unavailable("invalid-call-limit")
+        self.assertEqual(result["assessment_state"], "unavailable")
+        self.assertEqual(events, [("engine.finish", {"finish_reason": "harness-error",
+            "unavailable": {"reason": "invalid-call-limit"}})])
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == "__main__": unittest.main()
