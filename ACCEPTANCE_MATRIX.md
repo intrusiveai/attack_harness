@@ -6,6 +6,75 @@ processes. Neither status qualifies production containers or live infrastructure
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
 
+## Simple campaign implementation — contract 0.1.0 (2026-10-18 UTC)
+
+Branch `feat/simple-campaign-contract` starts from `candidate-v0.1.0` at `f37c5c2`.
+It consumes Operator's [simple campaign handoff](../operator_sandbox/docs/SIMPLE_CAMPAIGN_HANDOFF.md)
+without a second protocol interpretation. Ordinary execution uses direct input,
+permitted evidence reads and one finish assessment. Optional artifacts, injection,
+history and snapshots/restores remain available. No release was published.
+
+| Input/check | Identity or result |
+|---|---|
+| Contract source / inspection Operator | `b719ea36c0817552746820ab96ae0e3090786476`, tree `7b27666f9cef95a7bebfa640f7b0ecf31661abab`; GitHub resolves the verified signed commit |
+| Exact contract | `0.1.0`, `sha256:a9e65f23eda2fe5f578a4da8a1128da45b7ee8f623cfd0a38066332877a61b0b`; independent rebuild verifies 293 files / 7,405,763 bytes |
+| Runtime build source | `sha256:b693b3b30c9ebbf146e6f1320c678db9c672bdc381a3caeedfd7be8d628b81e1` |
+| Harness tests | 91 passed in each pinned Linux image build |
+| Shared Python fixtures | 31 passed from the immutable package, including all five provider codecs |
+| Go contract / compatibility | `contracts`, `internal/imagerelease`, `internal/contractstore` passed |
+| Publication regression tests | 22 passed; normal image/catalog publication retained |
+| Full process integration | `internal/preparation` and `internal/transport` passed with production Harness enabled; 12 new ordinary-workflow process cases across FIFO/spool |
+| Reproducibility | Both platforms rebuilt with identical runtime config, manifest and layer digests; attestation envelopes retain build-session differences |
+| Stopped-image inspection | Both images accepted by the pinned Operator; embedded raw compatibility bytes, contract/release bindings and inspection-container cleanup verified |
+| Linux arm64 runtime config | `sha256:924a96b4e4c9b6ad2e1fdc8c4fd7de03282502fbc87e0525a5e76ca37e8d2d22` |
+| Linux amd64 runtime config | `sha256:454c33802110b1fe3563fa0c03ae1d1c63da84cce6add59573199087757aef6b` |
+
+The full gate covers direct and artifact input, evidence reads, corrected malformed
+calls and assessments, local forward-referenced hypotheses without history,
+zero-attempt honest finish, and five-invalid-call exhaustion. Separate CLI
+inspection, report and export preserve stopping condition, observed/configured
+counts, safe field path and the absence of target attempts. Controlled tests also
+cover retention failure before dispatch, interrupted/unknown effects without
+replay, duplicate finish, pending/uncertain cleanup, injections, historical records,
+restore batch boundaries, compaction and transport failure. A read-budget regression
+proves exhaustion during a tool can still close its batch and finish honestly.
+
+| Model-facing measure | Contract 0.0.6 | Contract 0.1.0 |
+|---|---:|---:|
+| OpenAI Chat tool bytes | 58,000 | 39,081 |
+| OpenAI Responses tool bytes | 57,857 | 38,938 |
+| Anthropic tool bytes | 58,028 | 38,759 |
+| Bedrock tool bytes | 58,259 | 38,990 |
+| Gemini tool bytes | 58,143 | 38,874 |
+| Required attempt fields | 7 | 2 |
+| Ordinary host calls excluding model generation | At least 10 | 3 |
+
+The process fixture verifies those three calls are precisely attempt, evidence read,
+and finish, without artifact publication or hypothesis registration. OpenAI Chat
+schema bytes decrease 32.6%; optional assessment collections default empty through
+shared validation rather than invented content.
+
+**Runner limitation:** the pinned Operator's old conclusion process test expects
+invalid finish to terminate and hangs on correctable rejection. Harness's
+`make test-integration` uses `build/verify_integration.py` and a test-only Go overlay
+replacing that one fixture with `build/operator_simple_campaign_test.go`. All other
+Operator tests run unchanged. The replacement adds real-process correction and
+CLI/report/export checks. No Operator runtime or packaged contract bytes are edited.
+Remove the overlay when Operator incorporates the fixture and its pin advances.
+
+**Qualification limits:** process tests use controlled model replies and a local
+native target peer, with the production Harness entrypoint and real transports;
+they do not establish live provider reliability or Linux container confinement.
+Images were built on Docker Desktop ARM64; AMD64 used emulation and explicitly
+marked cross-platform stopped inspection. Native AMD64 execution and live model/
+cloud qualification remain separate. Minimum Operator version remains `0.1.0`,
+but the exact contract version/digest above is mandatory; old combinations fail
+compatibility before execution. No automatic campaign replay is introduced.
+
+Local OCI archives and reports are `dist/attack-harness-linux-{arm64,amd64}.*`.
+Logs and schema measurements are retained under
+`dist/simple-campaign-contract-0.1.0-evidence/` (ignored build evidence).
+
 ## Conclusion validation rebuild — contract 0.0.6 (2026-10-18 UTC)
 
 Branch `fix/conclusion-contract-0.0.6` starts from candidate commit `2bdc060`,

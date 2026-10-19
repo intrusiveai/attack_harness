@@ -52,7 +52,7 @@ Production startup must reject incomplete or incompatible contract packages.
 | HC-01 | Shared package publication | Design accepted in the shared contract. Operator must author the remaining closed container/input/skill/ScenarioBundle/record/artifact/lifecycle/pipe schemas, registry/catalog and semantic rules, and publish package 0.1.0 after shared Go/Python vectors pass. Engine pins exact version/content digest. |
 | HC-02 | Observation bytes available to the adaptive loop | Design resolved by Operator’s shared feedback contract and current schemas. Implement/qualify the broker and harness wrapper, byte assembly and model-visible content; Interceptor implements the native manifest/chunk operations. |
 | HC-03 | Attempt observation selection | Design resolved: current v1alpha2 attempt request has optional `observation_selection`, defaulting to all-permitted, or an explicit selected subset. Pin/generate validators and qualify deterministic native translation without broadening feedback profiles. |
-| HC-04 | Conclusion and finalization publication | Design accepted: engine-conclusion/v1alpha2, typed conclusion record and exact request_stop/acknowledgement in shared contract Sections 10–11. Author schemas/validators and pass conclusion, missing-conclusion, duplicate/lost acknowledgement and terminal-stop fixtures. |
+| HC-04 | Assessment and finalization | Shared package 0.1.0 defines one `engine.finish` request. Verify assessment, unavailable, duplicate delivery and interrupted cleanup fixtures. |
 | HC-05 | Manifest delivery publication | Design accepted: required immutable /run/operator/manifests/ mount, fixed descriptors, inventories outside their own hashes and explicit manifest limits in shared contract Section 7. Publish schemas/fixtures and qualify both startup ends, including inventories exceeding 64 KiB. |
 | HC-06 | Model and target compatibility | Pin the supported native codec subsets and source-bound delivery schema dialects. Qualify actual host routes. Interceptor implements campaign-based access; qualify the exact native source/image and container deployment. |
 
@@ -363,20 +363,22 @@ Tools visible to the model are:
 | `reference_read` | Read one verified immutable input/skill/bundle handle and range; return source identity, actual range and bounded content. |
 | `artifact_publish` | Encode supplied text, JSON value or explicit bytes as data; validate size/media/encoding, upload through begin/part/commit and return a committed receipt. No model-supplied source filename. |
 | `injection_delete` | Remove one retained injection by `attempt_receipt_id` and `action_id`; Operator resolves the ID in the current campaign target. Confirmed absence succeeds. |
-| `attempt_execute` | Submit the complete structured attempt after structural, artifact, lineage and capability checks; return the correlated typed result. |
+| `attempt_execute` | Submit a permitted operation with direct input or a committed artifact receipt; Operator retains input, assigns bookkeeping and enforces authority before dispatch. |
 | `observation_read` | Adopted HC-02 tool: read bounded permitted feedback by host result receipt and observation entry ID; never by a bare arbitrary digest/path/URL. |
 | `record_append` | Record bounded typed hypotheses, decisions, coverage and evidence assertions; return the host record receipt. |
-| `request_stop` | Local finalization wrapper taking a bounded structured conclusion draft and finish reason; Section 11 commits it, records its receipt and sends the host stop request. Accepted shared Sections 10–11 govern; HC-04 tracks schema publication/tests. |
+| `finish` | Submit a bounded assessment, committed assessment-draft artifact receipt, or explicit unavailable reason in one request. Acceptance closes execution; cleanup remains pending. |
 | `restore_request` | Restore an explicit checkpoint; retain the live harness and adopt only a host-confirmed new revision. |
 | `snapshot_request` | Optional `label` and `description` (UTF-8, at most 4,096 bytes); host supplies campaign ID and returns checkpoint metadata. |
 | `snapshot_list`, `snapshot_inspect` | List with optional source handle/offset/limit, or inspect a source-session/checkpoint pair; return metadata including campaign ID and description. |
 
-The local `request_stop` wrapper is deliberately richer than the wire stop
-operation: it does not add conclusion bytes to an unversioned host stop envelope.
-Internal model generation is never a recursive model-facing tool. Unknown names
-and malformed arguments yield bounded correlated diagnostics without contact.
-An `attempt_execute` argument rejection uses the shared typed rejected result,
-not a contradictory success/error flag or duplicated prose representation.
+Shared package **0.1.0** is a breaking replacement for the former caller-built
+attempt and artifact/record/stop protocol. The authoritative
+[SIMPLE_CAMPAIGN_CONTRACT.md](../operator_sandbox/schemas/SIMPLE_CAMPAIGN_CONTRACT.md)
+supersedes conflicting older completion/default rules. No dual protocol is supported.
+Internal model generation and `engine.diagnostic_report` MUST NOT be model tools.
+Local argument rejection MUST use the shared operation-error diagnostic with
+source `harness-local`, no effects and safe correction; it MUST NOT invent a host
+execution receipt. Host errors MUST retain their code, source and actionable path.
 
 Validate the complete native response envelope and tool-call ID uniqueness first.
 For multiple supported calls, dispatch serially in declared order, validating each
@@ -475,7 +477,9 @@ estimates never refund authoritative charges or extend admission.
 Keep attack content distinct from the application invocation that triggers its
 retrieval. A direct-input experiment may invoke with the payload itself; an
 indirect experiment often needs an injection payload plus a separate benign
-carrier matching the application input schema. Commit both before submission.
+carrier matching the application input schema. `input` carries the invocation;
+optional `injection_input` supplies setup content. Either can use bounded direct
+content or a committed artifact receipt under the shared rules.
 
 Use deterministic release-owned encoders for UTF-8 text, bounded JSON values and
 explicit binary data. Preserve the declared bytes and media type. Apply only the
@@ -486,8 +490,8 @@ different recipes. A host cannot silently rewrite a payload to make it valid.
 For retained Interceptor injection, the payload is one `jcs-v1` JSON value:
 text append/prepend uses a JSON string, object merge uses a JSON object limited
 to permitted fields, and insertion/replacement uses the advertised value schema.
-Every setup action's payload digest must match the main committed payload.
-Changing a payload requires new bytes and a new receipt. Generated code stays data.
+Operator binds setup actions to the retained injection input digest; the model
+MUST NOT repeat it. Generated code stays data.
 
 `artifact_publish` wraps declared size/media/digest, ordered parts of at most
 256 KiB raw, and commit verification. Check matching IDs, offsets, counts, total
@@ -506,36 +510,25 @@ Never reference a provisional upload or infer commit success from a lost reply.
 
 ### 7.2 Complete typed request
 
-Use Operator’s current v1alpha2 request schema and port the semantic validators.
-Required tactical fields include origin, thread/attempt/generation/index,
-payload receipt, optional carrier, explicit ordered setup actions, one application
-operation/input source/media type, profile-limited observation selection (HC-03) and
-cleanup choice. Release helpers may supply fixed version/kind/generator identity
-and allocate bookkeeping IDs according to the shared allocator; they must not
-invent selectors, payloads, setup, caller identity, invocation or cleanup choices.
+Harness MUST consume the exact shared `attempt_execute` schema and validators.
+Only `operation_id` and `input` are required. Input MUST choose exactly one of
+JSON value, UTF-8 text, canonical base64 bytes, or committed artifact receipt.
+Direct decoded content MUST fit 32,768 bytes, JSON nesting MUST fit 16 containers,
+and the complete attempt request MUST fit 64 KiB plus any stricter target bounds.
+Oversized input MUST direct the model to artifact publication.
 
-Scenario origin requires a valid scenario ID. Exploratory origin must not forge
-one. Retain provenance for combined scenarios in the permitted strategy record.
-New roots start generation 1; children reference known same-thread parents with
-generation parent+1. Distinguish an attempt's request identity from provider/local
-tool-call identities. Validate unique action/attempt IDs and monotonic attempt
-indices under the [shared allocator](../operator_sandbox/schemas/HARNESS_EXECUTION_RULES.md#1-campaign-wide-attempt-numbering).
-The model-facing projection omits request/attempt IDs and attempt_index; the
-trusted wrapper assigns them once after bounded JSON-object decoding and before
-validation, without changing tactics. Seed from EngineContext's host-provided
-`attempt_index_high_watermark`, then preserve local allocation across revisions.
-Rejected allocated submissions retain their number; corrections get fresh IDs and
-the next index. Exact duplicates reuse their tuple/result without allocation.
-Malformed/non-object arguments and skipped calls allocate nothing. Operator accepts
-gaps and records observed high-water marks separately from execution admissions;
-never reseed from a restored native registry or infer a budget from the index.
+Operator MUST retain effective input and identity before dispatch and MUST NOT
+dispatch if retention fails. It resolves artifact descriptors and enforces target
+capabilities, input/media compatibility, ownership, purpose, budgets and deadlines.
+Harness MUST NOT reconstruct descriptors, allocate host attempt IDs or counters,
+or expose thread/generation bookkeeping to the model. Harness still assigns outer
+operation/call correlation and preserves exact duplicate identity without replay.
 
-Local validation checks exact committed artifact bytes/descriptors, media/schema,
-input source, selector/placement/action compatibility, scope/lifetime, logical
-path safety, expected binding, observation visibility and effective limits.
-The host repeats all authorization and content checks independently. Preserve the
-256 KiB argument, 512 KiB local envelope, 16 setup action, 32 diagnostic,
-64 observation reference and 128-character ASCII ID ceilings.
+Omitted scenario means exploratory work; omitted setup means none; omitted
+observation selection means all permitted feedback; omitted retain_injections
+means false. These are shared semantics, not repairs of invalid supplied values.
+A supplied parent MUST be a real execution receipt; Operator derives lineage.
+A rejected submission MUST NOT be cited as an execution receipt.
 
 Use only advertised native combinations. `model_tool_result`, `service_response`,
 `mcp_tool_result` and `environment_state` have different selectors, modes and
@@ -782,67 +775,40 @@ An internal counter or heartbeat cannot keep the guest alive after Operator ends
 execution. No automatic restart after failure, provider refusal escalation,
 fallback target route or campaign budget reset exists.
 
-## 11. Structured conclusion and completion
+## 11. Assessment and completion
 
-The model supplies bounded conclusion data through the typed local finish tool;
-the deterministic handler validates schema and reference campaign association/correlation.
-The orchestrator may produce a deterministic partial conclusion from recorded
-facts when a graceful limit is reached and no further model generation is possible.
-It must not invent claims or require provider structured-output support to finish.
+Harness MUST send one `engine.finish` request with a finish reason and exactly one
+bounded assessment draft, committed conclusion-purpose assessment-draft artifact
+receipt, or explicit unavailable reason. Operator performs validation, retention,
+internal conclusion recording, execution closure and owned cleanup. The old
+mandatory upload → conclusion record → stop sequence MUST NOT be used.
 
-The accepted `operator.dev/engine-conclusion/v1alpha2` contract requires:
+An ordinary assessment MUST contain summary and objectives; optional hypotheses,
+claims, coverage, uncertainties and references default to empty under the shared
+`normalize_assessment` helper. Operator supplies binding metadata. A zero-attempt
+campaign MAY finish with empty references and honest not-tested/inconclusive
+outcomes. Code MUST NOT invent outcomes, hypotheses or evidence.
 
-- host-bound campaign/launch/final revision and input/release/skill/prompt/contract identities;
-- objectives, investigated hypotheses, scenario/exploratory lineage and decisions;
-- known attempt/result/observation receipts and supporting content ranges;
-- claimed effects separated from execution status, inference and assurance;
-- unresolved effects, optional omissions, unread context and compaction gaps;
-- coverage, untested alternatives, remaining uncertainty and finish reason.
+Local hypotheses require no earlier registration; declaration order is irrelevant.
+Shared validators and Operator history MUST reject unknown references, duplicate
+IDs, self-parenting and cycles. Evidence claims MUST cite inspected permitted
+observations. Execution completion MUST remain distinct from objective success.
+Invalid assessments MUST remain correctable without claiming acceptance.
 
-Use the shared Section 10 bounds: 1 MiB encoded conclusion, 8,192-character
-summary, 100 claims, 100 objectives and hypotheses each, 100 gaps and 256 record
-references, plus the defined field/reference limits. Preserve explicit partial
-coverage if history cannot fit; commit detailed history separately. Retain statuses
-`completed`, `partial`, `failed` and interpretations `supported`, `inconclusive`,
-`not-observed`. Conclusion
-`completed` means report completion, not successful exploitation. Reference
-verification establishes that evidence exists, not that a model's interpretation
-is correct. Mark unsupported evidence claims as inconclusive or reject the draft
-for bounded correction; never manufacture an observation ID.
+An accepted result closes execution and requires exit within 5,000 ms, while
+`finalization_status` remains `pending`. No subsequent tool may execute. Harness
+MUST NOT retry uncertain delivery, replay campaigns, or claim cleanup completed.
+Operator status, journal and final evidence establish cleanup and final outcome.
 
-Conclusions MAY define hypotheses without earlier hypothesis records. All local
-definitions are visible throughout the conclusion, including forward references.
-The shared validator MUST reject duplicate IDs, self-parenting and local cycles;
-unknown nonlocal parents remain host-resolved against campaign history. The
-Harness MUST NOT synthesize history or require earlier hypothesis tools as an
-admission workaround. Preserve Operator's existing `CONCLUSION_INVALID` error
-envelope and `instance_path`; there is no new wire field or operation.
-
-Graceful finalization is ordered and uses the same ordinary-operation scheduler:
-
-1. Validate and serialize the structured conclusion within its exact schema.
-2. Publish and obtain its committed artifact receipt.
-3. Append the typed conclusion reference/finish record and receive its receipt.
-4. Send `engine.request_stop` with `finish_reason` and a committed conclusion
-   containing `artifact_receipt` and `record_receipt`, matching the record/content.
-   If no conclusion can be produced, use the explicit unavailable variant and
-   reason from shared Section 11; never invent receipts.
-5. Consume the ordinary correlated accepted result with saved `stop_receipt`,
-   closed execution admission, conclusion state, required exit within 5,000 ms
-   and finalization pending. Send no further ordinary work and exit. This is not
-   confirmation of completed target export, assessment or host-observed exit.
-
-Reserve up to 1 MiB in the existing artifact budget and one conclusion slot, and
-begin finalization with up to 30 seconds inside the hard campaign deadline.
-Only conclusion artifact/record/stop operations remain admissible; do not request
-another model/target experiment. If hard failure or exhaustion requires immediate
-termination, retain partial records without extending the campaign.
-
-Do not repeat an upload, record or stop request after an ambiguous failure. Exit
-zero or stdout prose is insufficient proof of completion. Immediate termination
-skips any pending reporting and leaves the host's partial records authoritative.
-Logs carry bounded operational diagnostics without prompt/payload bodies, raw
-observations or credentials; artifact/record operations are the output channel.
+On local exhaustion Harness MUST retain bounded diagnostics through
+`engine.diagnostic_report`, including the last rejected tool/call, stable reason,
+safe field path, observed count and configured limit. It MUST preserve the final
+feedback in conversation history and finish with an honest assessment or the
+specific unavailable reason (`invalid-call-limit`, for example). Limits MUST NOT
+be raised to compensate for invalid calls. Finalization remains bounded by the
+existing 30-second allowance and hard campaign deadline; diagnostics and finish
+consume the shared finalization budget. Deadline enforcement and owned cleanup
+MUST NOT depend on constructing an assessment.
 
 ## 12. Functional acceptance fixtures
 

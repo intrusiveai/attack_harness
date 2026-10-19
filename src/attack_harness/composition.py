@@ -51,7 +51,7 @@ def build_task(inputs):
     """Build bounded initial context with immutable handles for deferred reads."""
     context,bundle=inputs.context(),inputs.bundle()
     document={
-        "task":"Run the authorized adaptive attack-simulation campaign and finish with request_stop.",
+        "task":"Run the authorized adaptive attack-simulation campaign and finish with finish.",
         "campaign":{
             "campaign_id":context["campaign_id"],"launch_id":context["launch_id"],
             "run_revision":context["run_revision"],"operations":context["operations"],
@@ -131,10 +131,10 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
     handlers=FixedHandlers(
         protocol,inputs,client,loop,artifacts=artifacts,observations=observations,
         attempts=attempts,finalizer=finalizer,record_receipts=record_receipts)
-    dispatcher=Dispatcher(protocol,loop,handlers.handlers(),raw_handlers=handlers.raw_handlers())
+    dispatcher=Dispatcher(protocol,loop,handlers.handlers(),raw_handlers=handlers.raw_handlers(), client=client)
     codec=context["model"]["codec_id"]
     tools_raw=protocol.model_tools(codec,sorted(client.operations))
     policy_raw=protocol.model_policy_from_context(inputs.context_raw,tools_raw,inputs.prompt_raw)
     conversation=NativeConversation(protocol,policy_raw,build_task(inputs))
-    adaptive=AdaptiveHarness(protocol,client,loop,dispatcher,conversation,finalizer)
+    adaptive=AdaptiveHarness(protocol,client,loop,dispatcher,conversation,finalizer,limits=admission["limits"]["harness"])
     return Campaign(adaptive,handlers,attempts,finalizer)
