@@ -7,6 +7,7 @@ import stat
 import time
 
 from operator_contracts import ContractError
+from .diagnostics import close_after_failure
 from operator_contracts.startup import require
 
 LANES=("ordinary-in","ordinary-out","control-in","control-out")
@@ -35,8 +36,8 @@ class FIFO:
                 require(stat.S_ISFIFO(info.st_mode) and info.st_nlink==1)
                 self.identities[lane]=(info.st_dev,info.st_ino)
                 if lane.endswith("in"):self._open(lane)
-        except (OSError,ContractError):
-            self.close();raise ContractError("FIFO initialization failed") from None
+        except (OSError,ContractError) as error:
+            close_after_failure(self);raise ContractError("FIFO initialization failed") from error
 
     @staticmethod
     def capacity(lane):return 16 if lane.startswith("control") else 2
@@ -73,11 +74,17 @@ class FIFO:
                 os.dup2(copies[lane],index,inheritable=False)
                 self.fds[lane]=index
             self.pinned=True
-        except OSError:
-            self.close();raise ContractError("FIFO descriptor handoff failed") from None
+        except OSError as error:
+            close_after_failure(self);raise ContractError("FIFO descriptor handoff failed") from error
         finally:
-            for fd in copies.values():os.close(fd)
-            if root>=0:os.close(root)
+            cleanup_error = None
+            for fd in (*copies.values(), *([root] if root >= 0 else [])):
+                try:
+                    os.close(fd)
+                except OSError as error:
+                    if cleanup_error is None:cleanup_error = error
+            if self.pinned and cleanup_error is not None:
+                raise cleanup_error
 
     def _check(self):
         require(not self.closed)
@@ -103,13 +110,13 @@ class FIFO:
             require(len(self.queues[lane])<self.capacity(lane))
             self.queues[lane].append([frame,self.clock()+TRANSFER_SECONDS,0,raw])
             self.next[lane]+=1
-        except (OSError,ContractError):
-            self.close();raise ContractError("FIFO send failed") from None
+        except (OSError,ContractError) as error:
+            close_after_failure(self);raise ContractError("FIFO send failed") from error
 
     def take(self,lane):
         require(not self.closed and lane in self.decoders)
         if lane in self.full and self.clock()>=self.full[lane]:
-            self.close();raise ContractError("FIFO consumer deadline expired")
+            close_after_failure(self);raise ContractError("FIFO consumer deadline expired")
         if not self.queues[lane]:return None
         self.full.pop(lane,None)
         return self.queues[lane].popleft()
@@ -126,8 +133,8 @@ class FIFO:
             self._send("control-out")
             self._receive("ordinary-in")
             self._send("ordinary-out")
-        except (OSError,ContractError):
-            self.close();raise ContractError("FIFO transport failed") from None
+        except (OSError,ContractError) as error:
+            close_after_failure(self);raise ContractError("FIFO transport failed") from error
 
     def _receive(self,lane):
         if len(self.queues[lane])==self.capacity(lane):

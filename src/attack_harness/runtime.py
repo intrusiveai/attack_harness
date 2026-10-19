@@ -14,6 +14,8 @@ from operator_contracts.canonical import _canonical_value
 from operator_contracts.startup import require
 from operator_contracts.validation import ORDINARY_LIMIT, MAX_SAFE_INTEGER
 
+from .diagnostics import close_after_failure
+
 
 @dataclass(frozen=True)
 class OperationReply:
@@ -75,6 +77,7 @@ class OrdinaryClient:
         self._operation_index = 0
         self._active = False
         self._stopped = False
+        self._finish_accepted = False
         self._stop_reason = None
         self._history = {}
 
@@ -82,21 +85,29 @@ class OrdinaryClient:
     def stopped(self):
         return self._stopped
 
-    def _close(self, reason, *, receipt=None):
+    @property
+    def finish_accepted(self):
+        return self._finish_accepted
+
+    @property
+    def active(self):
+        return self._active
+
+    def _close(self, reason, *, receipt=None, cause=None):
         self._stopped = True
         self._stop_reason = RuntimeStopped(reason, receipt=receipt)
-        self.transport.close()
-        raise self._stop_reason
+        close_after_failure(self.transport)
+        raise self._stop_reason from cause
 
     def close(self):
         if not self._stopped:
             self._stopped = True
             self.transport.close()
 
-    def fail(self, reason, *, receipt=None):
+    def fail(self, reason, *, receipt=None, cause=None):
         """Close after a validated terminal typed result has been retained."""
         require(type(reason) is str and reason)
-        self._close(reason, receipt=receipt)
+        self._close(reason, receipt=receipt, cause=cause)
 
     def _identifier(self, kind):
         if kind == "call":
@@ -127,6 +138,8 @@ class OrdinaryClient:
 
     def tick(self):
         """Pump transport once and service every captured control message first."""
+        if self._finish_accepted and self._stop_reason is None:
+            return  # Deliberate shutdown: do not pump the already closed transport.
         if self._stopped:
             raise self._stop_reason or RuntimeStopped("closed")
         try:
@@ -134,8 +147,8 @@ class OrdinaryClient:
             self._control()
         except RuntimeStopped:
             raise
-        except (OSError, ContractError):
-            self._close("protocol-error")
+        except (OSError, ContractError) as error:
+            self._close("protocol-error", cause=error)
 
     def request(self, operation, body, *, operation_id=None, timeout_ms=None):
         """Submit one operation and wait while continuing to pump control.
@@ -211,6 +224,7 @@ class OrdinaryClient:
                     if result["status"] != "accepted" or not result["exit_required"]:
                         self._close("protocol-error")
                     self._history[operation_id] = (identity, reply)
+                    self._finish_accepted = True
                     self._stopped = True
                     self.transport.close()
                     return reply
@@ -218,7 +232,7 @@ class OrdinaryClient:
                 return reply
         except RuntimeStopped:
             raise
-        except (OSError, ContractError):
-            self._close("protocol-error")
+        except (OSError, ContractError) as error:
+            self._close("protocol-error", cause=error)
         finally:
             self._active = False

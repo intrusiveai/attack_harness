@@ -6,6 +6,73 @@ processes. Neither status qualifies production containers or live infrastructure
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
 
+## Finish-to-exit correction (2026-10-19)
+
+Branch `fix/finish-exit-diagnostics` starts from `candidate-v0.1.0` at
+`ebf94b8`. It implements Operator's
+[exit handoff](../operator_sandbox/docs/ATTACK_HARNESS_EXIT_HANDOFF.md).
+Accepted finish and healthy unwinding exit **0**, including an untested assessment.
+Acceptance remains distinct from objective success and completed host cleanup.
+Rejected finish remains correctable using a new operation identity. A real error,
+including a close error after acceptance, still exits **1**. Post-finish ticks and
+redundant closes do not pump the deliberately closed transport; fresh requests
+remain prohibited. The adaptive loop returns without constructing an unused
+model continuation after acceptance.
+
+Fatal exits emit one flushed JSON line to stderr, at most 1,025 bytes including
+newline. It contains the stage, stable reason, safe exception class and message.
+Only known static messages and OS-generated errno descriptions are included;
+unrestricted exception prose, filenames, URLs, configuration and unknown classes
+are explicitly omitted. Causal exceptions survive runtime/transport/startup
+wrapping. Cleanup or diagnostic-write failures cannot replace the primary error.
+Before finish, a healthy admitted channel gets at most one diagnostic report with
+a one-second deadline. Operator's existing structured vocabulary records this as
+`termination` / `local_error`; stderr retains the detailed safe cause. No report,
+model request, target call, new finish or replay is issued after acceptance. The
+existing five-second exit requirement is unchanged.
+
+| Check | Identity or result |
+|---|---|
+| Runtime build source fingerprint | `sha256:98ba33199a44189ce1ed1d182b3196c5ec3d8976bb3d7ae7d09aad07b3f52209` (54 runtime build inputs) |
+| Shared contract, unchanged | `0.1.0`, `sha256:a9e65f23eda2fe5f578a4da8a1128da45b7ee8f623cfd0a38066332877a61b0b`, source `b719ea36c0817552746820ab96ae0e3090786476` |
+| Matching Operator host runtime | `c6b187289ff04c0503dc3e9f7d787e006e0394da`; its `contracts/` and `schemas/` match the pinned contract source |
+| Harness regression tests | 105 passed, including pre-bootstrap/runtime failures, cause chains, actual close failure, failed reporting/flush, explicit omissions, and no new work after acceptance |
+| Controlled FIFO and spool processes | Both observed exit **0** after host-rejected assessment → correction → accepted finish → deliberate close → tick/close unwind |
+| Controlled post-finish fatal error | Both observed exit **1**, `OSError` / `io-error` / `Input/output error`, with no subsequent ordinary request |
+| Controlled pre-finish fatal error | Both observed exit **1** and exactly one retained local diagnostic; no model/target/finish request |
+| Full matching Operator integration | `internal/preparation` and `internal/transport` passed with production Harness process tests enabled; native Docker opt-in cases remain separate |
+| CI's pinned Operator | The same six process regression cases passed against the unchanged contract source revision |
+
+Reproduce the Harness tests with the pinned Operator checkout, then run matching
+host integration using the existing runner:
+
+```sh
+make test OPERATOR_ROOT=/path/to/pinned/operator PYTHON=/path/to/venv/bin/python
+python build/verify_integration.py \
+  --operator-root /path/to/operator-at-c6b1872 \
+  --operator-commit c6b187289ff04c0503dc3e9f7d787e006e0394da \
+  --python /path/to/venv/bin/python
+```
+
+Use `--run '^TestHarnessExitProcess$'` for just the six new process cases. The
+optional exact host revision does not change the build/contract pin, and the
+runner rejects differences in shared contracts/schemas. CI still uses its pinned
+Operator and now includes these cases. A test-only Go overlay redirects the
+existing process launcher through `build/operator_exit_adapter.py`; no fault
+switch is installed in the production Harness. The fixture grants pre-finish
+fatal FIFO closure the same 200 ms interpreter-exit grace already used for
+accepted finish, so an immediate test-peer kill cannot hide the actual exit code.
+It does not alter product deadlines or Docker shutdown behavior.
+
+Logs and the tested lock files are retained locally in ignored
+`dist/finish-exit-evidence/`.
+
+These are controlled local Go/Python process tests with path/confinement shims,
+not native production-container qualification. Images were not rebuilt or
+published for this correction; prior image identities below predate it. No live
+model or cloud campaign was run. The missing exit/cause evidence from
+`aws-openai-gpt5-mini-010` still prevents determining that run's exact failure.
+
 ## Simple campaign implementation — contract 0.1.0 (2026-10-18 UTC)
 
 Branch `feat/simple-campaign-contract` starts from `candidate-v0.1.0` at `f37c5c2`.
