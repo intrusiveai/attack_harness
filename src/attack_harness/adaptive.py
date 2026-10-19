@@ -254,9 +254,9 @@ class AdaptiveHarness:
                 except RuntimeStopped:
                     self.loop.hard_stop()
                     raise
-                except ContractError:
+                except ContractError as error:
                     self.loop.hard_stop()
-                    self.client.fail("model-compaction-contract-failed")
+                    self.client.fail("model-compaction-contract-failed", cause=error)
                 self.loop.accept_response(0)
                 if batch.disposition != "text":
                     self.loop.stop("no-useful-next-experiment")
@@ -295,9 +295,9 @@ class AdaptiveHarness:
             except RuntimeStopped:
                 self.loop.hard_stop()
                 raise
-            except ContractError:
+            except ContractError as error:
                 self.loop.hard_stop()
-                self.client.fail("model-contract-failed")
+                self.client.fail("model-contract-failed", cause=error)
 
             if batch.disposition == "tool-calls":
                 try:
@@ -308,9 +308,9 @@ class AdaptiveHarness:
                             self.conversation.extend(batch.continuation(self.dispatcher.last_results))
                         break
                     raise
-                self.conversation.extend(batch.continuation(results))
                 if self.finalizer.pending:
                     return self.finalizer.finish()
+                self.conversation.extend(batch.continuation(results))
                 continue
 
             self.loop.accept_response(0)

@@ -6,6 +6,7 @@ import stat
 import time
 
 from operator_contracts import ContractError
+from .diagnostics import close_after_failure
 from operator_contracts.canonical import raw_digest
 from operator_contracts.startup import require
 from operator_contracts.transport import lane_info, parse_spool_message_name, spool_message_name
@@ -84,8 +85,8 @@ class Spool:
                 s=os.fstat(fd);self.identities[lane]=(s.st_dev,s.st_ino)
                 if lane.endswith("out"):
                     with os.scandir(fd) as names:require(next(names,None) is None)
-        except (OSError,ContractError):
-            self.close();raise ContractError("spool initialization failed") from None
+        except (OSError,ContractError) as error:
+            close_after_failure(self);raise ContractError("spool initialization failed") from error
 
     @staticmethod
     def capacity(lane):return 16 if lane.startswith("control") else 2
@@ -113,13 +114,13 @@ class Spool:
             require(len(self.queues[lane])<self.capacity(lane))
             self.queues[lane].append((raw,self.clock()+TRANSFER_SECONDS))
             self.next[lane]+=1
-        except (OSError,ContractError):
-            self.close();raise ContractError("spool send failed") from None
+        except (OSError,ContractError) as error:
+            close_after_failure(self);raise ContractError("spool send failed") from error
 
     def take(self,lane):
         require(not self.closed and lane in self.known)
         if lane in self.full and self.clock()>=self.full[lane]:
-            self.close();raise ContractError("spool consumer deadline expired")
+            close_after_failure(self);raise ContractError("spool consumer deadline expired")
         if not self.queues[lane]:return None
         self.full.pop(lane,None)
         return self.queues[lane].popleft()
@@ -148,8 +149,8 @@ class Spool:
             self._ack()
             self._send("ordinary-out")
             for deadline in self.full.values():require(self.clock()<deadline)
-        except (OSError,ContractError):
-            self.close();raise ContractError("spool transport failed") from None
+        except (OSError,ContractError) as error:
+            close_after_failure(self);raise ContractError("spool transport failed") from error
 
     def _ack(self):
         if self.ack_dirty:
