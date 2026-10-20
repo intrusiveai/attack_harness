@@ -166,9 +166,42 @@ def check_reports(directory):
     return reports, files
 
 
-def catalog_entry(version, image_digest, promoted=False):
+def validate_contract_version(value):
+    if (not isinstance(value, str) or len(value) > 128
+            or not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value)):
+        raise ValueError("contract_package_version must be exact major.minor.patch (maximum 128 characters)")
+    return value
+
+
+def contract_version(platforms):
+    """Read the retained verified image identities, never the current source lock."""
+    if len(platforms) != 2 or {p["platform"] for p in platforms} != set(PLATFORMS):
+        raise ValueError("contract evidence requires both platforms")
+    pins = []
+    for platform in platforms:
+        pin = platform.get("contract", {})
+        version = validate_contract_version(pin.get("package_version"))
+        package_digest = pin.get("package_digest")
+        if not isinstance(package_digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", package_digest):
+            raise ValueError("invalid image contract package digest")
+        compatibility = platform["compatibility"]
+        raw = compatibility["raw"].encode("utf-8")
+        record = json.loads(raw)
+        if (digest(raw) != compatibility["digest"] or record != compatibility["record"]
+                or record["platform"] != platform["platform"]
+                or record["contract_package_version"] != version
+                or record["contract_package_digest"] != package_digest):
+            raise ValueError("image contract evidence differs from embedded compatibility")
+        pins.append((version, package_digest))
+    if pins[0] != pins[1]:
+        raise ValueError("platform contracts differ")
+    return pins[0][0]
+
+
+def catalog_entry(version, image_digest, contract_package_version, promoted=False):
     return {"version": version, "latest": True, "image": IMAGE + ":" + version,
-            "tags": ["release"] if promoted else ["rc"], "digest": image_digest}
+            "tags": ["release"] if promoted else ["rc"], "digest": image_digest,
+            "contract_package_version": validate_contract_version(contract_package_version)}
 
 
 def publish(github, registry, directory, branch, source, run_id, gate_status):
@@ -180,6 +213,7 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
     if github.api("git/ref/tags/" + version, missing=True):
         raise ValueError("version has been frozen for promotion; use a new candidate version")
     reports, files = check_reports(directory)
+    package_version = contract_version(reports)
     tag = version + "-candidate." + run_id
     references = []
     for report in reports:
@@ -200,11 +234,12 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
                 "qa_pending": QA_PENDING,
                 "build_run_id": run_id.split(".")[0], "build_run_attempt": run_id.split(".")[1],
                 "platforms": [{"platform": r["platform"], **r["oci"],
+                               "contract": r["contract"],
                                "compatibility": r["compatibility"]} for r in reports]}
     handoff, record = directory / "release-index-entry.json", directory / "candidate.json"
     # Catalog immutable candidate versions so delayed publication cannot replace
     # a newer build's entry or disagree with the rolling branch-version tag.
-    write_json(handoff, catalog_entry(tag, image_digest))
+    write_json(handoff, catalog_entry(tag, image_digest, package_version))
     write_json(record, evidence)
     github.create_release(tag, source, evidence, files + [handoff, record], prerelease=True)
     # workflow_dispatch runs even with GITHUB_TOKEN; tag-push events do not.
@@ -251,9 +286,13 @@ def promote(github, registry, number, directory):
     if github.api("git/ref/heads/main")["object"]["sha"] != pr["merge_commit_sha"]:
         raise ValueError("main has advanced; refusing stale promotion")
     verify_candidate_build(github, tag, source, evidence)
+    package_version = contract_version(evidence["platforms"])
+    candidate_entry = github.download_entry(tag, directory)
+    if candidate_entry != catalog_entry(tag, image_digest, package_version):
+        raise ValueError("candidate catalog entry differs from the verified image contract or identity")
     directory.mkdir(parents=True, exist_ok=True)
     handoff, record = directory / "release-index-entry.json", directory / "candidate.json"
-    write_json(handoff, catalog_entry(version, image_digest, promoted=True))
+    write_json(handoff, catalog_entry(version, image_digest, package_version, promoted=True))
     # The merged PR is the maintainer's QA sign-off; retain its identity and
     # description, including the actual QA results/links entered before merging.
     promotion = {"pull_request": number, "merge_commit": pr["merge_commit_sha"],
@@ -309,8 +348,9 @@ def catalog_context(github, registry, tag, source, directory):
           or tag != evidence["version"] + "-candidate." + evidence["build_run_id"] + "." + evidence["build_run_attempt"]):
         raise ValueError("catalog candidate tag differs from its build evidence")
     verify_candidate_build(github, evidence["evidence_tag"], source, evidence)
+    package_version = contract_version(evidence["platforms"])
     entry = github.download_entry(tag, directory)
-    if entry != catalog_entry(tag, evidence["index_digest"], promoted=promoted):
+    if entry != catalog_entry(tag, evidence["index_digest"], package_version, promoted=promoted):
         raise ValueError("catalog entry differs from the released image identity or lifecycle stage")
     if digest(registry.raw(entry["image"])) != entry["digest"]:
         raise ValueError("public image tag differs from the catalog digest")

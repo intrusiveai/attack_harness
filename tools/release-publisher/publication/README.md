@@ -28,8 +28,8 @@ python3 -m unittest discover -s scripts/tests -v
 ```
 
 The tests exercise local publication and validation with simulated services. They
-do not write to AWS. The bundled source includes utilities not invoked by Attack
-Harness; deployment uses the catalog workflow and command below.
+do not write to AWS. The bundle contains only the catalog publisher; deployment
+uses the catalog workflow and command below.
 
 ## Catalog publication
 
@@ -51,11 +51,20 @@ bash scripts/publish-catalog.sh /absolute/path/release-index-entry.json attack_h
 ```
 
 Candidates use `tags: ["rc"]`; final releases use `tags: ["release"]`. An entry
-binds a versioned GHCR image reference and its exact OCI index digest. New versions
-prepend, updates keep their position, and unrelated history remains. Final
-entries cannot change image identity or lose the release label. The product's
-promotion workflow preserves the qualified candidate bytes when creating the
-final version.
+binds a versioned GHCR image reference, its exact OCI index digest, and
+`contract_package_version`. The product generator reads the shared package version
+from both verified platform images and rejects disagreement. Use exact
+`major.minor.patch` without a `v` prefix, leading zeroes, suffix, or whitespace
+(128-character maximum). The product version and a later source checkout's lock
+are not substitutes for the shipped identity.
+
+New versions prepend, updates keep their position, and unrelated history remains. Final
+entries cannot change image or contract identity or lose the release label. A
+rebuilt candidate may change contract version only with changed artifact identity.
+The product's promotion workflow preserves the qualified candidate bytes and
+retained contract identity when creating the final version. Historical entries
+without the field remain readable; missing versions must not be guessed from the
+current source. The site displays the shared contract version for final releases.
 
 Conditional writes and bounded re-read/re-merge retries protect concurrent
 updates. The publisher checks S3 bytes and headers, invalidates the catalog path,

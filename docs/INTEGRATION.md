@@ -1,4 +1,4 @@
-# Integrating Attack Harness v0.1.0
+# Integrating Attack Harness v0.1.1
 
 Attack Harness runs as an Operator-managed container guest. Operator owns model
 and target access, campaign admission, execution, evidence retention, and cleanup.
@@ -28,6 +28,11 @@ shared contracts and schemas match the package source. CI checkout, local
 integration, and publication's inspection check use this same runtime pin.
 The minimum product version does not replace exact contract matching.
 
+The [release catalog](https://releases.intrusive.ai/docs/releases/attack_harness.json)
+records `contract_package_version` from the published images. The releases site's
+**Shared contract** indicator helps select matching Operator and Harness packages;
+admission still checks the exact embedded package identity.
+
 Operator's immutable source defines the integration interface:
 
 - [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SHARED_CONTRACT.md)
@@ -45,7 +50,7 @@ silently fall back to an older protocol.
 
 1. Install Operator and configure its model provider and target according to
    [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/README.md).
-2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.0` into the Docker daemon used by
+2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.1` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
 3. Set Operator's `engine.image` to that locally available image. Use an Operator

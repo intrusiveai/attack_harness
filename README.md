@@ -60,7 +60,7 @@ selects it in Operator's `engine.image` configuration. Operator verifies the ima
 embedded image compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
-Release **v0.1.0** requires Operator version **0.1.0 or later** with the exact
+Release **v0.1.1** requires Operator version **0.1.0 or later** with the exact
 shared contract **0.2.1** package digest pinned by this release. The
 [integration guide](docs/INTEGRATION.md) provides the immutable contract identity,
 image selection steps, tool examples, and compatibility checks.

@@ -13,9 +13,11 @@ is verified locally from each image using the exact
 Catalog publication requires the production reviewer. The guest's execution,
 assessment, and image bindings are described in the integration guide.
 
-Deliver workflow changes to `main`, then include them in the candidate before
-publication. Immutable tags retain their original workflow code; a code fix
-requires a new candidate run rather than rerunning an old tagged workflow.
+Create each new candidate from `main`. Source and publisher updates may travel
+together on that candidate branch: publication runs the code at its immutable
+release tag. The dispatchable catalog workflow must already exist on `main`
+(see the one-time setup below). A code fix requires a new candidate run rather
+than rerunning an old tagged workflow.
 
 ## One-time repository setup
 
@@ -30,10 +32,10 @@ must already exist; routine publication does not deploy infrastructure or the si
    `.github/workflows/verify.yml`, `.github/workflows/publish-catalog.yml`,
    `build/publish_candidate.py`, and the complete `tools/release-publisher` directory.
 3. Create candidate branches from a commit containing those files. The catalog
-   publisher workflow and the bundle must exist on `main` and on the eventual
-   release tag. For an existing candidate, merge the updated `main` into it and
-   let the resulting push build a new candidate. Rerunning an old run uses its
-   old workflow code; do not move an existing immutable tag to install updates.
+   publisher workflow must exist on `main`; the eventual release tag must contain
+   the workflow and complete bundle. Once set up, update them together with the
+   source on a candidate branch. Rerunning an old run uses its old workflow code;
+   do not move an existing immutable tag to install updates.
 
 ### 2. Enable Actions, runners, and package access
 
@@ -243,14 +245,17 @@ identify the repository, environment, tag, and workflow file.
    tag. When prompted, choose **Review deployments**, select `production`, and
    approve the deployment after reviewing the candidate's build evidence.
 3. Wait for the **catalog run** to succeed. It verifies the candidate's source,
-   successful native build jobs, and published image digest. The parent build
+   successful native build jobs, published image digest, and shared contract
+   identity retained from both platform images. The parent build
    dispatches this run but does not wait for completion; a green parent run alone
    does not mean that the catalog has been updated.
 4. Download `candidate.json` and `release-index-entry.json` from the prerelease.
    Confirm the [public catalog](https://releases.intrusive.ai/docs/releases/attack_harness.json)
    contains that unique candidate version with `tags: ["rc"]`, its unique GHCR
-   tag, and the same index digest. It must remain absent from the stable listing
-   on the [releases website](https://releases.intrusive.ai/).
+   tag, and the same index digest. Confirm `contract_package_version` equals the
+   package version in both platform build reports and embedded compatibility
+   files (`0.2.1` for the current contract). It must remain absent from the stable
+   listing on the [releases website](https://releases.intrusive.ai/).
 
 The rolling image `ghcr.io/intrusiveai/attack_harness:v1.2.3` is convenient for QA
 pulls. The unique candidate image tag and recorded index digest identify the exact
@@ -288,13 +293,15 @@ image digests to identify the published bytes; they are not compatibility record
    deployment when prompted, and wait for success. This is a separate run from
    the candidate catalog publication.
 5. Confirm the public catalog has a final `v1.2.3` entry with `tags: ["release"]`,
-   image `ghcr.io/intrusiveai/attack_harness:v1.2.3`, and the tested index digest.
+   image `ghcr.io/intrusiveai/attack_harness:v1.2.3`, the tested index digest,
+   and the candidate's unchanged `contract_package_version`.
    Verify `:latest` resolves to that same digest and older catalog entries remain.
    The unique candidate entry stays labeled `rc`; the final entry is separate.
 6. Reload the releases website. The version is eligible for its stable listing,
-   which displays the first two entries labeled exactly `release`. No site build
-   or redeployment is needed. Use a new version for further candidate work;
-   promotion freezes `v1.2.3` against later candidate writes.
+   which displays the first two entries labeled exactly `release`. Confirm its
+   **Shared contract: 0.2.1** indicator matches the promoted package version.
+   No site build or redeployment is needed. Use a new version for further candidate
+   work; promotion freezes `v1.2.3` against later candidate writes.
 
 ## Recover from a failed publication
 
@@ -315,7 +322,9 @@ image digests to identify the published bytes; they are not compatibility record
    ```
 
    The workflow derives its entry from the published release. Approve the new
-   deployment if prompted and wait for success.
+   deployment if prompted and wait for success. If the failure requires a newer
+   publisher (for example, to recognize a catalog field), a retry at the old tag
+   cannot install that fix. Publish a new candidate containing the updated bundle.
 4. If a merge raced a build or publication, finish those runs and rerun the merge's
    failed promotion job. Promotion refuses to roll back `latest` once `main` has
    advanced; do not bypass that check or move an old tag to force a retry.
@@ -338,7 +347,7 @@ stable list.
 ## Verify locally and update the publisher
 
 The reviewed bundle in `tools/release-publisher` comes from releases commit
-`c651c5fa47346f1ca02abe33791667f838b59e03`. Its `publisher-source.json` records the
+`0a88c3564b5266581dc94d3f1ce71880cac2376a`. Its `publisher-source.json` records the
 upstream revision and per-file SHA-256 hashes. Its `local_overrides` section
 records the catalog-only documentation adjustment. Executable publisher files
 retain their upstream identities; this repository invokes only catalog publication.
@@ -367,6 +376,6 @@ retain their upstream identities; this repository invokes only catalog publicati
    evidence and promotion checks. Keep execution product-local: no runtime
    checkout, reusable workflow call, or dependency fetch from the private releases
    repository. Preserve the offline Go settings shown above.
-4. Run the local checks, review and commit the changes, and deliver them to `main`
-   and the next candidate before its tag is created. Repeat the candidate
-   publication checks to verify live authentication and public delivery.
+4. Run the local checks, review and commit the changes on the candidate before
+   its tag is created. Promotion merges that candidate into `main`. Repeat the
+   candidate publication checks to verify live authentication and public delivery.

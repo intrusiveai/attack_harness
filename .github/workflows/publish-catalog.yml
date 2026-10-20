@@ -25,12 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install OCI inspection tool
         run: |
           sudo apt-get update
           sudo apt-get install --yes skopeo
-      - name: Verify the generated catalog entry against the public release
+      - name: Verify catalog image and shared contract identity against the public release
         id: entry
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,6 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -70,6 +72,7 @@ jobs:
           printf '%s\n' "$ENTRY_JSON" > "$RUNNER_TEMP/catalog-entry.json"
           go run ./cmd/catalog-publisher catalog merge --product attack_harness \
             --entry "$RUNNER_TEMP/catalog-entry.json" --output "$RUNNER_TEMP/validated-catalog.json"
+          jq -r '"Shared contract: \(.releases[0].contract_package_version)"' "$RUNNER_TEMP/validated-catalog.json"
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.CATALOG_PUBLISHER_ROLE_ARN }}
