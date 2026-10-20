@@ -176,6 +176,11 @@ identify the repository, environment, tag, and workflow file.
    the package source; its service and reporting changes enforce explicit origin
    and distinguish scenario coverage from exploratory execution. CI builds the
    package first, then checks out this runtime revision in its Operator directory.
+   `build/operator-runtime-commit.txt` is the shared runtime pin for CI checkout,
+   local integration tests, and publication's inspection-report check. When
+   updating Operator, change that pin; keep the contract source lock tied to the
+   exact package bytes. The two revisions may differ only while their shared
+   contracts/schemas remain identical, as verified by the integration gate.
    Install the locked dependencies, verify the package, and run the tests:
 
    ```sh

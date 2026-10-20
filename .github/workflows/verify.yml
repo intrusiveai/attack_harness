@@ -117,11 +117,18 @@ jobs:
           make contract-package OPERATOR_ROOT=../operator_sandbox
           make verify-contracts OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make test OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
+      - name: Read pinned Operator runtime
+        id: operator-runtime
+        working-directory: attack_harness
+        run: |
+          commit=$(cat build/operator-runtime-commit.txt)
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
       - name: Check out matching Operator runtime
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 052781ada208afd9a412c896dcbe00ccf82fc7af
+          ref: ${{ steps.operator-runtime.outputs.commit }}
           path: operator_sandbox
           persist-credentials: false
       - name: Verify Go and Python process integration

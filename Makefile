@@ -4,7 +4,7 @@ PLATFORM ?= linux/arm64
 INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-OPERATOR_RUNTIME_COMMIT := 052781ada208afd9a412c896dcbe00ccf82fc7af
+OPERATOR_RUNTIME_COMMIT := $(shell cat build/operator-runtime-commit.txt)
 CONTRACT_COMMIT := 850fa97624171a24189084964859893a731bdc4e
 
 .PHONY: test test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
