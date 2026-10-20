@@ -974,10 +974,17 @@ retains exact permitted request/result forms without host credentials. The guest
 consumes receipts; it cannot mark a host command successful, write authoritative
 journal state, inspect protected audit storage.
 
-Shared package 0.1.0 and its
+Shared package 0.2.0 and its
 [SIMPLE_CAMPAIGN_CONTRACT.md](../operator_sandbox/schemas/SIMPLE_CAMPAIGN_CONTRACT.md)
 MUST govern execution, defaults, assessment and completion. This supersedes the
-former mandatory conclusion artifact/record/stop sequence. Harness MUST send one
+former mandatory conclusion artifact/record/stop sequence. The shared v1alpha4
+attempt request MUST carry explicit `origin`: `scenario` requires a submitted
+`scenario_id`, while `exploratory` forbids it. Harness MUST preserve that choice,
+use Operator's shared validation, and reject inconsistent arguments without target
+execution. Neither omitted origin nor final objective references may supply or
+change scenario attribution. Exact embedded package compatibility MUST reject
+implicit-origin images/hosts; no fallback or negotiation is permitted.
+Harness MUST send one
 `engine.finish` carrying a reason and exactly one assessment, committed assessment
 draft artifact receipt, or explicit unavailable reason. Operator binds and retains
 the assessment, closes execution and performs cleanup through existing facilities.

@@ -25,7 +25,7 @@ Read these documents before coding, in order:
 5. [Accepted shared host/harness contract](../operator_sandbox/schemas/SHARED_CONTRACT.md):
    authoritative package, wire, startup/manifest, identity/deadline and stop rules.
 6. [Current attempt/feedback contract](../operator_sandbox/schemas/FEEDBACK_CONTRACT.md)
-   and current v1alpha2 attempt schemas: shared source for generated validators.
+   and current v1alpha4 attempt request schema: shared source for generated validators.
 
 Operator owns shared schemas and host authorization. This document specifies
 engine responsibilities under that accepted contract; it does not establish
@@ -35,24 +35,23 @@ checked against the Operator-owned package selected at implementation time.
 The [public objectives/scenarios input](../operator_sandbox/schemas/SCENARIO_BUNDLE_CONTRACT.md)
 defines producer-neutral ScenarioBundle content. User-authored and generator-authored
 inputs use the same shared package and startup path. Objectives-only input uses the
-existing exploratory attempt origin. Source/catalog/model provenance is optional;
-retain it when supplied without making it an execution prerequisite.
+explicit `origin: "exploratory"` without `scenario_id`. Source/catalog/model
+provenance is optional; retain it when supplied without making it an execution prerequisite.
 
 ## 2. Contract work required before integration
 
-The inspected repositories contain container design documents and retained draft
-attempt schemas, not a complete runnable host/guest SDK. Implement isolated
-components and test doubles while the accepted package is authored and tested.
-Design decisions in HC-01/HC-04/HC-05 are resolved by the shared contract; their
-publication and implementation gates remain open.
+Operator owns the accepted shared package and validators. Harness MUST consume
+the exact package version/content digest in `build/contract-lock.json` and run
+shared fixtures plus representative host/guest workflows. The requirements below
+remain integration and qualification responsibilities, not a parallel contract.
 Production startup must reject incomplete or incompatible contract packages.
 
 | ID | Required decision or artifact | Owner and implementation requirement |
 |---|---|---|
-| HC-01 | Shared package publication | Design accepted in the shared contract. Operator must author the remaining closed container/input/skill/ScenarioBundle/record/artifact/lifecycle/pipe schemas, registry/catalog and semantic rules, and publish package 0.1.0 after shared Go/Python vectors pass. Engine pins exact version/content digest. |
+| HC-01 | Shared package publication | Harness MUST consume Operator package 0.2.0 at the exact version/content digest in `build/contract-lock.json`, including shared origin validators, fixtures and provider projections. |
 | HC-02 | Observation bytes available to the adaptive loop | Design resolved by Operator’s shared feedback contract and current schemas. Implement/qualify the broker and harness wrapper, byte assembly and model-visible content; Interceptor implements the native manifest/chunk operations. |
-| HC-03 | Attempt observation selection | Design resolved: current v1alpha2 attempt request has optional `observation_selection`, defaulting to all-permitted, or an explicit selected subset. Pin/generate validators and qualify deterministic native translation without broadening feedback profiles. |
-| HC-04 | Assessment and finalization | Shared package 0.1.0 defines one `engine.finish` request. Verify assessment, unavailable, duplicate delivery and interrupted cleanup fixtures. |
+| HC-03 | Attempt observation selection | Design resolved: current v1alpha4 attempt request has optional `observation_selection`, defaulting to all-permitted, or an explicit selected subset. Pin/generate validators and qualify deterministic native translation without broadening feedback profiles. |
+| HC-04 | Assessment and finalization | Shared package 0.2.0 defines one `engine.finish` request. Verify assessment, unavailable, duplicate delivery and interrupted cleanup fixtures. |
 | HC-05 | Manifest delivery publication | Design accepted: required immutable /run/operator/manifests/ mount, fixed descriptors, inventories outside their own hashes and explicit manifest limits in shared contract Section 7. Publish schemas/fixtures and qualify both startup ends, including inventories exceeding 64 KiB. |
 | HC-06 | Model and target compatibility | Pin the supported native codec subsets and source-bound delivery schema dialects. Qualify actual host routes. Interceptor implements campaign-based access; qualify the exact native source/image and container deployment. |
 
@@ -363,7 +362,7 @@ Tools visible to the model are:
 | `reference_read` | Read one verified immutable input/skill/bundle handle and range; return source identity, actual range and bounded content. |
 | `artifact_publish` | Encode supplied text, JSON value or explicit bytes as data; validate size/media/encoding, upload through begin/part/commit and return a committed receipt. No model-supplied source filename. |
 | `injection_delete` | Remove one retained injection by `attempt_receipt_id` and `action_id`; Operator resolves the ID in the current campaign target. Confirmed absence succeeds. |
-| `attempt_execute` | Submit a permitted operation with direct input or a committed artifact receipt; Operator retains input, assigns bookkeeping and enforces authority before dispatch. |
+| `attempt_execute` | Require explicit scenario origin with a submitted scenario ID, or exploratory origin without a scenario ID. Submit a permitted operation with direct input or a committed artifact receipt; Operator retains input, assigns bookkeeping and enforces authority before dispatch. |
 | `observation_read` | Adopted HC-02 tool: read bounded permitted feedback by host result receipt and observation entry ID; never by a bare arbitrary digest/path/URL. |
 | `record_append` | Record bounded typed hypotheses, decisions, coverage and evidence assertions; return the host record receipt. |
 | `finish` | Submit a bounded assessment, committed assessment-draft artifact receipt, or explicit unavailable reason in one request. Acceptance closes execution; cleanup remains pending. |
@@ -371,10 +370,20 @@ Tools visible to the model are:
 | `snapshot_request` | Optional `label` and `description` (UTF-8, at most 4,096 bytes); host supplies campaign ID and returns checkpoint metadata. |
 | `snapshot_list`, `snapshot_inspect` | List with optional source handle/offset/limit, or inspect a source-session/checkpoint pair; return metadata including campaign ID and description. |
 
-Shared package **0.1.0** is a breaking replacement for the former caller-built
+Shared package **0.2.0** is a breaking replacement for the former caller-built
 attempt and artifact/record/stop protocol. The authoritative
 [SIMPLE_CAMPAIGN_CONTRACT.md](../operator_sandbox/schemas/SIMPLE_CAMPAIGN_CONTRACT.md)
 supersedes conflicting older completion/default rules. No dual protocol is supported.
+Every attempt MUST select `origin: "scenario"` with an exact submitted
+`scenario_id`, or `origin: "exploratory"` without `scenario_id`. Harness MUST use
+Operator's validator, preserve supplied origin/association unchanged, and return
+correctable field diagnostics before dispatch for missing/inconsistent values.
+It MUST NOT infer origin or default to a sole scenario. Scenario mutations and
+follow-up experiments retain scenario origin. Exploratory execution MUST NOT
+establish scenario coverage, and final objective/evidence associations MUST NOT
+retroactively change attempt origin. No hypothesis preregistration, small-input
+artifact publication or multi-step finish prerequisite may be introduced.
+
 Internal model generation and `engine.diagnostic_report` MUST NOT be model tools.
 Local argument rejection MUST use the shared operation-error diagnostic with
 source `harness-local`, no effects and safe correction; it MUST NOT invent a host
@@ -588,7 +597,7 @@ override the host result's execution, target-contact or cleanup disposition.
 ### 8.1 Adopted observation read contract — HC-02/HC-03
 
 Use the canonical [Operator feedback contract](../operator_sandbox/schemas/FEEDBACK_CONTRACT.md)
-and current v1alpha2 attempt request/result schemas. This resolves the operation
+and current v1alpha4 attempt request and v1alpha2 result schemas. This resolves the operation
 and observation-selection design; SDK generation, broker/harness implementation
 and native end-to-end qualification remain required. Older hosts without the
 advertised contract are incompatible, not a reason to silently omit feedback.

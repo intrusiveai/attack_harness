@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-// Test-only overlay for the pinned Operator's obsolete terminal-assessment fixture.
+// Additional Harness workflow cases alongside Operator's authoritative fixtures.
 // Uses its real process runner, production Python entrypoint and local native target.
 package preparation_test
 
@@ -50,7 +50,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						if turn > 5 {
 							return nil, fmt.Errorf("invalid-call limit was increased")
 						}
-						return processResponse([]any{modelCall(fmt.Sprintf("bad-%d", turn), "attempt_execute", map[string]any{"operation_id": "invoke"})}), nil
+						return processResponse([]any{modelCall(fmt.Sprintf("bad-%d", turn), "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke"})}), nil
 					}
 					if mode == "zero-attempt" {
 						return processResponse([]any{modelCall("finish", "finish", assessment())}), nil
@@ -108,7 +108,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 							}
 							input = map[string]any{"artifact_receipt": a["artifact_receipt"]}
 						}
-						return processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"operation_id": "invoke", "input": input})}), nil
+						return processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke", "input": input})}), nil
 					case 2:
 						a, e := modelToolResult(q, "invoke")
 						if e != nil || a["status"] != "completed" {

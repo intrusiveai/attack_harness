@@ -100,7 +100,7 @@ class ScriptedHost:
         }
 
     def _attempt(self,descriptor,generation,parent=None):
-        value={"scenario_id":"scenario-marker", "operation_id":"invoke",
+        value={"origin":"scenario", "scenario_id":"scenario-marker", "operation_id":"invoke",
                "input":{"artifact_receipt":descriptor}}
         if parent is not None:value["parent_attempt_receipt_id"]=parent
         return value

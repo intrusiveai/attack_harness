@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: b719ea36c0817552746820ab96ae0e3090786476
+          ref: 850fa97624171a24189084964859893a731bdc4e
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python
@@ -117,6 +117,13 @@ jobs:
           make contract-package OPERATOR_ROOT=../operator_sandbox
           make verify-contracts OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make test OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
+      - name: Check out matching Operator runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: intrusiveai/operator_sandbox
+          ref: 052781ada208afd9a412c896dcbe00ccf82fc7af
+          path: operator_sandbox
+          persist-credentials: false
       - name: Verify Go and Python process integration
         working-directory: attack_harness
         run: |

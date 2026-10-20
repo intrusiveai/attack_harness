@@ -3,6 +3,7 @@ from copy import deepcopy
 
 from operator_contracts import ContractError
 from operator_contracts.startup import require
+from operator_contracts.simple import validate_attempt_origin
 from .tools import HandlerResult, ToolError
 
 
@@ -11,6 +12,7 @@ class AttemptExecutor:
 
     def __init__(self, protocol, client, artifacts, context, bundle, loop):
         self.protocol, self.client, self.loop = protocol, client, loop
+        self._scenarios = frozenset(s["scenario_id"] for s in bundle.get("scenarios", ()))
         self._history = {}
         self._receipts = set()
         self._rejected_submissions = set()
@@ -38,6 +40,7 @@ class AttemptExecutor:
             return deepcopy(previous[1])
         try:
             arguments = self.protocol.validate_tool_arguments("attempt_execute", call.arguments)
+            validate_attempt_origin(arguments, self._scenarios)
         except ContractError as error:
             self._rejected_submissions.add(call.call_id)
             raise ToolError.from_contract(error) from None
