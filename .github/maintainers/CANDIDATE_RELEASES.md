@@ -9,12 +9,15 @@ at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
 These workflows publish images and the website's release catalog. Each image
 contains its own compatibility file; workflows do not publish or query records at
-`/sha256/<digest>`. Use the matching updated Operator and shared package `0.1.0`.
+`/sha256/<digest>`. Use the matching updated Operator and shared package `0.2.0`.
 Older images without the embedded file require rebuilding. Existing public records
 remain untouched; catalog publication still requires the production reviewer.
 
-Contract `0.1.0` is a coordinated breaking update: ordinary campaigns use direct
-input, evidence reads and one finish assessment. Use Operator with the exact
+Contract `0.2.0` is a coordinated breaking update: every attempt explicitly selects
+`origin: "scenario"` with an exact submitted `scenario_id`, or
+`origin: "exploratory"` without one. Exploratory execution does not cover a supplied
+scenario, and objective references at finish cannot change its origin. Ordinary
+campaigns still use direct input, evidence reads and one finish assessment. Use Operator with the exact
 package version/digest in the lock; older combinations must fail before execution.
 Optional artifacts, injection, snapshots/restores and historical records remain.
 Local hypotheses need no prior registration. Start a new campaign after selecting
@@ -162,31 +165,37 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `b719ea36c0817552746820ab96ae0e3090786476`
+1. Check out Operator commit `850fa97624171a24189084964859893a731bdc4e`
    in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.1.0`, digest
-   `sha256:a9e65f23eda2fe5f578a4da8a1128da45b7ee8f623cfd0a38066332877a61b0b`.
+   `build/contract-lock.json`; its package is `0.2.0`, digest
+   `sha256:057c4a53997b94bcd8ae18012daca4ec4610cd26abab9f32f748867362b422ee`.
    Move any older generated `build/context/contracts` aside before rebuilding.
-2. Install the locked test dependencies, verify the contract package, and run
-   Harness/publication tests:
+2. Check out matching Operator runtime commit
+   `052781ada208afd9a412c896dcbe00ccf82fc7af` in a second directory for integration
+   and stopped-image inspection. Its shared contracts/schemas are unchanged from
+   the package source; its service and reporting changes enforce explicit origin
+   and distinguish scenario coverage from exploratory execution. CI builds the
+   package first, then checks out this runtime revision in its Operator directory.
+   Install the locked dependencies, verify the package, and run the tests:
 
    ```sh
    python3 -m venv .ci-venv
    .ci-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-runtime.lock
    make verify-contracts OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
    make test OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
-   make test-integration OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make test-integration OPERATOR_ROOT=/path/to/matching/operator PYTHON=.ci-venv/bin/python
    python3 -m unittest discover -s build/tests -v
    ```
 
-   `make test-integration` uses a test-only Go overlay to replace the pinned
-   Operator fixture that still expects an invalid assessment to terminate. The
-   replacement verifies correction, exhaustion and separate CLI/report/export
-   evidence through the production Harness over FIFO and spool. It does not
-   change Operator runtime or contract bytes. Remove this overlay when Operator
-   includes the updated fixture and the pin advances.
+   `make test-integration` runs Operator's authoritative explicit-origin and
+   corrected-finish fixtures, plus Harness's additional workflow and exit tests
+   through a test-only overlay. Production Harness processes over FIFO/spool
+   verify correction without duplicate dispatch, observation inspection, accepted
+   finish, exit 0, cleanup and report/export attribution. The overlay does not
+   replace Operator's tests or modify runtime/contract bytes. Controlled responses
+   do not establish live-model reliability or native container qualification.
 
-   In the pinned Operator checkout, run `go test ./contracts ./internal/imagerelease
+   In the matching Operator runtime checkout, run `go test ./contracts ./internal/imagerelease
    ./internal/dockercontrol ./cmd/operatorctl`. Run its shared Python fixtures with
    `PYTHONPATH=contracts/python /path/to/harness/.ci-venv/bin/python -m unittest
    discover -s contracts/python/tests -v`.
@@ -197,7 +206,7 @@ identify the repository, environment, tag, and workflow file.
 
    ```sh
    make image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
-   make inspect-stopped-image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/pinned/operator PYTHON=.ci-venv/bin/python
+   make inspect-stopped-image PLATFORM=linux/arm64 OPERATOR_ROOT=/path/to/matching/operator PYTHON=.ci-venv/bin/python
    ```
 
    Repeat for `linux/amd64`. Prefer native hosts. For local file inspection on a

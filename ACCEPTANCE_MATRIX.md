@@ -1,10 +1,76 @@
 # Attack Harness acceptance matrix
 
-Current contract rebuild evidence recorded 2026-10-18 UTC; earlier results are dated below. `Pass (component)` means deterministic component
+Current explicit-origin evidence is recorded below; earlier results are dated separately. `Pass (component)` means deterministic component
 coverage; `Pass (process)` means the listed behavior passed across real Go/Python
 processes. Neither status qualifies production containers or live infrastructure.
 `Partial` identifies a tested subset and its remaining gate. `Not run` identifies
 external qualification still required.
+
+## Explicit attempt origin — contract 0.2.0 (2026-10-19)
+
+Branch `feat/explicit-attempt-origin` starts from `candidate-v0.1.0` at
+`452d043`. It consumes Operator's approved
+[explicit-origin handoff](../operator_sandbox/docs/EXPLICIT_ORIGIN_HANDOFF.md).
+Every attempt MUST select `origin: "scenario"` with an exact submitted scenario
+ID, or `origin: "exploratory"` without a scenario ID. Harness uses the shared
+validator for both the relationship and submitted-bundle membership, before
+allocating an operation ID or requesting execution. It forwards the validated
+origin/scenario unchanged. Missing origin is not inferred even with one scenario.
+
+Trusted guidance and the package's five provider tool projections explain the
+choice. The prompt includes the configuration invocation example and distinguishes
+scenario mutations from work outside a supplied scenario. Linking evidence to an
+objective at finish cannot change attempt origin. Shared local diagnostics and
+authoritative host errors remain correctable, identify the field, report no
+execution and safe resubmission, and never manufacture an execution receipt.
+Direct input → observation read → one finish remains the ordinary path; hypothesis
+preregistration, mandatory small-input artifacts and multi-step finish are absent.
+
+| Input/check | Identity or result |
+|---|---|
+| Exact contract source | `850fa97624171a24189084964859893a731bdc4e`, tree `bf4232c445c748bc9afca83928c14d9d6ceb0259` |
+| Shared contract | `0.2.0`, `sha256:057c4a53997b94bcd8ae18012daca4ec4610cd26abab9f32f748867362b422ee`; independently rebuilt and checked, 297 files / 7,422,176 bytes |
+| Matching Operator runtime | `052781ada208afd9a412c896dcbe00ccf82fc7af`; identical shared contract/schema bytes, with authoritative service enforcement and updated reporting; available on GitHub |
+| Harness runtime build inputs | `sha256:b5546e836546fa901507c473c99d2e80f0a9930dd5762c1c0f926b207779ba81`, 55 inputs |
+| Harness tests | 110 passed locally and in each platform image build; shared origin fixtures, unchanged argument forwarding, five provider projections, correction without defaulting, host error preservation, duplicate execution protection and exit handling |
+| Packaged shared Python tests | 32 passed from the rebuilt immutable package with bytecode writes disabled |
+| Go contract/compatibility tests | `contracts`, `internal/imagerelease`, `internal/contractstore` passed; old/new mismatch and relabeling an old digest are rejected through the existing compatibility mechanism |
+| Publication regression tests | 22 passed; catalog/image publication behavior retained |
+| Full matching integration suite | `internal/preparation` and `internal/transport` passed with production Harness processes enabled, including Operator's authoritative origin and corrected-finish fixtures; optional native Docker fixtures remain separate |
+| Representative campaigns | Six authoritative Operator cases: scenario, exploratory and rejected-then-corrected over FIFO/spool; one dispatch, permitted observation inspection, accepted assessment/finish, process exit 0 and confirmed complete cleanup |
+| Report/export attribution | Generated from retained campaign state: scenario execution is covered; exploratory execution leaves the supplied scenario untested even when the final assessment cites its evidence for the objective |
+| Image verification | Both architectures built with SBOM/provenance; exact embedded compatibility bytes, generated manifest/tool/prompt bindings, matching OCI config/layers and stopped inspection-container cleanup passed |
+| ARM64 runtime config | `sha256:7fcd9a828305638cc96e63e8b2c136015243000688ea186390f25e908bf267f5` |
+| ARM64 image manifest | `sha256:fd31946a4ec97560ec7af2338b12d5118119187b5ed6ddb9808156221df1f9ea` |
+| AMD64 runtime config | `sha256:238557918b17dbaf3b6e4e1baf08691934861bb148a0bd8ceda3a3676564378b` |
+| AMD64 image manifest | `sha256:42c10538fef84b1a2e15b38afc4937f8652f11f30105591a8397c77a8e1177ee` |
+
+Reproduction steps and both source revisions are in the
+[maintainer guide](.github/maintainers/CANDIDATE_RELEASES.md#verify-local-compatibility-before-publication).
+CI builds package 0.2.0 from its immutable source before checking out the matching
+Operator runtime for integration/inspection. `make test-integration` selects that
+exact runtime and rejects differences in shared contracts/schemas. Operator's
+corrected-finish test now runs directly; Harness's Go overlay adds its extra
+workflow/exit cases instead of replacing an authoritative test.
+
+This is controlled verification with scripted model responses, a local target,
+and real production Harness processes with relocated paths and a confinement
+shim. It does not establish live-provider selection reliability or a cloud QA
+recipe pass. Image inspection creates stopped containers, reads their immutable
+release files and removes them; it is separate from production-image campaign
+execution or native Docker lifecycle qualification. ARM64 builds used the local
+Linux/ARM64 Docker VM; AMD64 builds used emulation, and AMD64 stopped inspection
+explicitly records `native_platform: false`. No release or image was published,
+and no paid/cloud campaign was run.
+
+Remaining coordination: merge/deliver Operator's `fix/explicit-origin-evidence`
+changes together with these Harness changes and use the rebuilt matching image
+for QA. Product release version 0.1.0 remains valid; contract version/digest change
+together through existing embedded compatibility, with no negotiation or fallback.
+Logs, build/inspection reports and exact lock files are in ignored
+`dist/explicit-origin-evidence/`; OCI and inspection archives remain under `dist/`.
+Previous local images were preserved under that evidence directory's
+`prior-images/` for historical comparison.
 
 ## Finish-to-exit correction (2026-10-19)
 

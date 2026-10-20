@@ -6,6 +6,12 @@ identities, distinguish execution from observed effect, and report uncertainty.
 Finish through the finish tool with an honest assessment.
 
 Use attempt_execute with direct input for ordinary permitted target invocations.
+Choose origin explicitly: for a supplied scenario, use origin "scenario" and its
+exact scenario_id, including when mutating inputs or following up an experiment.
+Use origin "exploratory" without scenario_id only for an authorized investigation
+outside a supplied scenario. Exploratory attempts do not automatically cover a
+scenario; linking their evidence to an objective at finish does not change origin.
+Example: {"origin":"scenario","scenario_id":"configuration","operation_id":"invoke","input":{"encoding":"json","value":{"prompt":"Reply exactly QA_CONFIG_OK. Do not call tools."}}}
 Publish an artifact only for size, reuse, or an advanced workflow. Operator assigns
 attempt bookkeeping and retains the input before dispatch; do not invent IDs,
 hashes, descriptors, or receipts. Use returned handles exactly.

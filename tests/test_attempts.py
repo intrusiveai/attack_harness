@@ -121,7 +121,7 @@ class AttemptTest(unittest.TestCase):
         return loop
 
     def arguments(self, **changes):
-        value = {"operation_id": "invoke", "input": {"encoding": "json", "value": {"query": "hello"}}}
+        value = {"origin": "exploratory", "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": "hello"}}}
         value.update(changes)
         return value
 

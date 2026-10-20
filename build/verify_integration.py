@@ -1,8 +1,8 @@
 """Run controlled integration against an exact Operator revision.
 
 Keep the default contract source pin; an explicitly selected newer host must have
-identical contracts/schemas. Test-only Go overlays replace its obsolete terminal
-assessment fixture and add fatal-exit cases through a separate Python adapter.
+identical contracts/schemas. Test-only Go overlays add Harness workflow and
+fatal-exit cases through a separate Python adapter. The authoritative Operator tests remain enabled.
 No production fault switches, contract changes, or checkout edits are required.
 """
 import argparse
@@ -28,7 +28,7 @@ def main():
         raise SystemExit("integration requires the exact selected Operator commit")
     subprocess.run(["git", "diff", "--exit-code", lock["source"]["commit"], commit,
         "--", "contracts", "schemas"], cwd=operator, check=True, stdout=subprocess.DEVNULL)
-    original = operator / "internal/preparation/conclusion_diagnostic_process_test.go"
+    original = operator / "internal/preparation/harness_simple_campaign_test.go"
     replacement = root / "build/operator_simple_campaign_test.go"
     with tempfile.TemporaryDirectory(prefix="harness-integration-") as directory:
         overlay = Path(directory) / "overlay.json"

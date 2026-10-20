@@ -25,10 +25,10 @@ class SimpleHost(ScriptedHost):
 
     def _calls(self, turn):
         if self.mode == "exhausted" or (self.mode == "corrected" and turn == 1):
-            return [(f"bad-{turn}", "attempt_execute", {"operation_id": "invoke"})]
+            return [(f"bad-{turn}", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke"})]
         turn -= self.mode == "corrected"
         if turn == 1:
-            return [("invoke", "attempt_execute", {"operation_id": "invoke", "input": {
+            return [("invoke", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke", "input": {
                 "encoding": "json", "value": {"query": "return MARKER"}}})]
         if turn == 2:
             return [("read", "observation_read", {"receipt_id": "attempt-receipt-1",

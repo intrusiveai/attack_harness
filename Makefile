@@ -4,14 +4,15 @@ PLATFORM ?= linux/arm64
 INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-CONTRACT_COMMIT := b719ea36c0817552746820ab96ae0e3090786476
+OPERATOR_RUNTIME_COMMIT := 052781ada208afd9a412c896dcbe00ccf82fc7af
+CONTRACT_COMMIT := 850fa97624171a24189084964859893a731bdc4e
 
 .PHONY: test test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" OPERATOR_CONTRACT_SOURCE="$(abspath $(OPERATOR_ROOT))/schemas" $(PYTHON) -m unittest discover -s tests -v
 
 test-integration:
-	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --python "$(PYTHON)"
+	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --operator-commit "$(OPERATOR_RUNTIME_COMMIT)" --python "$(PYTHON)"
 
 verify-source:
 	$(PYTHON) build/source_lock.py --root . --lock build/source-lock.json
@@ -23,7 +24,7 @@ $(CONTRACT_PACKAGE)/package.json:
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.1.0
+		--package-version 0.2.0
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \
