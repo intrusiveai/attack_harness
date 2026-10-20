@@ -30,5 +30,11 @@
     "testdata/records/invalid-unknown-field.json": "7ff82944176d9db621d0444bbb9d29f57ef57e2fdac80935d8db385fda6b1de3",
     "testdata/records/valid-amd64.json": "4cff376278a2366b85a883dcf646a905884e0683fcc5e60ee4b4e60c2030bd7c",
     "testdata/records/valid-arm64.json": "7121529abe4f9f6ec47b4d2584914dcf0c4697e49cf94d9740ea680aec34260e"
+  },
+  "local_overrides": {
+    "publication/README.md": {
+      "sha256": "3c308bfdf0f608034e3faea1404676c07959cc1e2984737cc46062fa35062bf2",
+      "reason": "Document only the catalog publication interface used by Attack Harness; upstream documentation is retained in .github/archive/v0.1.0-development."
+    }
   }
 }
