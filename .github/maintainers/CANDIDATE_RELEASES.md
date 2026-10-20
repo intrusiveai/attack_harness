@@ -7,27 +7,15 @@ they are not part of installing or running Attack Harness through Operator.
 Complete the one-time setup before your first release. For later releases, start
 at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
-These workflows publish images and the website's release catalog. Each image
-contains its own compatibility file; workflows do not publish or query records at
-`/sha256/<digest>`. Use the matching updated Operator and shared package `0.2.0`.
-Older images without the embedded file require rebuilding. Existing public records
-remain untouched; catalog publication still requires the production reviewer.
+These workflows publish images and the website's release catalog. Compatibility
+is verified locally from each image using the exact
+[release contract and runtime pins](../../docs/INTEGRATION.md#locked-contract-and-runtime).
+Catalog publication requires the production reviewer. The guest's execution,
+assessment, and image bindings are described in the integration guide.
 
-Contract `0.2.0` is a coordinated breaking update: every attempt explicitly selects
-`origin: "scenario"` with an exact submitted `scenario_id`, or
-`origin: "exploratory"` without one. Exploratory execution does not cover a supplied
-scenario, and objective references at finish cannot change its origin. Ordinary
-campaigns still use direct input, evidence reads and one finish assessment. Use Operator with the exact
-package version/digest in the lock; older combinations must fail before execution.
-Optional artifacts, injection, snapshots/restores and historical records remain.
-Local hypotheses need no prior registration. Start a new campaign after selecting
-the matching rebuilt image; never replay a failed campaign. Default trusted
-operating guidance is in `assets/default-system-prompt.txt`; custom prompt owners
-should preserve that guidance. Harness cannot alter an Operator-bound prompt.
-
-Deliver workflow changes to `main` first, then merge `main` into the candidate
-branch before its next publication. Existing immutable tags retain their original
-workflow code; do not rerun the retired record-publishing workflow on those tags.
+Deliver workflow changes to `main`, then include them in the candidate before
+publication. Immutable tags retain their original workflow code; a code fix
+requires a new candidate run rather than rerunning an old tagged workflow.
 
 ## One-time repository setup
 
@@ -93,9 +81,7 @@ must already exist; routine publication does not deploy infrastructure or the si
    environment, protected `v*` tags, audience `sts.amazonaws.com`, and the exact
    local workflow path `.github/workflows/publish-catalog.yml`.
    Step 5 supplies the matching custom subject. Retain the existing role for
-   catalog publication; its name does not imply that records are still published.
-   Removing obsolete record permissions and workflow trust is separate service
-   administration, not a prerequisite for this workflow change.
+   catalog publication; this workflow publishes catalog entries only.
 2. Open **Settings → Environments → production**, creating the environment if
    necessary. Under **Deployment branches and tags**, select **Selected branches
    and tags** and add a **Tag** rule for `v*`. After checking other consumers,
@@ -113,9 +99,8 @@ must already exist; routine publication does not deploy infrastructure or the si
    | `CLOUDFRONT_DISTRIBUTION_ID` | `E1ET1MODBEJLY6` |
    | `CATALOG_PUBLISHER_ROLE_ARN` | `arn:aws:iam::389547485478:role/releases-record-publisher` |
 
-`RECORD_PUBLISHER_ROLE_ARN` is no longer used by these workflows. Do not substitute
-another product's catalog role or add AWS access keys. The environment belongs to
-this product repository.
+Do not substitute another product's catalog role or add AWS access keys. The
+environment belongs to this product repository.
 
 ### 5. Set and verify the repository's OIDC subject
 
@@ -165,13 +150,13 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `850fa97624171a24189084964859893a731bdc4e`
+1. Check out Operator commit `754b7119f49850727c6df506f050eae11d7af915`
    in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.2.0`, digest
-   `sha256:057c4a53997b94bcd8ae18012daca4ec4610cd26abab9f32f748867362b422ee`.
+   `build/contract-lock.json`; its package is `0.2.1`, digest
+   `sha256:6ecefb5354a4fe2d1baf591bace2fb8457d87106f6a8f99ebc9c9abede4a98d9`.
    Move any older generated `build/context/contracts` aside before rebuilding.
 2. Check out matching Operator runtime commit
-   `052781ada208afd9a412c896dcbe00ccf82fc7af` in a second directory for integration
+   `d9255aeba9618bd53f4c3344e6f1c4284e99a353` in a second directory for integration
    and stopped-image inspection. Its shared contracts/schemas are unchanged from
    the package source; its service and reporting changes enforce explicit origin
    and distinguish scenario coverage from exploratory execution. CI builds the
@@ -220,12 +205,12 @@ identify the repository, environment, tag, and workflow file.
    check and does not qualify runtime execution or satisfy native CI evidence.
 4. Confirm each build report identifies the exact embedded compatibility bytes
    and raw digest separately from the OCI config, manifest and index. The stopped
-   check uses updated Operator's real reader with external HTTP disabled, verifies
+   check uses the pinned Operator's real reader with external HTTP disabled, verifies
    all five fixed files, and confirms inspection-container removal. It records the
    independently resolved Docker image ID separately: containerd-backed Docker can
    expose a manifest-based ID while classic Docker exposes the config ID.
 5. Run Operator's process integration suite with this Harness checkout (see its
-   `docs/PROCESS_INTEGRATION.md`). Check frozen startup, attempt-generator and
+   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
    conclusion bindings. The release digest hashes the exact compatibility bytes,
    not normalized JSON. Record fixture/cross-platform results separately from
    native runtime and live-provider QA; neither latter activity blocks candidate
@@ -354,9 +339,9 @@ stable list.
 
 The reviewed bundle in `tools/release-publisher` comes from releases commit
 `c651c5fa47346f1ca02abe33791667f838b59e03`. Its `publisher-source.json` records the
-revision and per-file SHA-256 hashes. The reviewed bundle still includes record
-utilities, but these workflows use only catalog publication. Keep its provenance
-intact until a reviewed catalog-only export is available.
+upstream revision and per-file SHA-256 hashes. Its `local_overrides` section
+records the catalog-only documentation adjustment. Executable publisher files
+retain their upstream identities; this repository invokes only catalog publication.
 
 1. Install Go 1.26.5, Python 3, Bash, jq, and curl. From the repository root, run:
 

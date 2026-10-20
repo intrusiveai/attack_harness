@@ -1,5 +1,4 @@
 {
-  "status": "development-candidate-not-runtime-qualified",
   "source_date_epoch": 0,
   "dockerfile_frontend": {
     "reference": "docker/dockerfile:1.18.0",

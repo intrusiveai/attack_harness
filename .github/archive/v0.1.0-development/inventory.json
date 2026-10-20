@@ -1,0 +1,33 @@
+{
+  "source_commit": "40be5eb01aeeec59226394eae866f4d5c79078f0",
+  "files": [
+    {
+      "original_path": "IMPLEMENTATION_STATUS.md",
+      "sha256": "b0d75b7cc5d8d302d0d1aefb3130782c633995c401f8b8dca251655944cf12a4"
+    },
+    {
+      "original_path": "ACCEPTANCE_MATRIX.md",
+      "sha256": "c1ed264ebd88ab2c92db413812f707b7f5e9bbfa2d40b0a1717d2f81683d29a8"
+    },
+    {
+      "original_path": "CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md",
+      "sha256": "d2731a625822261cd5fd54fe7cf3c87b6b891b9f0302e74af98b21fc3f377e36"
+    },
+    {
+      "original_path": "GUEST_ARTIFACT_LAYOUT_SPEC.md",
+      "sha256": "5fed4d7080933d92b0ebac1db8bc77a7524acddf6bb7c297144be0a78f17590a"
+    },
+    {
+      "original_path": "native/README.md",
+      "sha256": "6b09f2b448b15c5edcfb5d4e112dc0bad5bbb472b4a66cc9ff679688f0366b7f"
+    },
+    {
+      "original_path": "tools/release-publisher/publication/README.md",
+      "sha256": "68caededbb62207fdc3d2df54a581b3bd3cabf16aa6ae7cc9956efa6ffa9a7f4"
+    },
+    {
+      "original_path": "build/image-lock.json",
+      "sha256": "38000fc396e125bbf6331dc28da497603303ac12aa399fe16539c2318ae09944"
+    }
+  ]
+}
