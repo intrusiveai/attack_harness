@@ -1,40 +1,25 @@
 {
   "product": "attack_harness",
   "source_repository": "intrusiveai-engineering/releases",
-  "source_revision": "c651c5fa47346f1ca02abe33791667f838b59e03",
+  "source_revision": "0a88c3564b5266581dc94d3f1ce71880cac2376a",
   "working_tree": false,
   "sha256": {
     "cmd/catalog-publisher/main.go": "6615634b623aacc0fe6e7727eb5127fd277f93f653f14258b41d24049316053a",
-    "cmd/release-publisher/main.go": "b0a8a3951dfd4e36f57cc99d41814776c90df6401be11899caa44166cca155e6",
     "go.mod": "84f574162ff04d9baf2d2deb95678ac6497fcfa8892aab60d77ea6073f2b78f4",
-    "internal/catalog/merge.go": "0fc823571f841149e256bb078d55255a32796f1b32bac6b765b8432ed0706062",
-    "internal/catalog/merge_test.go": "e3f91fee949fdfe53334068d960eacdfd3946ff9c19fbe3d84cd76ebe18bd06b",
-    "internal/catalog/model.go": "ff1df9f66d885d556fd35c4d1847f6fb29d10c5c4a880708eec84a6eb3f49d28",
+    "internal/catalog/merge.go": "76e24692bd8500f56ab9ff08846324ac4b2293da9084193963ff0ba27e07c3bd",
+    "internal/catalog/merge_test.go": "fffab460ff754d402bb1e4d5b816e1cbbf03b0e7a68350b79b43225b5260a46e",
+    "internal/catalog/model.go": "32119f447bcdab395f135b3efaab2c2494645bb802a75baae2c455e692da4ab7",
     "internal/catalogcli/run.go": "d270766779ce1a47361967db2ed0b5626aae4bcb8549eb8ba6625e9d0f06cb26",
-    "internal/oci/verify.go": "f86a44ed8b319d56e293bc02c90c953995f9e5144b022837a9f7bc8882f57cbb",
-    "internal/oci/verify_test.go": "08f51ae20c0889e6d8d26075031a8c9b8fac3b637b147aab3da698491860640a",
-    "internal/publishercli/run.go": "70720117b91e83c0e9fde547b1c1be7aea35dc6e0bdcff8c48ba17617a591b91",
-    "internal/record/record.go": "235a09cf87e2a124c3c0c04864080dc2118b0d9bff2fa7a224a6b700df6c09e4",
-    "internal/record/record_test.go": "fbc9601239c85b5c0f3c0f16e8ac832f8247273595ee52b220a6286f795ed315",
-    "internal/remote/verify.go": "56faf476d8ccc95251e7367767932ae7df3f385864c6ce37fb03414dc4b78be2",
-    "internal/remote/verify_test.go": "a5ca92c44c583b61e289658a9524699a7c8a396a0fb70a5a6385d85ecff1c868",
-    "publication/README.md": "68caededbb62207fdc3d2df54a581b3bd3cabf16aa6ae7cc9956efa6ffa9a7f4",
-    "publication/examples/approve-candidate.yml": "3e4df25ba64af7966e0509086197fd6e2b53aa12aed43274a429b3e423d6a4fb",
+    "publication/README.md": "3684757582146240d7ccea52a5d5921df86b7c483c8d4773508eea8741c55d24",
     "publication/examples/publish-catalog.yml": "1972deba6dc0866874b6f29c1951765274baa82f563bfe0fcdc91771e8dbed33",
-    "scripts/prepare-record.sh": "21e962fd7c76bed95585d82d981d4d252a9a7cd243d6a1d93e2ba2d2de77da17",
     "scripts/publish-catalog.sh": "1bc836caacef1622b9c64e72d584f86e3b588f5ffb37a71601e6f791c7198976",
-    "scripts/publish-record.sh": "7c4b0c28bf7b03cd016c6078996594c9e04e574e60516b852367d8a4c3f164f6",
     "scripts/tests/fake_s3.py": "53c68942819c28490bd2b102b9c0d5fe9be350fc625518427c62c8e90a5a69be",
-    "scripts/tests/test_catalog.py": "5f42b9d502257382d2f8a15f0fddaf84009f255cabd1c3f074a7c2c21a2857f6",
-    "scripts/tests/test_publish_record.py": "2337ccaa9bd9923a72d211449c51db18f005ff1f176f93d0f1a6487c349abfd2",
-    "testdata/records/invalid-unknown-field.json": "7ff82944176d9db621d0444bbb9d29f57ef57e2fdac80935d8db385fda6b1de3",
-    "testdata/records/valid-amd64.json": "4cff376278a2366b85a883dcf646a905884e0683fcc5e60ee4b4e60c2030bd7c",
-    "testdata/records/valid-arm64.json": "7121529abe4f9f6ec47b4d2584914dcf0c4697e49cf94d9740ea680aec34260e"
+    "scripts/tests/test_catalog.py": "2c46fe0b6fb861e3529b8b7b2d523478c6bb8d9f7a1e816607cf1ecc33a9adf1"
   },
   "local_overrides": {
     "publication/README.md": {
-      "sha256": "3c308bfdf0f608034e3faea1404676c07959cc1e2984737cc46062fa35062bf2",
-      "reason": "Document only the catalog publication interface used by Attack Harness; upstream documentation is retained in .github/archive/v0.1.0-development."
+      "sha256": "3e9c517d4eec6aecde54affc1cac837092ba1e675d6a003c1864acb1ef7f66f6",
+      "reason": "Product-specific catalog publication instructions."
     }
   }
 }

@@ -1,1 +1,0 @@
-{"api_version":"intrusive.ai/engine-release/v1alpha1","image_digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","minimum_operator_version":"0.1.0","contract_package_version":"0.1.0","contract_package_digest":"sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","runtime_profile":"operator-container/v1","platform":"linux/arm64"}

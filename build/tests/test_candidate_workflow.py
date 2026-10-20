@@ -235,6 +235,8 @@ class CandidateWorkflowTest(unittest.TestCase):
             self.github, self.registry, tag, SOURCE, self.directory)["entry_json"])
         self.assertEqual(candidate_entry["tags"], ["rc"])
         self.assertEqual(candidate_entry["image"], release.IMAGE + ":" + tag)
+        package_version = json.loads(Path("build/contract-lock.json").read_bytes())["package"]["package_version"]
+        self.assertEqual(candidate_entry["contract_package_version"], package_version)
         evidence = json.loads(self.github.releases[tag]["files"]["candidate.json"])
         self.assertTrue(all("record" not in p for p in evidence["platforms"]))
         release.promote(self.github, self.registry, 42, self.directory)
@@ -252,6 +254,7 @@ class CandidateWorkflowTest(unittest.TestCase):
         self.assertEqual(final["digest"], release.digest(candidate))
         self.assertEqual(final_entry, final)
         self.assertEqual(candidate_entry["digest"], final_entry["digest"])
+        self.assertEqual(candidate_entry["contract_package_version"], final_entry["contract_package_version"])
         self.assertEqual(self.github.dispatches[-1], {"workflow": "publish-catalog.yml", "ref": "v1.2.3"})
         with self.assertRaisesRegex(ValueError, "frozen"):
             self.publish("124.1")
@@ -277,6 +280,8 @@ class CandidateWorkflowTest(unittest.TestCase):
             "--entry", entry, "--output", catalog)
         candidate = json.loads(catalog.read_bytes())["releases"][0]
         self.assertEqual(candidate["tags"], ["rc"])
+        self.assertEqual(candidate["contract_package_version"],
+                         json.loads(Path("build/contract-lock.json").read_bytes())["package"]["package_version"])
         release.promote(self.github, self.registry, 42, self.directory)
         entry.write_text(release.catalog_context(
             self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
@@ -285,6 +290,7 @@ class CandidateWorkflowTest(unittest.TestCase):
         final, retained_candidate = json.loads(catalog.read_bytes())["releases"]
         self.assertEqual(final["tags"], ["release"])
         self.assertEqual(final["digest"], candidate["digest"])
+        self.assertEqual(final["contract_package_version"], candidate["contract_package_version"])
         self.assertEqual(final["digest"], release.digest(self.registry.raw(release.IMAGE + ":latest")))
         self.assertEqual(retained_candidate, dict(candidate, latest=False))
         self.assertEqual(final["image"], release.IMAGE + ":v1.2.3")
@@ -296,6 +302,100 @@ class CandidateWorkflowTest(unittest.TestCase):
         self.assertIn("superseded", self.publish("124.1"))
         self.assertEqual(self.registry.raw(release.IMAGE + ":v1.2.3"), original)
         self.assertIn("v1.2.3-candidate.124.1", self.github.releases)
+
+    def test_missing_or_invalid_contract_version_never_uploads(self):
+        reports, files = release.check_reports(self.directory)
+        for version in (None, "", "v0.2.1", "0.2", "01.2.3", "0.2.1-rc.1", "0.2.1+build",
+                        "0.2.1\n", " 0.2.1", "^0.2.1", 21, "1" * 125 + ".0.0"):
+            for platform in range(2):
+                with self.subTest(version=version, platform=platform):
+                    invalid = copy.deepcopy(reports)
+                    if version is None:
+                        invalid[platform]["contract"].pop("package_version")
+                    else:
+                        invalid[platform]["contract"]["package_version"] = version
+                    with patch.object(release, "check_reports", return_value=(invalid, files)):
+                        with self.assertRaisesRegex(ValueError, "contract_package_version"):
+                            self.publish()
+                    self.assertEqual(self.registry.copies, [])
+                    self.assertEqual(self.github.releases, {})
+                    self.assertEqual(self.github.dispatches, [])
+
+    def test_cross_platform_contract_disagreement_never_uploads(self):
+        reports, files = release.check_reports(self.directory)
+        reports[1]["contract"]["package_version"] = "99.0.0"
+        compatibility = reports[1]["compatibility"]
+        compatibility["record"]["contract_package_version"] = "99.0.0"
+        compatibility["raw"] = json.dumps(compatibility["record"])
+        compatibility["digest"] = release.digest(compatibility["raw"].encode())
+        with patch.object(release, "check_reports", return_value=(reports, files)):
+            with self.assertRaisesRegex(ValueError, "platform contracts differ"):
+                self.publish()
+        self.assertEqual(self.registry.copies, [])
+
+    def test_build_report_contract_must_describe_the_image(self):
+        for platform in release.PLATFORMS:
+            path = self.directory / ("attack-harness-" + platform.replace("/", "-") + ".build-report.json")
+            original = json.loads(path.read_bytes())
+            invalid = copy.deepcopy(original)
+            invalid["contract"]["package_version"] = "99.0.0"
+            release.write_json(path, invalid)
+            with self.subTest(platform=platform), self.assertRaisesRegex(ValueError, "archive differs"):
+                self.publish()
+            self.assertEqual(self.registry.copies, [])
+            release.write_json(path, original)
+
+    def test_promotion_and_catalog_use_retained_contract_not_current_checkout(self):
+        self.publish()
+        tag = "v1.2.3-candidate.123.1"
+        original = json.loads(self.github.releases[tag]["files"]["release-index-entry.json"])
+        read_bytes = Path.read_bytes
+
+        def read(path):
+            if path == Path("build/contract-lock.json"):
+                raise AssertionError("released metadata must not come from the current checkout")
+            return read_bytes(path)
+
+        with patch.object(Path, "read_bytes", read):
+            release.promote(self.github, self.registry, 42, self.directory)
+            final = json.loads(release.catalog_context(
+                self.github, self.registry, "v1.2.3", SOURCE, self.directory)["entry_json"])
+        self.assertEqual(final["contract_package_version"], original["contract_package_version"])
+        self.assertEqual(final["digest"], original["digest"])
+
+    def test_catalog_and_promotion_reject_changed_candidate_contract(self):
+        self.publish()
+        tag = "v1.2.3-candidate.123.1"
+        assets = self.github.releases[tag]["files"]
+        original = json.loads(assets["release-index-entry.json"])
+        for version in (None, "99.0.0"):
+            changed = dict(original)
+            if version is None:
+                changed.pop("contract_package_version")
+            else:
+                changed["contract_package_version"] = version
+            assets["release-index-entry.json"] = json.dumps(changed).encode()
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(ValueError, "catalog entry differs"):
+                    release.catalog_context(self.github, self.registry, tag, SOURCE, self.directory)
+                with self.assertRaisesRegex(ValueError, "candidate catalog entry differs"):
+                    release.promote(self.github, self.registry, 42, self.directory)
+                self.assertNotIn("v1.2.3", self.github.releases)
+                self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
+
+    def test_retained_contract_must_match_embedded_compatibility(self):
+        self.publish()
+        tag = "v1.2.3-candidate.123.1"
+        candidate = self.github.releases[tag]
+        evidence = json.loads(candidate["body"].removeprefix(release.MARKER + "\n"))
+        for platform in evidence["platforms"]:
+            platform["contract"]["package_version"] = "99.0.0"
+        candidate["body"] = release.MARKER + "\n" + json.dumps(evidence)
+        with self.assertRaisesRegex(ValueError, "differs from embedded compatibility"):
+            release.promote(self.github, self.registry, 42, self.directory)
+        with self.assertRaisesRegex(ValueError, "differs from embedded compatibility"):
+            release.catalog_context(self.github, self.registry, tag, SOURCE, self.directory)
+        self.assertNotIn(release.IMAGE + ":latest", self.registry.images)
 
     def test_new_head_replaces_version_and_requires_matching_merge(self):
         self.publish()
