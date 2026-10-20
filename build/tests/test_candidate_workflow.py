@@ -89,7 +89,7 @@ def make_archive(directory, platform, mutate_files=None):
         "layer_digests": [layer["digest"]], "operator_stopped_image_inspection": "passed",
         "inspection_container_cleanup": "passed", "operator_version": "0.1.0",
         "operator_local_compatibility": "passed", "compatibility_digest": report["compatibility"]["digest"],
-        "operator_commit": json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]})
+        "operator_commit": Path("build/operator-runtime-commit.txt").read_text().strip()})
     release.write_json(Path(str(prefix) + ".rebuild-comparison.json"), {
         "platform": platform, "runtime_identity": "identical",
         "runtime_comparisons": {"image_digest": True, "manifest_digest": True, "layer_digests": True}})
@@ -325,6 +325,39 @@ class CandidateWorkflowTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inspection does not match"):
             self.publish()
         self.assertEqual(self.registry.copies, [])
+
+    def test_runtime_pin_can_differ_from_contract_source(self):
+        contract_commit = json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]
+        runtime_commit = Path("build/operator-runtime-commit.txt").read_text().strip()
+        self.assertNotEqual(runtime_commit, contract_commit)
+        self.publish()
+        self.assertIn(release.IMAGE + ":v1.2.3", self.registry.images)
+        self.assertEqual(self.github.dispatches, [
+            {"workflow": "publish-catalog.yml", "ref": "v1.2.3-candidate.123.1"}])
+
+    def test_unpinned_inspector_never_publishes_even_at_contract_source(self):
+        contract_commit = json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]
+        for platform in release.PLATFORMS:
+            path = self.directory / ("attack-harness-" + platform.replace("/", "-") + ".inspection-report.json")
+            original = json.loads(path.read_bytes())
+            for commit in (contract_commit, "f" * 40, "main", ""):
+                with self.subTest(platform=platform, commit=commit):
+                    release.write_json(path, {**original, "operator_commit": commit})
+                    with self.assertRaisesRegex(ValueError, "unpinned Operator runtime"):
+                        self.publish()
+                    self.assertEqual(self.registry.copies, [])
+                    self.assertEqual(self.github.releases, {})
+                    self.assertEqual(self.github.dispatches, [])
+            release.write_json(path, original)
+
+    def test_invalid_runtime_pin_fails_before_publication(self):
+        for commit in ("", "main", "052781a", "f" * 41):
+            with self.subTest(commit=commit), patch.object(Path, "read_text", return_value=commit):
+                with self.assertRaisesRegex(ValueError, "invalid pinned Operator runtime commit"):
+                    self.publish()
+                self.assertEqual(self.registry.copies, [])
+                self.assertEqual(self.github.releases, {})
+                self.assertEqual(self.github.dispatches, [])
 
     def test_oci_inspection_uses_actual_embedded_bytes(self):
         def change_record(files, **changes):

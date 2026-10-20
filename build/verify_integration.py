@@ -1,7 +1,7 @@
 """Run controlled integration against an exact Operator revision.
 
-Keep the default contract source pin; an explicitly selected newer host must have
-identical contracts/schemas. Test-only Go overlays add Harness workflow and
+Use the pinned runtime revision; the host must have identical contracts/schemas
+to the package source. Test-only Go overlays add Harness workflow and
 fatal-exit cases through a separate Python adapter. The authoritative Operator tests remain enabled.
 No production fault switches, contract changes, or checkout edits are required.
 """
@@ -24,7 +24,8 @@ def main():
     operator = args.operator_root.resolve()
     lock = json.loads((root / "build/contract-lock.json").read_text())
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=operator, text=True).strip()
-    if commit != (args.operator_commit or lock["source"]["commit"]):
+    pinned_runtime = (root / "build/operator-runtime-commit.txt").read_text().strip()
+    if commit != (args.operator_commit or pinned_runtime):
         raise SystemExit("integration requires the exact selected Operator commit")
     subprocess.run(["git", "diff", "--exit-code", lock["source"]["commit"], commit,
         "--", "contracts", "schemas"], cwd=operator, check=True, stdout=subprocess.DEVNULL)
