@@ -47,8 +47,8 @@ class Client:
         if self.status == "rejected":
             return Reply(result={
                 "api_version": "operator.dev/engine-attempt-result/v1alpha2",
-                "kind": "EngineAttemptResult", "request_id": body["request_id"],
-                "attempt_id": body["attempt_id"], "status": "rejected",
+                "kind": "EngineAttemptResult", "request_id": operation_id,
+                "attempt_id": "host-attempt-1", "status": "rejected",
                 "stage": "host-validation", "target_contact": "none",
                 "invocation_state": "not-dispatched", "cleanup_state": "not-needed",
                 "retry_disposition": "correct-and-resubmit",
@@ -57,8 +57,8 @@ class Client:
             })
         result = {
             "api_version": "operator.dev/engine-attempt-result/v1alpha2",
-            "kind": "EngineAttemptResult", "request_id": body["request_id"],
-            "attempt_id": body["attempt_id"], "receipt_id": "receipt-1",
+            "kind": "EngineAttemptResult", "request_id": operation_id,
+            "attempt_id": "host-attempt-1", "receipt_id": "receipt-1",
             "status": self.status,
             "stage": "complete" if self.status == "completed" else "delivery",
             "target_contact": "attempted",
@@ -121,13 +121,7 @@ class AttemptTest(unittest.TestCase):
         return loop
 
     def arguments(self, **changes):
-        value = {
-            "origin": "exploratory", "thread_id": "thread-1", "generation": 1,
-            "payload": self.descriptor, "pre_actions": [],
-            "invocation": {"operation_id": "invoke", "input_source": "payload",
-                           "media_type": "application/json"},
-            "cleanup": {"delete_actions_after_observation": True},
-        }
+        value = {"origin": "exploratory", "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": "hello"}}}
         value.update(changes)
         return value
 
@@ -139,23 +133,14 @@ class AttemptTest(unittest.TestCase):
                                    self.context, self.bundle, loop)
         return loop, client, executor
 
-    def test_allocation_precedes_schema_validation_but_not_object_decode(self):
+    def test_invalid_arguments_do_not_allocate_or_dispatch(self):
         _, client, executor = self.executor()
-        with self.assertRaises(ToolError):
-            executor(ToolCall("bad-json", "attempt_execute", b"[]", batch_id="batch-1"))
-        self.assertEqual(executor.high_watermark, 0)
+        for raw in (b"[]", b"{}", b'{"request_id":"forged"}'):
+            with self.assertRaises(ToolError):
+                executor(ToolCall("bad", "attempt_execute", raw, batch_id="batch-1"))
         self.assertEqual(client.index, 0)
-
-        rejected = executor(ToolCall("empty", "attempt_execute", b"{}", batch_id="batch-1"))
-        self.assertEqual(rejected.outcome, "invalid")
-        self.assertEqual(rejected.value["status"], "rejected")
-        self.assertEqual(executor.high_watermark, 1)
         self.assertEqual(client.requests, [])
-
-        reserved = executor(ToolCall("reserved", "attempt_execute",
-            _canonical_value({"request_id": "forged"}, 1 << 20), batch_id="batch-1"))
-        self.assertEqual(reserved.value["errors"][0]["code"], "UNKNOWN_FIELD")
-        self.assertEqual(executor.high_watermark, 2)
+        self.assertEqual(executor.receipts, frozenset())
 
     def test_complete_request_uses_trusted_identity_and_duplicate_is_local(self):
         loop, client, executor = self.executor()
@@ -167,28 +152,21 @@ class AttemptTest(unittest.TestCase):
         self.assertEqual(len(client.requests), 1)
         operation, request, operation_id = client.requests[0]
         self.assertEqual(operation, "engine.attempt_execute")
-        self.assertEqual(operation_id, request["request_id"])
-        self.assertEqual(request["attempt_index"], 1)
-        self.assertEqual(request["generator"], {"kind": "operator-engine",
-            "release_digest": self.context["release"]["release_record_digest"]})
-        self.protocol._catalog.validate_value(
-            "urn:operator:schema:engine-attempt-request:v1alpha2", request)
+        self.assertEqual(request, self.arguments())
+        self.assertTrue(operation_id.startswith("attempt-"))
+        self.assertEqual(executor.receipts, {"receipt-1"})
         self.assertEqual(loop.snapshot()["tool_calls"], 1)
 
-    def test_new_native_batch_gets_fresh_allocation_and_semantic_rejections_do_not_send(self):
-        _, client, executor = self.executor()
-        arguments = self.arguments(invocation={"operation_id": "missing",
-            "input_source": "payload", "media_type": "application/json"})
-        raw = _canonical_value(arguments, 1 << 20)
-        first = executor(ToolCall("same-provider-id", "attempt_execute", raw,
-                                  batch_id="batch-1"))
-        second = executor(ToolCall("same-provider-id", "attempt_execute", raw,
-                                   batch_id="batch-2"))
-        self.assertEqual(first.value["errors"][0]["code"], "UNSUPPORTED_CAPABILITY")
-        self.assertEqual(second.value["errors"][0]["code"], "UNSUPPORTED_CAPABILITY")
-        self.assertNotEqual(first.value["attempt_id"], second.value["attempt_id"])
-        self.assertEqual(executor.high_watermark, 2)
-        self.assertEqual(client.requests, [])
+    def test_host_rejection_is_not_an_execution_receipt(self):
+        _, client, executor = self.executor(Client("rejected"))
+        raw = _canonical_value(self.arguments(), 1 << 20)
+        first = executor(ToolCall("same", "attempt_execute", raw, batch_id="batch-1"))
+        second = executor(ToolCall("same", "attempt_execute", raw, batch_id="batch-2"))
+        self.assertEqual(first.outcome, "preflight-rejected")
+        self.assertEqual(second.outcome, "preflight-rejected")
+        self.assertNotEqual(client.requests[0][2], client.requests[1][2])
+        self.assertEqual(executor.reference_category("same"), "rejected submission")
+        self.assertFalse(executor.receipts)
 
     def test_dispatcher_counts_typed_local_rejection_as_invalid(self):
         loop = HarnessLoop(LIMITS)
@@ -203,7 +181,7 @@ class AttemptTest(unittest.TestCase):
             ToolCall("empty", "attempt_execute", b"{}", batch_id="batch-1")
         ])
         self.assertEqual(results[0].outcome, "invalid")
-        self.assertEqual(json.loads(results[0].content)["status"], "rejected")
+        self.assertEqual(json.loads(results[0].content)["status"], "error")
         self.assertEqual(loop.snapshot()["invalid_tool_calls"], 1)
 
     def test_failed_attempt_is_terminal_after_validated_receipt(self):

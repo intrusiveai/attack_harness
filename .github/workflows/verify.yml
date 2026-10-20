@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 396a90d215e57b582ee0a71c3a0802ee2ed278f4
+          ref: 754b7119f49850727c6df506f050eae11d7af915
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python
@@ -117,10 +117,24 @@ jobs:
           make contract-package OPERATOR_ROOT=../operator_sandbox
           make verify-contracts OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make test OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
+      - name: Read pinned Operator runtime
+        id: operator-runtime
+        working-directory: attack_harness
+        run: |
+          commit=$(cat build/operator-runtime-commit.txt)
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+      - name: Check out matching Operator runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: intrusiveai/operator_sandbox
+          ref: ${{ steps.operator-runtime.outputs.commit }}
+          path: operator_sandbox
+          persist-credentials: false
       - name: Verify Go and Python process integration
         working-directory: attack_harness
         run: |
-          make -C ../operator_sandbox test-integration PYTHON="$(pwd)/.ci-venv/bin/python"
+          make test-integration OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
       - name: Build twice and compare runtime identity
         working-directory: attack_harness
         run: |

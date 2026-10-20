@@ -22,8 +22,9 @@ focuses on planning experiments and adapting them to the feedback it receives.
 4. **Adapt.** It uses those observations to refine inputs, explore another
    scenario, or test a new hypothesis. Where the target supports snapshots, it
    can create, inspect, and restore them while keeping its campaign context.
-5. **Conclude.** It records a structured conclusion with evidence references,
-   limitations, and untested objectives, then asks Operator to end the campaign.
+5. **Conclude.** It submits one assessment with evidence references, limitations,
+   and untested objectives. Operator retains it, closes execution, and performs
+   cleanup; the Harness exits after acceptance.
 
 Campaigns can start from objectives alone or include prepared scenarios.
 Custom skills provide additional instructions and reference material; they do
@@ -50,66 +51,62 @@ both the findings and the limits of the evidence.
 ## Installation and usage
 
 Install and run Attack Harness through **Operator Sandbox**. Start with
-[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox#getting-started)
+[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/README.md#getting-started)
 for host installation, model credentials, target configuration, and campaign
 commands.
 
 The administrator makes a compatible harness image available in local Docker and
 selects it in Operator's `engine.image` configuration. Operator verifies the image's
-release compatibility, supplies campaign inputs, and manages container startup
+embedded image compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
-**Development status:** the harness and deterministic integration tests are
-implemented. Full native runtime and live campaign validation remain in progress.
-Selected host-side provider probes have passed, but they do not qualify the
-complete harness/container path.
-See [implementation status](IMPLEMENTATION_STATUS.md), the
-[acceptance matrix](ACCEPTANCE_MATRIX.md), and
-[Operator's live qualification results](https://github.com/intrusiveai/operator_sandbox/blob/main/docs/LIVE_QUALIFICATION_VALIDATION.md).
+Release **v0.1.0** requires Operator version **0.1.0 or later** with the exact
+shared contract **0.2.1** package digest pinned by this release. The
+[integration guide](docs/INTEGRATION.md) provides the immutable contract identity,
+image selection steps, tool examples, and compatibility checks.
 
 ## Learn more
 
-- [Harness implementation specification](CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md)
+- [Runtime behavior and architecture](CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md)
 - [Container image and artifact layout](GUEST_ARTIFACT_LAYOUT_SPEC.md)
-- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/main/schemas/SHARED_CONTRACT.md)
-- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/main/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/main/docs/SKILLS.md)
-- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/main/HOST_RUNTIME_PROFILES.md)
+- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SHARED_CONTRACT.md)
+- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/docs/SKILLS.md)
+- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/HOST_RUNTIME_PROFILES.md)
 
 ## Development
 
-Use Python 3.12 or later and Go 1.26.5. Image builds also need Docker with Buildx.
-The shared validation package comes from Operator; use a separate Operator
-checkout at the exact `CONTRACT_COMMIT` pinned in this repository's `Makefile`.
-Run `make setup` in that checkout to prepare its Python environment and Go dependencies.
+Use Python 3.12 or later and Go 1.26.5; CI uses Python 3.13.15. Image builds need
+Docker and Buildx with the versions pinned in `.github/workflows/verify.yml`.
+The shared Python package is supplied by Operator's locked source, not a public
+package-index installation.
 
-By default, the commands below use `../operator_sandbox`. If the pinned checkout
-is elsewhere, pass `OPERATOR_ROOT=/absolute/path/to/pinned-operator` to each `make`
-command. From this repository:
-
-```sh
-make test
-make verify-source verify-contracts
-```
-
-Build image candidates for either supported container architecture:
+Prepare two Operator checkouts using the exact
+[contract source and runtime pins](docs/INTEGRATION.md#locked-contract-and-runtime).
+The contract checkout produces the package; the runtime checkout supplies the
+host used for process integration and image inspection. From this repository:
 
 ```sh
-make image PLATFORM=linux/arm64
-make image PLATFORM=linux/amd64
+python3 -m venv .ci-venv
+.ci-venv/bin/python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-runtime.lock
+make contract-package OPERATOR_ROOT=/absolute/path/to/contract-source
+make verify-source verify-contracts OPERATOR_ROOT=/absolute/path/to/contract-source PYTHON=.ci-venv/bin/python
+make test OPERATOR_ROOT=/absolute/path/to/contract-source PYTHON=.ci-venv/bin/python
+make test-integration OPERATOR_ROOT=/absolute/path/to/matching-operator PYTHON=.ci-venv/bin/python
 ```
 
-Build output and candidate evidence are written under the ignored `dist/`
-directory. To check the ARM64 candidate with Operator's stopped-image reader,
-after the corresponding image build:
+The generated package is stored in ignored `build/context/contracts`. Build and
+inspect either platform, substituting `linux/amd64` for AMD64:
 
 ```sh
-make inspect-stopped-image PLATFORM=linux/arm64
+make image PLATFORM=linux/arm64 OPERATOR_ROOT=/absolute/path/to/contract-source PYTHON=.ci-venv/bin/python
+make inspect-stopped-image PLATFORM=linux/arm64 OPERATOR_ROOT=/absolute/path/to/matching-operator PYTHON=.ci-venv/bin/python
 ```
 
-This inspects the image without starting the container and checks cleanup. The
-[build specification](GUEST_ARTIFACT_LAYOUT_SPEC.md#41-container-build-deliverables)
-describes the packaging and qualification requirements.
+Build output is written under ignored `dist/`. Stopped-image inspection checks
+release files and inspection-container removal without running a campaign. See
+[the image build and inspection guide](GUEST_ARTIFACT_LAYOUT_SPEC.md#build-and-inspection-commands)
+for artifact identities and runtime boundaries.
 
 ## License
 

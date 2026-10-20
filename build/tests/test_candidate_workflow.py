@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 from build import publish_candidate as release
 from build.inspect_oci import ALLOWED_ENV, ENTRYPOINT, inspect
+from build.inspect_stopped_image import _local_image_id
+from build.prepare_release import COMPATIBILITY_PATH, compatibility
 
 
 SOURCE = "a" * 40
@@ -18,12 +20,12 @@ MERGE = "b" * 40
 BRANCH = "candidate-v1.2.3"
 
 
-def make_archive(directory, platform):
+def make_archive(directory, platform, mutate_files=None):
     """Small OCI fixture exercising the actual inspector and publication path."""
     blobs = {}
 
     def blob(value, media_type):
-        raw = json.dumps(value, separators=(",", ":")).encode()
+        raw = value if isinstance(value, bytes) else json.dumps(value, separators=(",", ":")).encode()
         digest = release.digest(raw)
         blobs["blobs/sha256/" + digest[7:]] = raw
         return {"mediaType": media_type, "digest": digest, "size": len(raw)}
@@ -35,7 +37,28 @@ def make_archive(directory, platform):
                               "WorkingDir": "/run/operator/work", "Env": ALLOWED_ENV,
                               "Labels": {"org.opencontainers.image.source": "https://github.com/" + release.REPOSITORY}}},
                   "application/vnd.oci.image.config.v1+json")
-    layer = blob({"fixture": True}, "application/vnd.oci.image.layer.v1.tar+gzip")
+    pin = json.loads(Path("build/contract-lock.json").read_bytes())["package"]
+    pin = {key: pin[key] for key in ("package_version", "package_digest")}
+    resources = {"prompt": ("share/default-system-prompt.txt", b"test prompt"),
+                 "skill_loader": ("lib/attack_harness/skill_loader.py", b"# loader\n"),
+                 "tool_catalog": ("share/tool-catalog.json", b'{}')}
+    embedded = {"api_version": "operator.dev/engine-manifest/v1alpha1", "contract": pin,
+                "platform": platform, "runtime_profile": "operator-container/v1",
+                "entrypoint": ENTRYPOINT, "transports": ["fifo", "spool"],
+                **{key: {"size_bytes": len(raw), "digest": release.digest(raw)}
+                   for key, (_, raw) in resources.items()}}
+    files = {"opt/operator/engine/" + name: raw for name, raw in resources.values()}
+    files["opt/operator/engine/share/engine-manifest.json"] = json.dumps(embedded).encode()
+    files[COMPATIBILITY_PATH] = json.dumps(compatibility(pin, platform), sort_keys=True, separators=(",", ":")).encode()
+    if mutate_files:
+        mutate_files(files)
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        for name, raw in files.items():
+            entry = tarfile.TarInfo(name)
+            entry.size, entry.mode = len(raw), 0o444
+            tar.addfile(entry, io.BytesIO(raw))
+    layer = blob(buffer.getvalue(), "application/vnd.oci.image.layer.v1.tar")
     manifest = blob({"schemaVersion": 2, "config": config, "layers": [layer]},
                     "application/vnd.oci.image.manifest.v1+json")
     manifest["platform"] = {"os": "linux", "architecture": platform.split("/")[1]}
@@ -62,10 +85,11 @@ def make_archive(directory, platform):
     report = inspect(archive, platform, Path("build/contract-lock.json"))
     release.write_json(Path(str(prefix) + ".build-report.json"), report)
     release.write_json(Path(str(prefix) + ".inspection-report.json"), {
-        "status": "passed", "platform": platform, "oci_config_digest": config["digest"],
+        "status": "passed", "native_platform": True, "platform": platform, "oci_config_digest": config["digest"],
         "layer_digests": [layer["digest"]], "operator_stopped_image_inspection": "passed",
         "inspection_container_cleanup": "passed", "operator_version": "0.1.0",
-        "operator_commit": json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]})
+        "operator_local_compatibility": "passed", "compatibility_digest": report["compatibility"]["digest"],
+        "operator_commit": Path("build/operator-runtime-commit.txt").read_text().strip()})
     release.write_json(Path(str(prefix) + ".rebuild-comparison.json"), {
         "platform": platform, "runtime_identity": "identical",
         "runtime_comparisons": {"image_digest": True, "manifest_digest": True, "layer_digests": True}})
@@ -147,6 +171,26 @@ class FakeGitHub:
                   "prerelease": prerelease, "files": {p.name: p.read_bytes() for p in files}}
         self.releases[tag] = result
         return result
+
+
+class DockerIdentityTest(unittest.TestCase):
+    @patch("build.inspect_stopped_image.subprocess.run")
+    def test_classic_and_containerd_ids_are_independently_resolved(self, run):
+        config, manifest = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+        run.return_value = subprocess.CompletedProcess([], 0, config + "\n")
+        self.assertEqual(_local_image_id("docker", "linux/arm64", manifest, config), config)
+        run.side_effect = [subprocess.CompletedProcess([], 1, ""),
+                           subprocess.CompletedProcess([], 0, manifest + "\n")]
+        self.assertEqual(_local_image_id("docker", "linux/arm64", manifest, config), manifest)
+
+    @patch("build.inspect_stopped_image.subprocess.run")
+    def test_unknown_or_missing_image_identity_fails(self, run):
+        run.return_value = subprocess.CompletedProcess([], 0, "sha256:" + "f" * 64)
+        with self.assertRaisesRegex(ValueError, "unexpected image identity"):
+            _local_image_id("docker", "linux/arm64", "sha256:" + "a" * 64, "sha256:" + "b" * 64)
+        run.return_value = subprocess.CompletedProcess([], 1, "")
+        with self.assertRaisesRegex(ValueError, "cannot resolve"):
+            _local_image_id("docker", "linux/arm64", "sha256:" + "a" * 64, "sha256:" + "b" * 64)
 
 
 class CandidateWorkflowTest(unittest.TestCase):
@@ -277,6 +321,74 @@ class CandidateWorkflowTest(unittest.TestCase):
         path = self.directory / "attack-harness-linux-amd64.inspection-report.json"
         inspection = json.loads(path.read_bytes())
         inspection["oci_config_digest"] = "sha256:" + "f" * 64
+        release.write_json(path, inspection)
+        with self.assertRaisesRegex(ValueError, "inspection does not match"):
+            self.publish()
+        self.assertEqual(self.registry.copies, [])
+
+    def test_runtime_pin_can_differ_from_contract_source(self):
+        contract_commit = json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]
+        runtime_commit = Path("build/operator-runtime-commit.txt").read_text().strip()
+        self.assertNotEqual(runtime_commit, contract_commit)
+        self.publish()
+        self.assertIn(release.IMAGE + ":v1.2.3", self.registry.images)
+        self.assertEqual(self.github.dispatches, [
+            {"workflow": "publish-catalog.yml", "ref": "v1.2.3-candidate.123.1"}])
+
+    def test_unpinned_inspector_never_publishes_even_at_contract_source(self):
+        contract_commit = json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]
+        for platform in release.PLATFORMS:
+            path = self.directory / ("attack-harness-" + platform.replace("/", "-") + ".inspection-report.json")
+            original = json.loads(path.read_bytes())
+            for commit in (contract_commit, "f" * 40, "main", ""):
+                with self.subTest(platform=platform, commit=commit):
+                    release.write_json(path, {**original, "operator_commit": commit})
+                    with self.assertRaisesRegex(ValueError, "unpinned Operator runtime"):
+                        self.publish()
+                    self.assertEqual(self.registry.copies, [])
+                    self.assertEqual(self.github.releases, {})
+                    self.assertEqual(self.github.dispatches, [])
+            release.write_json(path, original)
+
+    def test_invalid_runtime_pin_fails_before_publication(self):
+        for commit in ("", "main", "052781a", "f" * 41):
+            with self.subTest(commit=commit), patch.object(Path, "read_text", return_value=commit):
+                with self.assertRaisesRegex(ValueError, "invalid pinned Operator runtime commit"):
+                    self.publish()
+                self.assertEqual(self.registry.copies, [])
+                self.assertEqual(self.github.releases, {})
+                self.assertEqual(self.github.dispatches, [])
+
+    def test_oci_inspection_uses_actual_embedded_bytes(self):
+        def change_record(files, **changes):
+            record = json.loads(files[COMPATIBILITY_PATH])
+            files[COMPATIBILITY_PATH] = json.dumps({**record, **changes}).encode()
+
+        for mutation in (
+            lambda files: files.pop(COMPATIBILITY_PATH),
+            lambda files: files.update({COMPATIBILITY_PATH: b"{"}),
+            lambda files: files.update({COMPATIBILITY_PATH: b" " * ((64 << 10) + 1)}),
+            lambda files: change_record(files, platform="linux/arm64"),
+            lambda files: change_record(files, contract_package_version="0.0.3"),
+            lambda files: change_record(files, image_digest="sha256:" + "a" * 64),
+            lambda files: files.update({"opt/operator/engine/share/default-system-prompt.txt": b"changed"}),
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                make_archive(self.directory, "linux/amd64", mutation)
+
+    def test_stopped_inspection_must_match_embedded_compatibility_digest(self):
+        path = self.directory / "attack-harness-linux-amd64.inspection-report.json"
+        inspection = json.loads(path.read_bytes())
+        inspection["compatibility_digest"] = "sha256:" + "f" * 64
+        release.write_json(path, inspection)
+        with self.assertRaisesRegex(ValueError, "inspection does not match"):
+            self.publish()
+        self.assertEqual(self.registry.copies, [])
+
+    def test_cross_platform_inspection_does_not_satisfy_native_build_gate(self):
+        path = self.directory / "attack-harness-linux-amd64.inspection-report.json"
+        inspection = json.loads(path.read_bytes())
+        inspection["native_platform"] = False
         release.write_json(path, inspection)
         with self.assertRaisesRegex(ValueError, "inspection does not match"):
             self.publish()

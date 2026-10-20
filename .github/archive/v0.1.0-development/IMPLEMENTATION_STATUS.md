@@ -14,6 +14,13 @@ routes, production target deployments, observed release publication and native q
 all supported host tuples remain outstanding. Historical image candidates predate
 the current source/contract pins and require rebuilding. Exact per-criterion status is in [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
 
+The current explicit-origin update consumes shared contract **0.2.0**. Every
+attempt selects a supplied scenario with its exact ID, or exploratory work with no
+scenario association. Shared validators return correctable errors before dispatch;
+the ordinary direct-input → observation → one-finish workflow remains intact.
+Current image and matching Operator verification identities are recorded in the
+[explicit-origin evidence](ACCEPTANCE_MATRIX.md#explicit-attempt-origin--contract-020-2026-10-19).
+
 ## Implemented runtime
 
 - Immutable, no-follow input and selected-skill loading validates exact inventories,

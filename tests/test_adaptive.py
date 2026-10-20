@@ -44,9 +44,9 @@ class Client:
         self.requests.append(deepcopy(body))
         return Reply(self.results.pop(0))
 
-    def fail(self, reason, *, receipt=None):
+    def fail(self, reason, *, receipt=None, cause=None):
         from attack_harness.runtime import RuntimeStopped
-        raise RuntimeStopped(reason, receipt=receipt)
+        raise RuntimeStopped(reason, receipt=receipt) from cause
 
 
 class Finalizer:

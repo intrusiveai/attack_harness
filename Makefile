@@ -1,13 +1,18 @@
 OPERATOR_ROOT ?= ../operator_sandbox
 PYTHON ?= $(OPERATOR_ROOT)/.venv/bin/python
 PLATFORM ?= linux/arm64
+INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-CONTRACT_COMMIT := 396a90d215e57b582ee0a71c3a0802ee2ed278f4
+OPERATOR_RUNTIME_COMMIT := $(shell cat build/operator-runtime-commit.txt)
+CONTRACT_COMMIT := 754b7119f49850727c6df506f050eae11d7af915
 
-.PHONY: test verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
+.PHONY: test test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" OPERATOR_CONTRACT_SOURCE="$(abspath $(OPERATOR_ROOT))/schemas" $(PYTHON) -m unittest discover -s tests -v
+
+test-integration:
+	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --operator-commit "$(OPERATOR_RUNTIME_COMMIT)" --python "$(PYTHON)"
 
 verify-source:
 	$(PYTHON) build/source_lock.py --root . --lock build/source-lock.json
@@ -19,7 +24,7 @@ $(CONTRACT_PACKAGE)/package.json:
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.0.3
+		--package-version 0.2.1
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \
@@ -54,4 +59,4 @@ inspect-stopped-image: verify-source verify-contracts
 		--operator-root "$(OPERATOR_ROOT)" --platform "$(PLATFORM)" \
 		--archive "dist/attack-harness-$(PLATFORM_SLUG).inspection.tar" \
 		--build-report "dist/attack-harness-$(PLATFORM_SLUG).build-report.json" \
-		--output "dist/attack-harness-$(PLATFORM_SLUG).inspection-report.json"
+		--output "dist/attack-harness-$(PLATFORM_SLUG).inspection-report.json" $(INSPECTION_FLAGS)

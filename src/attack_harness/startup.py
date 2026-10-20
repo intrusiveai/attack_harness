@@ -10,6 +10,7 @@ from operator_contracts.startup import require
 from operator_contracts.validation import CONTROL_LIMIT
 
 from .fifo import FIFO
+from .diagnostics import close_after_failure
 from .inputs import Inputs
 from .runtime import OrdinaryClient, RuntimeStopped
 from .spool import Spool
@@ -49,17 +50,17 @@ class Startup:
         self._deadline = clock() + 60
         self._bootstrap = None
 
-    def _fail(self, reason="protocol-error"):
-        self.transport.close()
-        raise RuntimeStopped(reason)
+    def _fail(self, reason="protocol-error", *, cause=None):
+        close_after_failure(self.transport)
+        raise RuntimeStopped(reason) from cause
 
     def _pump(self):
         if self.clock() >= self._deadline:
             self._fail("deadline-exceeded")
         try:
             self.transport.pump()
-        except (OSError, RuntimeError, ContractError):
-            self._fail()
+        except (OSError, RuntimeError, ContractError) as error:
+            self._fail(cause=error)
 
     def _next_control(self, expected):
         while True:
@@ -79,8 +80,8 @@ class Startup:
                 return raw, message
             except RuntimeStopped:
                 raise
-            except ContractError:
-                self._fail()
+            except ContractError as error:
+                self._fail(cause=error)
 
     def _tick_inputs(self):
         """Service termination while immutable input reads yield control."""
@@ -96,8 +97,8 @@ class Startup:
             self._fail(message["body"]["reason"])
         except RuntimeStopped:
             raise
-        except ContractError:
-            self._fail()
+        except ContractError as error:
+            self._fail(cause=error)
 
     def _send_control(self, kind, sequence, body):
         message = {
@@ -154,5 +155,5 @@ class Startup:
             return AdmittedSession(inputs, client, admission)
         except RuntimeStopped:
             raise
-        except (OSError, RuntimeError, ContractError):
-            self._fail()
+        except (OSError, RuntimeError, ContractError) as error:
+            self._fail(cause=error)

@@ -20,34 +20,21 @@ select it. Docker's startup policy and read-only/network/resource controls remai
 required. Linux filter stacking and TSYNC behavior follow the
 [seccomp manual](https://man7.org/linux/man-pages/man2/seccomp.2.html).
 
-## Builder and feasibility probe
+## Build and verification
 
 `build/compile_native.py` is a release-builder-only fixed compiler command. It
-uses CPython's stable ABI from 3.12 and creates `_confinement.abi3.so`; it does not
-transplant the builder interpreter or virtualenv into Distroless. Compiler and
-Python headers never enter a runtime layer. The pinned builder has Python 3.13.15;
-the inspected ARM64 Distroless runtime has Python 3.13.5. The actual runtime import
-and syscall probe passed, exercising that stable-ABI boundary.
+uses CPython's stable ABI from 3.12 and creates `_confinement.abi3.so`; the runtime
+image uses its own interpreter. Compiler and Python headers do not enter the
+runtime layer. The exact builder/runtime identities and compiler flags are in
+[`build/image-lock.json`](../build/image-lock.json).
 
-The dedicated `build/Dockerfile.native-test` includes the probe as a **test-only**
-entrypoint. It is not a campaign image. The probe intentionally imports ctypes
-and socket before installing the filter so it can exercise denied calls.
-Production bootstrap MUST expose no such model tool or probe entrypoint.
+The dedicated `build/Dockerfile.native-test` uses `tests/native_probe.py` as a
+test-only entrypoint. The probe loads test helpers before installing the filter
+and checks permitted file operations and denied syscalls. It is distinct from a
+campaign image and does not add a production model tool or entrypoint.
 
-On the available macOS ARM64 Docker Desktop host, the pinned native test image
-successfully installed the live filter under Operator's actual startup profile,
-UID 65532, no new privileges, all capabilities dropped, network disabled,
-read-only root, bounded non-executable `/work`, and configured process/CPU/memory
-ceilings. It observed EPERM for socket, socketpair, fork, execve, execveat, clone3,
-unshare, ptrace, BPF, io_uring setup, executable mmap and executable mprotect.
-File create/read/write/chmod/rename/unlink and randomness remained functional.
-
-This is two-stage-policy feasibility evidence for that test image, not complete
-Python-dependency, transport, campaign or four-platform qualification. The first
-probe identified a Docker startup dependency on `openat2`; Operator's startup
-allowlist now includes it. It is absent from this live allowlist.
-
-`build/image-lock.json` records the candidate runtime/builder index and platform
-digests. The candidate build now uses locked runtime dependencies, emits an SBOM
-and provenance attestation, and verifies its OCI structure. Upstream signature
-verification and final multi-host release qualification remain publication gates.
+The container startup policy and this guest live filter are separate layers.
+Bootstrap-required calls may be available before the irreversible live policy is
+installed; `openat2`, for example, is absent from the live allowlist. The production
+image is built and inspected through the
+[container build procedure](../GUEST_ARTIFACT_LAYOUT_SPEC.md#build-and-inspection-commands).

@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 
@@ -24,13 +25,52 @@ CODECS = (
 ENTRYPOINT = ["/usr/bin/python3", "-I", "-S", "-B",
               "/opt/operator/engine/bootstrap.py"]
 PLATFORMS = ("linux/amd64", "linux/arm64")
+COMPATIBILITY_PATH = "opt/operator/engine/share/compatibility.json"
+MINIMUM_OPERATOR_VERSION = "0.1.0"
+
+
+def _closed_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
+def compatibility(pin, platform):
+    return {
+        "api_version": "operator.dev/harness-compatibility/v1alpha1",
+        "minimum_operator_version": MINIMUM_OPERATOR_VERSION,
+        "contract_package_version": pin["package_version"],
+        "contract_package_digest": pin["package_digest"],
+        "runtime_profile": "operator-container/v1",
+        "platform": platform,
+    }
+
+
+def validate_compatibility(raw, pin, platform):
+    if not raw or len(raw) > 64 << 10:
+        raise ValueError("missing or oversized compatibility file")
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_closed_object)
+    expected = compatibility(pin, platform)
+    if (type(value) is not dict or set(value) != set(expected)
+            or any(type(item) is not str for item in value.values())
+            or platform not in PLATFORMS):
+        raise ValueError("invalid closed compatibility record")
+    version = value["minimum_operator_version"]
+    if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version):
+        raise ValueError("compatibility minimum Operator version must be stable SemVer")
+    if value != expected:
+        raise ValueError("compatibility does not match the installed package, runtime or platform")
+    return value
 
 
 def _read_json(path, maximum):
     raw = path.read_bytes()
     if not raw or len(raw) > maximum:
         raise ValueError(f"invalid bounded JSON: {path}")
-    value = json.loads(raw)
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_closed_object)
     if type(value) is not dict:
         raise ValueError(f"invalid JSON object: {path}")
     return value
@@ -133,10 +173,7 @@ def prepare(source_root, contract_root, output_root, platform, prompt_path,
     _write_json(share / "tool-catalog.json", _tool_catalog(protocol))
     loader = library / "attack_harness/skill_loader.py"
     runtime_config = {
-        "contract": {key: _read_json(contract_root / "package.json", 8 << 20)[
-            "package_version"] if key == "package_version" else
-            _read_json(lock_path, 64 << 10)["package"]["package_digest"]
-                     for key in ("package_version", "package_digest")},
+        "contract": protocol.package_identity(),
         "skill_loader_digest": _descriptor(loader)["digest"],
     }
     _write_json(share / "runtime-config.json", runtime_config)
@@ -152,6 +189,8 @@ def prepare(source_root, contract_root, output_root, platform, prompt_path,
         "tool_catalog": _descriptor(share / "tool-catalog.json"),
     }
     _write_json(share / "engine-manifest.json", engine_manifest)
+    _write_json(share / "compatibility.json", compatibility(runtime_config["contract"], platform))
+    os.chmod(share / "compatibility.json", 0o444)
     licenses = engine / "licenses"
     licenses.mkdir(parents=True, exist_ok=True)
     (licenses / "README.txt").write_text(
@@ -196,6 +235,13 @@ def verify(output_root, contract_root, lock_path, *, require_native=True):
                    "skill_loader_digest": manifest["skill_loader"]["digest"]} or \
             manifest["contract"] != pin:
         raise ValueError("runtime configuration identity mismatch")
+    path = share / "compatibility.json"
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o444:
+        raise ValueError("compatibility file must be one immutable readable regular file")
+    validate_compatibility(path.read_bytes(), pin, manifest["platform"])
+    # Check the actual package copied into the image, not only the builder input.
+    check_contract(share / "schemas", lock_path)
     if require_native and not (library / "_confinement.abi3.so").is_file():
         raise ValueError("native confinement module is absent")
     for path in output_root.rglob("*"):

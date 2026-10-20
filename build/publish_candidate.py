@@ -131,6 +131,9 @@ class Registry:
 
 def check_reports(directory):
     """Re-inspect the archives that will be uploaded; bind the other gates to them."""
+    operator_commit = Path("build/operator-runtime-commit.txt").read_text().strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", operator_commit):
+        raise ValueError("invalid pinned Operator runtime commit")
     reports, files = [], []
     for platform in PLATFORMS:
         prefix = directory / ("attack-harness-" + platform.replace("/", "-"))
@@ -141,8 +144,11 @@ def check_reports(directory):
         if report != inspect(archive, platform, Path("build/contract-lock.json")):
             raise ValueError("archive differs from its build report")
         if (inspection["status"] != "passed" or inspection["platform"] != platform
+                or inspection["native_platform"] is not True
                 or inspection["oci_config_digest"] != report["oci"]["image_digest"]
                 or inspection["layer_digests"] != report["oci"]["layer_digests"]
+                or inspection["compatibility_digest"] != report["compatibility"]["digest"]
+                or inspection["operator_local_compatibility"] != "passed"
                 or inspection["operator_stopped_image_inspection"] != "passed"
                 or inspection["inspection_container_cleanup"] != "passed"):
             raise ValueError("stopped-image inspection does not match the published bytes")
@@ -150,8 +156,9 @@ def check_reports(directory):
                 or rebuild["runtime_comparisons"] != {
                     "image_digest": True, "manifest_digest": True, "layer_digests": True}):
             raise ValueError("runtime reproducibility gate failed")
-        if inspection["operator_commit"] != json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]:
-            raise ValueError("inspection used an unpinned Operator")
+        if inspection["operator_commit"] != operator_commit:
+            raise ValueError(f"inspection used an unpinned Operator runtime for {platform}; "
+                             f"expected {operator_commit}")
         reports.append(report)
         files.extend(paths)
     if reports[0]["contract"] != reports[1]["contract"]:
@@ -192,7 +199,8 @@ def publish(github, registry, directory, branch, source, run_id, gate_status):
                 "evidence_tag": tag, "build_status": gate_status,
                 "qa_pending": QA_PENDING,
                 "build_run_id": run_id.split(".")[0], "build_run_attempt": run_id.split(".")[1],
-                "platforms": [{"platform": r["platform"], **r["oci"]} for r in reports]}
+                "platforms": [{"platform": r["platform"], **r["oci"],
+                               "compatibility": r["compatibility"]} for r in reports]}
     handoff, record = directory / "release-index-entry.json", directory / "candidate.json"
     # Catalog immutable candidate versions so delayed publication cannot replace
     # a newer build's entry or disagree with the rolling branch-version tag.

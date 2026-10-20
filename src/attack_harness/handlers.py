@@ -22,16 +22,13 @@ _DEPENDENCIES = {
     "snapshot_list": frozenset({"engine.snapshot_list"}),
     "snapshot_request": frozenset({"engine.snapshot_request"}),
     "attempt_execute": frozenset({"engine.attempt_execute"}),
-    "request_stop": frozenset({
-        "engine.artifact_begin", "engine.artifact_put_part", "engine.artifact_commit",
-        "engine.record_append", "engine.request_stop",
-    }),
+    "finish": frozenset({"engine.finish"}),
 }
 
 
 def _operation_error(error):
     require(type(error) is dict and error.get("effect_state") == "none")
-    return ToolError(error["code"], error["message"], outcome="preflight-rejected")
+    return ToolError.from_host(error)
 
 
 class FixedHandlers:
@@ -62,7 +59,7 @@ class FixedHandlers:
             "observation_read": self.observation_read,
             "record_append": self.record_append,
             "reference_read": self.reference_read,
-            "request_stop": self.request_stop,
+            "finish": self.finish,
             "restore_request": self.restore_request,
             "snapshot_inspect": self.snapshot_inspect,
             "snapshot_list": self.snapshot_list,
@@ -72,7 +69,7 @@ class FixedHandlers:
         return {
             name: handler for name, handler in candidates.items()
             if ((name == "reference_read" or _DEPENDENCIES[name] <= available)
-                and (name != "request_stop" or self.finalizer is not None))
+                and (name != "finish" or self.finalizer is not None))
         }
 
     def raw_handlers(self):
@@ -163,7 +160,7 @@ class FixedHandlers:
         self.record_receipts.add(result.value["receipt_id"])
         return result
 
-    def request_stop(self, arguments):
+    def finish(self, arguments):
         return self.finalizer.stage(arguments)
 
     def restore_request(self, arguments):
