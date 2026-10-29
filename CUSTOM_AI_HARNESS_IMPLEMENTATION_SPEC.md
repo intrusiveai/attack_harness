@@ -1,6 +1,6 @@
 # Attack Harness runtime
 
-Attack Harness v0.1.0 is a single Python process inside an Operator-managed
+Attack Harness v0.1.4 is a single Python process inside an Operator-managed
 container. It reads campaign objectives and scenarios, asks a model to choose
 permitted experiments, inspects feedback, and submits an assessment. Operator
 owns external effects, authorization, durable evidence, and cleanup.
@@ -11,7 +11,7 @@ boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_S
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.2.1** from the image and
+The Harness loads Operator's shared contract package **0.3.0** from the image and
 validates its exact digest against [the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
@@ -129,6 +129,24 @@ A healthy restore keeps the Harness process and conversation, updates the active
 target revision once, and skips the remainder of the current tool batch with
 correlated results. Known preflight rejection leaves the old revision usable.
 Uncertain effects remain terminal. Cumulative limits do not reset on restore.
+
+## PostgreSQL actions and observations
+
+The Harness MUST consume database action schemas and validators from the locked
+Operator package. Admitted capabilities and host policy constrain database
+response rewriting and table-policy state mutation through existing optional
+attempt setup actions. It MUST NOT introduce database connections, credentials,
+SQL tools, or a separate feedback channel. Direct input and one finish remain
+the ordinary workflow.
+
+The trusted prompt MUST explain the distinction between response simulation and
+stored-state mutation, declared table keys/writable fields, explicit creation
+permission, and checkpoint restore versus injection removal. For authorized
+oracle-assisted feedback it MUST explain positive, empty, partial and unavailable
+outcomes, their attempt boundary, and why observed association is not causality.
+Observation reads MUST preserve host receipts, bytes, availability and reasons,
+including after a healthy restore. Historical results MUST NOT be reinterpreted
+as fresh verdicts. See [database integration](docs/INTEGRATION.md#postgresql-and-pgvector).
 
 ## Assessment, limits, and exit
 

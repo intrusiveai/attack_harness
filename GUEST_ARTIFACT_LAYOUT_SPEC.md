@@ -1,6 +1,6 @@
 # Attack Harness container and artifact layout
 
-Attack Harness v0.1.0 is an immutable Linux OCI image for `linux/amd64` and
+Attack Harness v0.1.4 is an immutable Linux OCI image for `linux/amd64` and
 `linux/arm64`, launched by Operator under runtime profile `operator-container/v1`.
 The image contains the Python runtime, fixed Harness code, native confinement
 module, default prompt, and the exact shared contract package. Operator provides
@@ -78,8 +78,8 @@ For AMD64 its values are:
 {
   "api_version": "operator.dev/harness-compatibility/v1alpha1",
   "minimum_operator_version": "0.1.0",
-  "contract_package_version": "0.2.1",
-  "contract_package_digest": "sha256:6ecefb5354a4fe2d1baf591bace2fb8457d87106f6a8f99ebc9c9abede4a98d9",
+  "contract_package_version": "0.3.0",
+  "contract_package_digest": "sha256:1ec7a4c0d8d5e4783c6f2bf5c473d3722c47dd193922b4c63feb1e0a0aac7502",
   "runtime_profile": "operator-container/v1",
   "platform": "linux/amd64"
 }
@@ -106,7 +106,7 @@ Operator freezes the compatibility-byte digest as `release_record_digest` in
 startup and assessment bindings. Attempt generator metadata uses that same value
 as `generator.release_digest`. The resolved image identity is a separate binding.
 These names do not imply an external record lookup. The shared
-[image contract](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/ENGINE_RELEASE_CONTRACT.md)
+[image contract](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/ENGINE_RELEASE_CONTRACT.md)
 is authoritative.
 
 `engine-manifest.json` binds platform, runtime profile, contract identity, fixed
@@ -145,7 +145,7 @@ Operator establishes the container's read-only root, disabled network, dropped
 capabilities, resource limits, and startup policy. Linux hosts use FIFO transport;
 macOS hosts use file spool through their Linux Docker runtime. Host selection and
 mount details follow the pinned
-[container contract](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/GUEST_CONTAINER_SPEC.md).
+[container contract](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/GUEST_CONTAINER_SPEC.md).
 
 The guest loads fixed code and the shared package, accepts `bootstrap`, pins
 transport descriptors, and installs the irreversible native filter. Only then does
