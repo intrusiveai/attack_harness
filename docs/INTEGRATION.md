@@ -1,4 +1,4 @@
-# Integrating Attack Harness v0.1.1
+# Integrating Attack Harness v0.1.4
 
 Attack Harness runs as an Operator-managed container guest. Operator owns model
 and target access, campaign admission, execution, evidence retention, and cleanup.
@@ -7,17 +7,17 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.2.1**, pinned in
+The release consumes Operator shared contract **0.3.0**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate the exact package digest.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.2.1` |
-| Shared package digest | `sha256:6ecefb5354a4fe2d1baf591bace2fb8457d87106f6a8f99ebc9c9abede4a98d9` |
-| Contract source commit | `754b7119f49850727c6df506f050eae11d7af915` |
-| Contract source tree | `0a13cb86dde4ae2605a9f3ce0d17638cc3f500c3` |
-| Integration/inspection Operator commit | `d9255aeba9618bd53f4c3344e6f1c4284e99a353` |
+| Shared package version | `0.3.0` |
+| Shared package digest | `sha256:1ec7a4c0d8d5e4783c6f2bf5c473d3722c47dd193922b4c63feb1e0a0aac7502` |
+| Contract source commit | `dc2f1c40a3e6c3c88209e5f393493e6a627fc03f` |
+| Contract source tree | `6f0c481186104e2b8e78f1227bcb2d11c425b96b` |
+| Integration/inspection Operator commit | `e4de591a40ce25a9a37d310ff24e43374337ac15` |
 | Minimum Operator product version | `0.1.0` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
@@ -35,12 +35,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/754b7119f49850727c6df506f050eae11d7af915/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/754b7119f49850727c6df506f050eae11d7af915/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -49,8 +49,8 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/README.md).
-2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.1` into the Docker daemon used by
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/README.md).
+2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
 3. Set Operator's `engine.image` to that locally available image. Use an Operator
@@ -165,6 +165,55 @@ identifiable. Configured invalid-call limits, budgets, and deadlines still apply
 The Harness reports stopping diagnostics through the shared runtime channel when
 available; fatal exits also emit bounded structured stderr and exit with code 1.
 Cleanup failures do not replace the primary failure.
+
+## PostgreSQL and pgvector
+
+Use an Interceptor environment with declared PostgreSQL services and a reviewed
+application input contract. Operator's admitted capability projection supplies
+services, operations, injection surfaces, table-policy IDs, keys, writable fields
+and creation limits. It carries no database credentials or private oracle SQL.
+The Harness invokes the application and uses the existing optional setup actions;
+it does not connect to PostgreSQL or implement vector queries.
+
+- `database_response` uses `simulation` mode. Select a permitted service and
+  call ordinal/request-body predicates. Result pointers such as `/rows/0/0`
+  address eligible text/JSON cells, not metadata or binary values. HTTP/MCP
+  selectors do not apply. This changes the delivered result, not stored rows.
+- `environment_state` uses `fidelity` mode. `collection` names the declared table
+  policy; `key` is a JSON object encoded as a string, for example
+  `"{\"id\":\"one\"}"`. Include exactly its non-null scalar key columns.
+  Field pointers must be writable. Row creation requires explicit permission,
+  a record limit and authorized root replacement; it is not an implicit upsert.
+- Deleting an injection removes its definition, not an already committed database
+  mutation. Use a checkpoint restore to return to a saved baseline. Restore keeps
+  the healthy Harness conversation and applies the normal batch-skip boundary.
+
+These actions require admitted capabilities and Operator authorization; scenario
+prose cannot grant them. Small invocation and injection inputs use direct content;
+large/reusable payloads retain the existing artifact-receipt path.
+
+With effective `oracle-assisted` feedback, the all-permitted default includes
+`oracle_outcome`; explicit selection must request it. Read the returned entry
+with `observation_read` before choosing the next attempt. A normalized
+`database_query_match` verdict includes an opaque detector ID and `fired: true`,
+not SQL, private query results or baseline contents. Black-box and diagnostic
+profiles do not expose these verdicts.
+
+A positive verdict establishes an observed condition, not injection causality.
+An empty category means no positive verdict was captured, not proof of attack
+failure. Unavailable/partial results, including `oracle_evaluation_unavailable`,
+remain unknown; valid entries in a partial category are still readable. Old
+receipt bytes remain fixed after later writes and restores. Session-wide retained
+evidence may contain additional historical outcomes and must not be treated as
+a fresh attempt verdict.
+
+For the controlled native database workflow, use the matching Operator checkout
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/docs/POSTGRESQL.md#local-integration-verification).
+It runs this Harness's production Python entrypoint over spool against real local
+Interceptor/PostgreSQL with deterministic model responses, then checks response
+and state injection, live oracle inspection, snapshot restore, accepted finish,
+process exit, cleanup and exported evidence. This is local integration coverage,
+not paid-provider or Harness-container qualification.
 
 ## Build and verify an integration
 

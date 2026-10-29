@@ -152,16 +152,16 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `754b7119f49850727c6df506f050eae11d7af915`
+1. Check out Operator commit `dc2f1c40a3e6c3c88209e5f393493e6a627fc03f`
    in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.2.1`, digest
-   `sha256:6ecefb5354a4fe2d1baf591bace2fb8457d87106f6a8f99ebc9c9abede4a98d9`.
+   `build/contract-lock.json`; its package is `0.3.0`, digest
+   `sha256:1ec7a4c0d8d5e4783c6f2bf5c473d3722c47dd193922b4c63feb1e0a0aac7502`.
    Move any older generated `build/context/contracts` aside before rebuilding.
 2. Check out matching Operator runtime commit
-   `d9255aeba9618bd53f4c3344e6f1c4284e99a353` in a second directory for integration
+   `e4de591a40ce25a9a37d310ff24e43374337ac15` in a second directory for integration
    and stopped-image inspection. Its shared contracts/schemas are unchanged from
-   the package source; its service and reporting changes enforce explicit origin
-   and distinguish scenario coverage from exploratory execution. CI builds the
+   the package source; its database integration verifies snapshot backup evidence
+   and exercises live oracle feedback through the Python Harness. CI builds the
    package first, then checks out this runtime revision in its Operator directory.
    `build/operator-runtime-commit.txt` is the shared runtime pin for CI checkout,
    local integration tests, and publication's inspection-report check. When
@@ -212,7 +212,7 @@ identify the repository, environment, tag, and workflow file.
    independently resolved Docker image ID separately: containerd-backed Docker can
    expose a manifest-based ID while classic Docker exposes the config ID.
 5. Run Operator's process integration suite with this Harness checkout (see its
-   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
+   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
    conclusion bindings. The release digest hashes the exact compatibility bytes,
    not normalized JSON. Record fixture/cross-platform results separately from
    native runtime and live-provider QA; neither latter activity blocks candidate
@@ -254,7 +254,7 @@ identify the repository, environment, tag, and workflow file.
    contains that unique candidate version with `tags: ["rc"]`, its unique GHCR
    tag, and the same index digest. Confirm `contract_package_version` equals the
    package version in both platform build reports and embedded compatibility
-   files (`0.2.1` for the current contract). It must remain absent from the stable
+   files (`0.3.0` for the current contract). It must remain absent from the stable
    listing on the [releases website](https://releases.intrusive.ai/).
 
 The rolling image `ghcr.io/intrusiveai/attack_harness:v1.2.3` is convenient for QA
@@ -299,7 +299,7 @@ image digests to identify the published bytes; they are not compatibility record
    The unique candidate entry stays labeled `rc`; the final entry is separate.
 6. Reload the releases website. The version is eligible for its stable listing,
    which displays the first two entries labeled exactly `release`. Confirm its
-   **Shared contract: 0.2.1** indicator matches the promoted package version.
+   **Shared contract: 0.3.0** indicator matches the promoted package version.
    No site build or redeployment is needed. Use a new version for further candidate
    work; promotion freezes `v1.2.3` against later candidate writes.
 

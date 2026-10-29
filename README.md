@@ -51,7 +51,7 @@ both the findings and the limits of the evidence.
 ## Installation and usage
 
 Install and run Attack Harness through **Operator Sandbox**. Start with
-[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/README.md#getting-started)
+[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/README.md#getting-started)
 for host installation, model credentials, target configuration, and campaign
 commands.
 
@@ -60,8 +60,8 @@ selects it in Operator's `engine.image` configuration. Operator verifies the ima
 embedded image compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
-Release **v0.1.1** requires Operator version **0.1.0 or later** with the exact
-shared contract **0.2.1** package digest pinned by this release. The
+Release **v0.1.4** requires Operator version **0.1.0 or later** with the exact
+shared contract **0.3.0** package digest pinned by this release. The
 [integration guide](docs/INTEGRATION.md) provides the immutable contract identity,
 image selection steps, tool examples, and compatibility checks.
 
@@ -69,10 +69,10 @@ image selection steps, tool examples, and compatibility checks.
 
 - [Runtime behavior and architecture](CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md)
 - [Container image and artifact layout](GUEST_ARTIFACT_LAYOUT_SPEC.md)
-- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SHARED_CONTRACT.md)
-- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/docs/SKILLS.md)
-- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/HOST_RUNTIME_PROFILES.md)
+- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/SHARED_CONTRACT.md)
+- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/docs/SKILLS.md)
+- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/HOST_RUNTIME_PROFILES.md)
 
 ## Development
 
