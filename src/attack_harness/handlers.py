@@ -41,7 +41,7 @@ class FixedHandlers:
 
     def __init__(self, protocol, inputs, client, loop, *, artifacts=None,
                  observations=None, attempts=None, finalizer=None,
-                 record_receipts=None):
+                 record_receipts=None, scenario_delivery=None):
         self.protocol = protocol
         self.inputs = inputs
         self.client = client
@@ -51,6 +51,7 @@ class FixedHandlers:
         self.attempts = attempts
         self.finalizer = finalizer
         self.record_receipts = record_receipts if record_receipts is not None else set()
+        self.scenario_delivery = scenario_delivery
 
     def handlers(self):
         candidates = {
@@ -79,13 +80,21 @@ class FixedHandlers:
         return {"attempt_execute": self.attempts}
 
     def reference_read(self, arguments):
+        task = None
         try:
-            source, content = self.inputs.entry(arguments["reference_id"])
-        except ContractError:
+            if self.scenario_delivery is not None and arguments["reference_id"] in self.scenario_delivery.references:
+                source, content, task = self.scenario_delivery.reference(arguments["reference_id"])
+            else:
+                source, content = self.inputs.entry(arguments["reference_id"])
+        except ContractError as error:
+            if error.reason == "scenario_context_limit":
+                raise ToolError.from_contract(error) from None
             raise ToolError("INVALID_REFERENCE", "Unknown reference ID.") from None
         offset = arguments["offset"]
         if offset > len(content):
             raise ToolError("INVALID_RANGE", "Reference offset exceeds content size.")
+        if task is not None:
+            self.scenario_delivery.activate(content, task)
         selected = content[offset:offset + arguments["max_bytes"]]
         if selected:
             self.loop.reserve_read("content", source["digest"], offset, len(selected))

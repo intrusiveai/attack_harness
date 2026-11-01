@@ -24,10 +24,26 @@ class NativeConversation:
             "urn:operator:schema:model-codec-policy:v1alpha1", policy_raw)
         self.codec = self.policy["codec_id"]
         self._task = task
+        self.task_generation = 0
+        self.delivered_task_generation = -1
+        self._summary = ""
         self._compact_at = compact_at
         self._segments = 0
         self._compactions = []
         self._request = self._initial(task)
+
+    @property
+    def task(self):
+        return self._task
+
+    def replace_task(self, task):
+        """Replace task data without dropping native tool history or compaction provenance."""
+        require(type(task) is str and task)
+        field = self._history_field()
+        index = 1 if self.codec == "openai-chat-text-tools-v1" else 0
+        self._request[field][index] = self._initial(task + self._summary)[field][index]
+        self._task = task
+        self.task_generation += 1
 
     def _initial(self, task):
         policy = self.policy
@@ -151,9 +167,11 @@ class NativeConversation:
             "summary_provenance": "model-generated-not-evidence",
         }
         self._compactions.append(record)
-        compacted = self._task + "\n\nCompacted campaign history:\n" + \
+        summary_suffix = "\n\nCompacted campaign history:\n" + \
             _canonical_value({**record, "summary": summary}, 256 << 10).decode("utf-8")
+        compacted = self._task + summary_suffix
         require(len(compacted) <= 1 << 20)
+        self._summary = summary_suffix
         self._request = self._initial(compacted)
         self._segments = 0
 
@@ -292,6 +310,7 @@ class AdaptiveHarness:
                 result_raw = _canonical_value(reply.result, ORDINARY_LIMIT)
                 batch = native_batch(self.protocol, self.conversation.policy_raw,
                                      request_raw, result_raw)
+                self.conversation.delivered_task_generation = self.conversation.task_generation
             except RuntimeStopped:
                 self.loop.hard_stop()
                 raise

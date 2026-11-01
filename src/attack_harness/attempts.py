@@ -10,7 +10,7 @@ from .tools import HandlerResult, ToolError
 class AttemptExecutor:
     """Retain correlated results without inventing host execution receipts."""
 
-    def __init__(self, protocol, client, artifacts, context, bundle, loop):
+    def __init__(self, protocol, client, artifacts, context, bundle, loop, *, scenario_delivery=None):
         self.protocol, self.client, self.loop = protocol, client, loop
         self._scenarios = frozenset(s["scenario_id"] for s in bundle.get("scenarios", ()))
         self._history = {}
@@ -18,6 +18,7 @@ class AttemptExecutor:
         self._rejected_submissions = set()
         self._attempt_ids = set()
         self.dispatched = False
+        self.scenario_delivery = scenario_delivery
 
     @property
     def receipts(self):
@@ -41,6 +42,11 @@ class AttemptExecutor:
         try:
             arguments = self.protocol.validate_tool_arguments("attempt_execute", call.arguments)
             validate_attempt_origin(arguments, self._scenarios)
+            if arguments["origin"] == "scenario" and self.scenario_delivery is not None:
+                self.scenario_delivery.require(arguments["scenario_id"])
+        except ToolError:
+            self._rejected_submissions.add(call.call_id)
+            raise
         except ContractError as error:
             self._rejected_submissions.add(call.call_id)
             raise ToolError.from_contract(error) from None
