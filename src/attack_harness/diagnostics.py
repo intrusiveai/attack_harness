@@ -14,6 +14,7 @@ _REASONS = frozenset({
     "model-compaction-contract-failed", "finalization-failed", "incomplete-execution",
     "work-after-finish", "invalid_arguments", "invalid_structure", "duplicate_json_key",
     "input_depth_exceeded", "invalid_base64", "direct_input_too_large",
+    "scenario_context_limit", "task_context_limit",
 })
 _MESSAGES = frozenset({
     "contract message consistency check failed", "contract encoding limit exceeded",
@@ -22,6 +23,8 @@ _MESSAGES = frozenset({
     "FIFO transport failed", "FIFO consumer deadline expired", "spool initialization failed",
     "spool send failed", "spool transport failed", "spool consumer deadline expired",
     "model usage unknown", "unsupported model codec",
+    "Complete active scenario and required campaign context exceed the task context limit.",
+    "Required campaign context exceeds the task context limit.",
 })
 _CLASSES = frozenset({"RuntimeStopped", "ContractError", "LoopStopped", "RuntimeError",
     "ValueError", "TypeError", "AssertionError", "ImportError", "ModuleNotFoundError",
