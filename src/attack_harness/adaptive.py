@@ -1,6 +1,8 @@
 """Provider-native conversation construction and serialized adaptive turns."""
 
 from copy import deepcopy
+import json
+import math
 
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value, raw_digest
@@ -15,7 +17,7 @@ from .runtime import RuntimeStopped
 class NativeConversation:
     """Mutable native history for exactly one installed model codec."""
 
-    def __init__(self, protocol, policy_raw, task, *, compact_at=1 << 20):
+    def __init__(self, protocol, policy_raw, task, *, compact_at=1 << 20, remaining=None):
         require(type(policy_raw) is bytes and type(task) is str and task)
         require(type(compact_at) is int and compact_at > 0)
         self.protocol = protocol
@@ -28,6 +30,11 @@ class NativeConversation:
         self._segments = 0
         self._compactions = []
         self._request = self._initial(task)
+        self._groups = []
+        self._budget = None
+        self._last_bytes = 0
+        self._remaining = dict(remaining or {})
+        self._context_limits = self.policy['context_limits']
 
     def _initial(self, task):
         policy = self.policy
@@ -97,14 +104,28 @@ class NativeConversation:
         self.protocol.validate_model_request(self.policy_raw, raw)
         return body, raw
 
+    def observe_budget(self, result, request_raw):
+        # native_batch has already checked this snapshot against policy and response.
+        self._budget = deepcopy(result['context_budget'])
+        self._last_bytes = len(request_raw)
+        self._remaining = dict(model_tokens=self._budget['remaining_model_tokens'],model_turns=self._budget['remaining_model_turns'])
+
+    def _estimated_tokens(self, raw):
+        # A conservative local heuristic, never provider usage or exact admission.
+        ratio = 1.1*self._budget['input_tokens']/max(1,self._last_bytes) if self._budget else 0.5
+        return math.ceil(len(raw)*ratio)
+
+    def can_fund_model(self):
+        reserve=self._context_limits['maximum_prompt_tokens']+self._context_limits['maximum_completion_tokens']
+        return self._remaining.get('model_tokens',reserve)>=reserve and self._remaining.get('model_turns',1)>0
+
     def needs_compaction(self):
         if self._segments == 0:
             return False
-        try:
-            _, raw = self.body()
-        except ContractError:
-            return True
-        return len(raw) >= self._compact_at
+        try: _, raw = self.body()
+        except ContractError:return True
+        return (len(raw)>=self._compact_at or bool(self._budget and self._budget['near_prompt_limit'])
+                or self._estimated_tokens(raw)>=self._context_limits['warning_threshold_tokens'])
 
     def compaction_body(self):
         """Build a tool-suppressed request over complete native history."""
@@ -113,26 +134,60 @@ class NativeConversation:
         if self.codec == "openai-chat-text-tools-v1":
             history = history[1:]  # The exact privileged prompt remains in _initial().
         history_raw = _canonical_value(history, ORDINARY_LIMIT)
-        instruction = (
-            "Summarize this complete campaign history concisely. Preserve immutable "
-            "identities, hypothesis and attempt lineage, known result dispositions, "
-            "evidence receipt IDs, outstanding coverage, omissions, contamination, "
-            "and uncertainty. A summary is not evidence. Source history JSON follows:\n"
-        )
-        source = instruction + history_raw.decode("utf-8")
-        # Every installed codec caps one text item at 1 MiB. Do not split JSON
-        # across provider-specific structures with different semantics.
-        require(len(source) <= (1 << 20))
-        request = self._initial(source)
-        if self.codec in ("openai-chat-text-tools-v1",
-                          "openai-responses-text-tools-v1"):
-            request["tool_choice"] = "none"
-        elif self.codec == "anthropic-messages-text-tools-v1":
-            request["tool_choice"] = {"type": "none"}
-        elif self.codec == "bedrock-converse-text-tools-v1":
-            request.pop("toolConfig", None)
-        elif self.codec == "gemini-text-tools-v1":
-            request["toolConfig"]["functionCallingConfig"]["mode"] = "NONE"
+        # Preserve exact returned identities separately from model-written summaries.
+        identities={(v['kind'],v['identifier']) for v in getattr(self,'_compaction_ledger',[])}
+        keys={'receipt_id','attempt_receipt','artifact_receipt','record_receipt','entry_id','reference_id','checkpoint_id','session_id','action_id','parent_receipt','hypothesis_id','attempt_id','record_id','injection_id','source_session_id'}
+        def collect(value):
+            if isinstance(value,dict):
+                for key,item in value.items():
+                    if key in keys and isinstance(item,str) and len(item)<=128:identities.add((key,item))
+                    collect(item)
+            elif isinstance(value,list):
+                for item in value:collect(item)
+        def returned(content):
+            # Parse only product tool-result envelopes, never model prose or an
+            # observation's embedded JSON text as a source of returned handles.
+            if isinstance(content, str):
+                try: content = json.loads(content)
+                except (ValueError, RecursionError): return
+            collect(content)
+        for item in history:
+            if self.codec == "openai-chat-text-tools-v1" and item.get("role") == "tool":
+                returned(item.get("content"))
+            elif self.codec == "openai-responses-text-tools-v1" and item.get("type") == "function_call_output":
+                returned(item.get("output"))
+            elif item.get("role") == "user":
+                for block in item.get("content", []) if isinstance(item.get("content"), list) else item.get("parts", []):
+                    if block.get("type") == "tool_result": returned(block.get("content"))
+                    if "toolResult" in block:
+                        for part in block["toolResult"].get("content", []): returned(part.get("text"))
+                    if "functionResponse" in block: returned(block["functionResponse"].get("response", {}).get("output"))
+        require(len(identities)<=4096)
+        ledger=[dict(kind=k,identifier=v) for k,v in sorted(identities)]
+        instruction=("Summarize selected campaign history concisely. Preserve task, unresolved work, exact handles, "
+                     "observed outcomes and uncertainty. Omitted history is not evidence; inspect retained evidence "
+                     "using its handles when needed. Summary is interpretation. Selected history follows:\n")
+        groups=list(self._groups)
+        # Keep whole native assistant/tool groups. Never send an oversized full
+        # history with another instruction wrapped around it.
+        while True:
+            source=instruction+_canonical_value(dict(task=self._task,identities=ledger,selected_groups=groups,
+                omitted_complete_groups=len(self._groups)-len(groups)),ORDINARY_LIMIT).decode('utf-8')
+            request=self._initial(source)
+            if self.codec in ("openai-chat-text-tools-v1",
+                              "openai-responses-text-tools-v1"):
+                request["tool_choice"] = "none"
+            elif self.codec == "anthropic-messages-text-tools-v1":
+                request["tool_choice"] = {"type": "none"}
+            elif self.codec == "bedrock-converse-text-tools-v1":
+                request.pop("toolConfig", None)
+            elif self.codec == "gemini-text-tools-v1":
+                request["toolConfig"]["functionCallingConfig"]["mode"] = "NONE"
+            candidate=_canonical_value(request,ORDINARY_LIMIT)
+            if len(candidate)<1<<20 and self._estimated_tokens(candidate)<self._context_limits['warning_threshold_tokens']:break
+            require(bool(groups))
+            groups.pop(0)
+        self._compaction_ledger=ledger
         body = {key: deepcopy(self.policy[key])
                 for key in ("codec_id", "profile_id", "profile_digest")}
         body["request"] = request
@@ -152,10 +207,15 @@ class NativeConversation:
         }
         self._compactions.append(record)
         compacted = self._task + "\n\nCompacted campaign history:\n" + \
-            _canonical_value({**record, "summary": summary}, 256 << 10).decode("utf-8")
+            _canonical_value({**record, "summary": summary,"retained_identities":getattr(self,"_compaction_ledger",[])}, 256 << 10).decode("utf-8")
         require(len(compacted) <= 1 << 20)
         self._request = self._initial(compacted)
+        _, compacted_raw = self.body()
+        require(len(compacted_raw) < 1 << 20 and
+                self._estimated_tokens(compacted_raw) < self._context_limits['maximum_prompt_tokens'])
         self._segments = 0
+        self._groups=[]
+        # Compaction consumed a real call; its remaining budget is retained.
 
     def _history_field(self):
         return "input" if self.codec == "openai-responses-text-tools-v1" else (
@@ -167,6 +227,7 @@ class NativeConversation:
         field = self._history_field()
         self._request[field].extend(segment)
         self._segments += 1
+        self._groups.append(deepcopy(segment))
 
     def prompt_again(self, text="Continue with the next useful tool action or finish."):
         require(type(text) is str and text)
@@ -227,6 +288,8 @@ class AdaptiveHarness:
 
     def run(self):
         while self.loop.snapshot()["mode"] == "exploring":
+            if not self.conversation.can_fund_model():
+                return self._finish_unavailable("budget-limit")
             if self.conversation.needs_compaction():
                 try:
                     self.loop.begin_model(True)
@@ -257,6 +320,7 @@ class AdaptiveHarness:
                 except ContractError as error:
                     self.loop.hard_stop()
                     self.client.fail("model-compaction-contract-failed", cause=error)
+                self.conversation.observe_budget(reply.result,request_raw)
                 self.loop.accept_response(0)
                 if batch.disposition != "text":
                     self.loop.stop("no-useful-next-experiment")
@@ -299,6 +363,7 @@ class AdaptiveHarness:
                 self.loop.hard_stop()
                 self.client.fail("model-contract-failed", cause=error)
 
+            self.conversation.observe_budget(reply.result,request_raw)
             if batch.disposition == "tool-calls":
                 try:
                     results = self.dispatcher.dispatch(list(batch.calls))

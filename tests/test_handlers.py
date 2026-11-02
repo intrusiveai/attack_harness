@@ -96,10 +96,22 @@ class HandlerTest(unittest.TestCase):
         loop, _, service = self.service()
         result = service.reference_read({"reference_id": "ref-1", "offset": 2,
                                          "max_bytes": 3})
-        self.assertEqual(base64.b64decode(result.value["content"]), b"cde")
+        self.assertEqual(result.value["content"], "cde")
         self.assertEqual(result.value["source"]["path"], "references/one.txt")
         self.assertFalse(result.value["eof"])
         self.assertEqual(loop.snapshot()["read_bytes"], 3)
+
+    def test_text_and_binary_presentation_preserve_exact_bytes(self):
+        import base64
+        from attack_harness.handlers import _present_content
+        for content in (b"\xff", "abc\u20ac".encode()[:-1], b"\x00\x01"):
+            result=_present_content(content,"application/octet-stream")
+            self.assertEqual(result["encoding"],"base64")
+            self.assertEqual(base64.b64decode(result["content"]),content)
+        text="quoted \"data\" \u20ac"
+        result=_present_content(text.encode(),"application/json")
+        self.assertEqual(result["content"],text)
+        self.assertEqual(result["encoding"],"utf8")
 
     def test_only_advertised_direct_handlers_are_installed(self):
         _, _, service = self.service({"engine.injection_delete", "engine.snapshot_list"})
@@ -114,7 +126,7 @@ class HandlerTest(unittest.TestCase):
         self.assertEqual(artifact.value["artifact_receipt"], "artifact-1")
         observed = service.observation_read({"receipt_id": "receipt-1", "entry_id": "entry-1",
                                              "offset": 0, "max_bytes": 8})
-        self.assertEqual(base64.b64decode(observed.value["content"]), b"data")
+        self.assertEqual(observed.value["content"], "data")
         self.assertEqual(loop.snapshot()["read_bytes"], 4)
 
     def test_direct_operation_preserves_result_and_known_error_is_preflight(self):

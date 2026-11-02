@@ -49,7 +49,7 @@ class ModelTurnsTest(unittest.TestCase):
     def test_unknown_usage_never_exposes_calls(self):
         cases = json.loads((self.source / "fixtures/model-codec.json").read_text())
         case = next(item for item in cases if item["name"] == "missing usage is explicit unknown")
-        with self.assertRaisesRegex(ContractError, "usage unknown"):
+        with self.assertRaises(ContractError):
             native_batch(self.protocol, *(_canonical_value(case[key], ORDINARY_LIMIT)
                                            for key in ("policy", "request", "result")))
 

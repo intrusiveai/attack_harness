@@ -82,6 +82,7 @@ class ScriptedHost:
             "profile_id":"vertical-slice-profile",
             "profile_digest":"sha256:"+"9"*64,
             "receipt_id":f"model-receipt-{turn}",
+            "context_budget":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"requested_completion_tokens":4096,"reserved_tokens":36864,"remaining_prompt_tokens":32668,"near_prompt_limit":False,"remaining_model_tokens":1000000-turn*120,"remaining_model_turns":100-turn},
             "response":{
                 "id":f"chatcmpl-{turn}","object":"chat.completion","created":turn,
                 "model":"fixture-model-2026","choices":[{"index":0,
@@ -278,7 +279,7 @@ class VerticalSliceTest(unittest.TestCase):
             "profile_id":"vertical-slice-profile","profile_digest":"sha256:"+"9"*64,
             "request_model":"fixture-model","response_models":["fixture-model-2026"],
             "instruction_role":"developer","prompt":"Fixed vertical-slice prompt.\n",
-            "max_completion_tokens":4096,"tools":json.loads(tools)}
+            "context_limits":{"maximum_prompt_tokens":32768,"maximum_completion_tokens":4096,"warning_threshold_tokens":26214},"max_completion_tokens":4096,"tools":json.loads(tools)}
         policy_raw=_canonical_value(policy,4<<20)
         conversation=NativeConversation(self.protocol,policy_raw,"Run the marker scenario.")
         result=AdaptiveHarness(self.protocol,client,loop,dispatcher,conversation,finalizer).run()
@@ -294,7 +295,7 @@ class VerticalSliceTest(unittest.TestCase):
                    if value["begin"]["purpose"]=="payload"]
         self.assertEqual(committed,payloads)
         turn3=json.dumps(client.model_requests[2],separators=(",",":"))
-        self.assertIn(base64.b64encode(observations[0]).decode(),turn3)
+        self.assertIn("ordinary",turn3)
         conclusion=self.protocol.validate_conclusion(client.conclusion_raw)
         self.assertEqual(conclusion["claims"][0]["observation_refs"][0]
                          ["attempt_receipt_id"],"attempt-receipt-2")

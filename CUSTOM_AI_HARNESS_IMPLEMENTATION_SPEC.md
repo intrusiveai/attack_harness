@@ -11,7 +11,7 @@ boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_S
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.3.0** from the image and
+The Harness loads Operator's shared contract package **0.4.0** from the image and
 validates its exact digest against [the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
@@ -185,3 +185,25 @@ entrypoint, and controlled model/target fixtures over both transports. Local
 publication tests run with `python3 -m unittest discover -s build/tests -v`.
 The [integration guide](docs/INTEGRATION.md#build-and-verify-an-integration) describes
 what the process fixture covers and how it differs from a deployed campaign.
+
+## Model context management
+
+The shared `MODEL_CONTEXT_CONTRACT.md` defines frozen local prompt/completion
+allowances, response usage snapshots, compact resource references and selected
+model tools. These are Operator policy limits, not discovered provider windows.
+Harness consumes those verified values; it does not negotiate or alter them.
+
+The initial task includes ordinary operation inputs, objectives and scenarios,
+selected skills and a compact resource index. Full resource contracts and advanced
+tool guidance remain available through verified reference handles. Model-facing
+reads default to 4096 bytes, with faithful UTF-8 text where decodable and explicit
+binary/incomplete decoding otherwise; source, range and availability remain intact.
+
+After completing a tool batch, a prompt warning triggers compaction before another
+generation. Newly added bytes and a usage-calibrated local estimate also trigger
+reduction. Estimates do not establish actual usage or hard admission. Compaction
+uses the same charged model route and a bounded selection of whole native groups,
+retains the task and exact returned identity ledger across successive compactions,
+and labels summaries as interpretation. Insufficient budget or irreducible context
+uses the existing honest unavailable finish path. No provider or target replay is
+introduced. Exact token preflight is disabled in the baseline.

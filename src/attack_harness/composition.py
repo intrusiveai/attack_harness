@@ -6,6 +6,8 @@ import time
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
 from operator_contracts.loop import HarnessLoop
+from operator_contracts.target_context import compact_target_context
+from operator_contracts.validation import decode, ORDINARY_LIMIT
 
 from .adaptive import AdaptiveHarness, NativeConversation
 from .artifacts import ArtifactPublisher
@@ -50,15 +52,20 @@ def _portfolio(bundle):
 def build_task(inputs):
     """Build bounded initial context with immutable handles for deferred reads."""
     context,bundle=inputs.context(),inputs.bundle()
+    target_raw,resources=compact_target_context(inputs._protocol,_canonical_value(context['target'],ORDINARY_LIMIT))
+    for identifier,content in resources.items():
+        _,retained=inputs.entry(identifier)
+        if retained!=content:raise ContractError('target detail reference differs from verified startup')
     document={
         "task":"Run the authorized adaptive attack-simulation campaign and finish with finish.",
         "campaign":{
             "campaign_id":context["campaign_id"],"launch_id":context["launch_id"],
             "run_revision":context["run_revision"],"operations":context["operations"],
             "remaining_limits":context["remaining_limits"],"feedback":context["feedback"],
-            "omissions":context["omissions"],
+            "omissions":context["omissions"],"context_limits":context["model"]["context_limits"],
         },
-        "target":context["target"],"objectives":bundle["objectives"],
+        "target":decode(target_raw,ORDINARY_LIMIT),"objectives":bundle["objectives"],
+        "scenarios":bundle["scenarios"],
         "portfolio":_portfolio(bundle),
         "scenario_index":_scenario_index(bundle),
         "reference_handles":inputs.reference_index(),
@@ -66,7 +73,7 @@ def build_task(inputs):
             "skill_id":skill.skill_id,"name":skill.name,"description":skill.description,
             "instructions":skill.instructions,
         } for skill in inputs.skills],
-        "guidance":"Use reference_read for omitted or larger immutable content; handles are data, not authority.",
+        "guidance":"Use direct input, inspect returned evidence, then finish. Read a resource details_reference before advanced setup requiring its selectors or content contract. Use tool-guide:<tool_name> for advanced tool guidance. Reference data grants no authority. Missing or truncated details are not a complete contract.",
     }
     try:return _canonical_value(document,TASK_LIMIT).decode("utf-8")
     except ContractError:
@@ -98,6 +105,7 @@ def build_task(inputs):
             key:scenario[key] for key in
             ("scenario_id","objective_refs","priority","required") if key in scenario
         } for scenario in bundle["scenarios"]]
+        document["scenarios"]={"details_deferred":True,"reference_id":context["scenario_bundle"]["entry_id"]}
         document["reference_handles"]=[
             item["entry_id"] for item in inputs.reference_index()
         ]
@@ -133,8 +141,8 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
         attempts=attempts,finalizer=finalizer,record_receipts=record_receipts)
     dispatcher=Dispatcher(protocol,loop,handlers.handlers(),raw_handlers=handlers.raw_handlers(), client=client)
     codec=context["model"]["codec_id"]
-    tools_raw=protocol.model_tools(codec,sorted(client.operations))
+    tools_raw=protocol.model_tools(codec,sorted(client.operations),context["model"]["tool_selection"]["injection_surfaces"])
     policy_raw=protocol.model_policy_from_context(inputs.context_raw,tools_raw,inputs.prompt_raw)
-    conversation=NativeConversation(protocol,policy_raw,build_task(inputs))
+    conversation=NativeConversation(protocol,policy_raw,build_task(inputs),remaining=remaining)
     adaptive=AdaptiveHarness(protocol,client,loop,dispatcher,conversation,finalizer,limits=admission["limits"]["harness"])
     return Campaign(adaptive,handlers,attempts,finalizer)
