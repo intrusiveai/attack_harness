@@ -1,5 +1,9 @@
 import json
 import unittest
+import os
+from pathlib import Path
+from operator_contracts import Protocol
+from operator_contracts.target_context import compact_target_context
 
 from attack_harness.composition import TASK_LIMIT,build_task
 
@@ -11,12 +15,14 @@ class Skill:
 
 class Inputs:
     skills=(Skill(),)
+    def __init__(self):
+        source=Path(os.environ['OPERATOR_CONTRACT_SOURCE'])
+        self._protocol=Protocol(source)
+        self._context=json.loads((source/'fixtures/engine-context-example.json').read_text())
+        _,self._resources=compact_target_context(self._protocol,json.dumps(self._context['target']).encode())
+    def entry(self,identifier):return {},self._resources[identifier]
     def context(self):
-        return {"campaign_id":"campaign-1","launch_id":"launch-1","run_revision":1,
-            "operations":[],"remaining_limits":{},"feedback":{},"omissions":[],
-            "target":{"schema_version":"target/v1","source":{"kind":"synthetic"},
-                "capability_projection_digest":"sha256:"+"1"*64,
-                "capabilities":{"operations":[{"ref":"operation:invoke"}],"actions":[]}}}
+        return self._context
     def bundle(self):
         return {"objectives":[{"objective_id":"objective-1","required":True,
             "description":"x"*(100<<10)}],"scenarios":[{

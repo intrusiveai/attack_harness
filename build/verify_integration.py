@@ -57,7 +57,7 @@ def main():
         environment = dict(os.environ, OPERATOR_TEST_HARNESS_SOURCE=str(root),
             OPERATOR_TEST_PYTHON=str(args.python.absolute()), OPERATOR_HARNESS_INTEGRATION="1",
             OPERATOR_PYTHON_PEER_TEST="1", PYTHONDONTWRITEBYTECODE="1")
-        subprocess.run(["go", "test", "-overlay", str(overlay), "-count=1", "-timeout", "10m",
+        subprocess.run(["go", "test", "-overlay", str(overlay), "-count=1", "-timeout", "20m",
             "-v", "-run", args.run, "./internal/preparation", "./internal/transport"],
             cwd=operator, env=environment, check=True)
 

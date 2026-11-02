@@ -78,8 +78,8 @@ For AMD64 its values are:
 {
   "api_version": "operator.dev/harness-compatibility/v1alpha1",
   "minimum_operator_version": "0.1.0",
-  "contract_package_version": "0.3.0",
-  "contract_package_digest": "sha256:1ec7a4c0d8d5e4783c6f2bf5c473d3722c47dd193922b4c63feb1e0a0aac7502",
+  "contract_package_version": "0.4.0",
+  "contract_package_digest": "sha256:9c50335bda8b5442cae3e11b60319d9f41e5d626032096161cda985add909bfe",
   "runtime_profile": "operator-container/v1",
   "platform": "linux/amd64"
 }
@@ -106,7 +106,7 @@ Operator freezes the compatibility-byte digest as `release_record_digest` in
 startup and assessment bindings. Attempt generator metadata uses that same value
 as `generator.release_digest`. The resolved image identity is a separate binding.
 These names do not imply an external record lookup. The shared
-[image contract](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/ENGINE_RELEASE_CONTRACT.md)
+[image contract](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/ENGINE_RELEASE_CONTRACT.md)
 is authoritative.
 
 `engine-manifest.json` binds platform, runtime profile, contract identity, fixed
@@ -145,7 +145,7 @@ Operator establishes the container's read-only root, disabled network, dropped
 capabilities, resource limits, and startup policy. Linux hosts use FIFO transport;
 macOS hosts use file spool through their Linux Docker runtime. Host selection and
 mount details follow the pinned
-[container contract](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/GUEST_CONTAINER_SPEC.md).
+[container contract](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/GUEST_CONTAINER_SPEC.md).
 
 The guest loads fixed code and the shared package, accepts `bootstrap`, pins
 transport descriptors, and installs the irreversible native filter. Only then does

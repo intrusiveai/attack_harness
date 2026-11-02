@@ -74,7 +74,7 @@ class SimpleCampaignTest(unittest.TestCase):
         policy = {"codec_id": "openai-chat-text-tools-v1", "profile_id": "vertical-slice-profile",
             "profile_digest": "sha256:" + "9" * 64, "request_model": "fixture-model",
             "response_models": ["fixture-model-2026"], "instruction_role": "developer",
-            "prompt": "Controlled test.", "max_completion_tokens": 4096,
+            "prompt": "Controlled test.", "max_completion_tokens": 4096,"context_limits":{"maximum_prompt_tokens":32768,"maximum_completion_tokens":4096,"warning_threshold_tokens":26214},
             "tools": json.loads(self.protocol.model_tools("openai-chat-text-tools-v1", sorted(host.operations)))}
         conversation = NativeConversation(self.protocol, _canonical_value(policy, 4 << 20), "Run campaign.")
         result = AdaptiveHarness(self.protocol, host, loop, dispatcher, conversation, finalizer, limits=limits).run()

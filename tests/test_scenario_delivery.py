@@ -68,22 +68,26 @@ class ScenarioInputs(Inputs):
         protocol._catalog.validate_value("urn:operator:schema:scenario-bundle:v1alpha1", bundle)
         fixture = next(c for c in json.loads((root / "fixtures" / codec_file).read_text())
                        if c["mode"] == "context" and c["valid"])
+        self._protocol = protocol
         self._context = deepcopy(fixture["context"])
         c = self._context
         host.codec = c["model"]["codec_id"]
+        host.context_limits = c["model"]["context_limits"]
         c["operations"] = sorted(host.operations)
         c["model"]["profile_id"] = "vertical-slice-profile"
         c["model"]["profile_digest"] = "sha256:" + "9" * 64
         c["model"]["model_id"] = "fixture-model"
         if "response_models" in c["model"]["codec_settings"]:
             c["model"]["codec_settings"]["response_models"] = ["fixture-model-2026"]
-        tools = protocol.model_tools(c["model"]["codec_id"], sorted(host.operations))
+        tools = protocol.model_tools(c["model"]["codec_id"], sorted(host.operations),c["model"]["tool_selection"]["injection_surfaces"])
         c["model"]["codec_settings"]["tools_digest"] = raw_digest(_canonical_value(json.loads(tools), 4 << 20))
         self.prompt_raw = Path("assets/default-system-prompt.txt").read_bytes()
         descriptor = {"size_bytes": len(self.prompt_raw), "digest": raw_digest(self.prompt_raw)}
         c["prompt"]["provenance"].update(base=descriptor, effective=descriptor)
         self.bundle_raw = _canonical_value(bundle, 64 << 20)
         c["scenario_bundle"].update(size_bytes=len(self.bundle_raw), digest=raw_digest(self.bundle_raw))
+        from operator_contracts.target_context import compact_target_context
+        _, self.details = compact_target_context(protocol, _canonical_value(c["target"], 4 << 20))
         self.context_raw = _canonical_value(c, 64 << 20)
         protocol.validate_engine_context(self.context_raw)
 
@@ -96,6 +100,9 @@ class ScenarioInputs(Inputs):
     def entry(self, identifier):
         if identifier == self._context["scenario_bundle"]["entry_id"]:
             return deepcopy(self._context["scenario_bundle"]), self.bundle_raw
+        if identifier in self.details:
+            content = self.details[identifier]
+            return {"entry_id":identifier,"digest":raw_digest(content),"size_bytes":len(content),"media_type":"application/json"}, content
         raise ContractError("Unknown reference.")
 
 
@@ -119,10 +126,18 @@ class ScenarioHost(ScriptedHost):
         return self.task_from_request(self.model_requests[-1])
 
     def _model_result(self, turn, calls):
+        result = super()._model_result(turn, calls)
+        limits = self.context_limits
+        result["context_budget"].update(
+            requested_completion_tokens=limits["maximum_completion_tokens"],
+            reserved_tokens=limits["maximum_prompt_tokens"]+limits["maximum_completion_tokens"],
+            remaining_prompt_tokens=limits["maximum_prompt_tokens"]-100,
+            near_prompt_limit=100 >= limits["warning_threshold_tokens"])
         if self.codec != "bedrock-converse-text-tools-v1":
-            return super()._model_result(turn, calls)
+            return result
         return {"codec_id": self.codec, "profile_id": "vertical-slice-profile",
             "profile_digest": "sha256:" + "9" * 64, "receipt_id": f"model-receipt-{turn}",
+            "context_budget": result["context_budget"],
             "response": {"output": {"message": {"role": "assistant", "content": [
                 {"toolUse": {"toolUseId": identifier, "name": name, "input": arguments}}
                 for identifier, name, arguments in calls]}}, "stopReason": "tool_use",
@@ -145,7 +160,7 @@ class ScenarioHost(ScriptedHost):
             feedback = self.model_requests[-1]["request"]["messages"][-1]
             content = (feedback["content"][0]["toolResult"]["content"][0]["text"]
                 if self.codec == "bedrock-converse-text-tools-v1" else feedback["content"])
-            output = json.loads(base64.b64decode(json.loads(content)["content"]))
+            output = json.loads(json.loads(content)["content"])
             if output["status"] != "needs_details":
                 raise AssertionError("missing target feedback for follow-up")
             return invoke("refund", scenarios["refund"]["guidance"]["composition"][1])
@@ -258,12 +273,20 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 # Supplied instructions stay in user/task data, never the privileged prompt.
                 self.assertNotIn(inputs.bundle()["coverage"]["completion_guidance"], c.policy["prompt"])
                 self.assertIn("17.25 USD", json.dumps(body))
+                c._compaction_ledger = [{"kind":"receipt_id", "identifier":"retained-attempt-1"}]
+                c._budget = {"near_prompt_limit": False, "input_tokens":100}
+                c._last_bytes = len(_canonical_value(body, 4 << 20))
                 c.apply_compaction("Incomplete retrieval, refund and attack coverage.", "sha256:" + "a" * 64, 1)
                 c.replace_task(build_task(inputs))
                 body, _ = c.body()  # Shared codec validation still accepts the history.
                 self.assertIn("summary_provenance", json.dumps(body))
                 self.assertIn("17.25 USD", json.dumps(body))
                 self.assertEqual(json.loads(c.task), task)
+                self.assertIn("retained-attempt-1", json.dumps(body))
+                self.assertEqual(c._budget["input_tokens"], 100)
+                self.assertNotEqual(c.task_generation, c.delivered_task_generation)
+                self.assertIn("details_reference", json.dumps(task["target"]))
+                self.assertEqual(task["campaign"]["context_limits"], inputs.context()["model"]["context_limits"])
 
     def test_unrepresentable_active_scenario_has_specific_safe_diagnostic(self):
         bundle = support_bundle()

@@ -6,7 +6,6 @@ package preparation_test
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -125,7 +124,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						if e != nil {
 							return nil, e
 						}
-						raw, e := base64.StdEncoding.DecodeString(fmt.Sprint(evidence["content"]))
+						raw, e := modelContent(evidence)
 						if e != nil || string(raw) != `{"answer":"test"}` {
 							return nil, fmt.Errorf("wrong evidence: %v", evidence)
 						}

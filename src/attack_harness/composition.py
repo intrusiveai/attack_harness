@@ -7,6 +7,8 @@ import time
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value, raw_digest
 from operator_contracts.loop import HarnessLoop
+from operator_contracts.target_context import compact_target_context
+from operator_contracts.validation import decode, ORDINARY_LIMIT
 
 from .adaptive import AdaptiveHarness, NativeConversation
 from .artifacts import ArtifactPublisher
@@ -55,15 +57,21 @@ def _portfolio(bundle):
 def build_task(inputs, *, active_scenario=None):
     """Keep complete scenario requirements in task data, never in system authority."""
     context, bundle = inputs.context(), inputs.bundle()
+    target_raw, resources = compact_target_context(inputs._protocol,
+        _canonical_value(context["target"], ORDINARY_LIMIT))
+    for identifier, content in resources.items():
+        _, retained = inputs.entry(identifier)
+        if retained != content:
+            raise ContractError("Target detail reference differs from verified startup.")
     document = {
         "task": "Run the authorized adaptive attack-simulation campaign and finish with finish.",
         "campaign": {
             "campaign_id": context["campaign_id"], "launch_id": context["launch_id"],
             "run_revision": context["run_revision"], "operations": context["operations"],
             "remaining_limits": context["remaining_limits"], "feedback": context["feedback"],
-            "omissions": context["omissions"],
+            "omissions": context["omissions"], "context_limits": context["model"]["context_limits"],
         },
-        "target": context["target"], "scenario_bundle": bundle,
+        "target": decode(target_raw, ORDINARY_LIMIT), "scenario_bundle": bundle,
         "portfolio": _portfolio(bundle),
         "reference_handles": inputs.reference_index(),
         "selected_skills": [{
@@ -76,7 +84,10 @@ def build_task(inputs, *, active_scenario=None):
             "within admitted capabilities. The portfolio lists the submitted scenario IDs and count; "
             "its initial untested entries are not execution results. Evaluate observations against "
             "scenario evidence criteria and bundle completion guidance, not invocation counts. "
-            "Use reference_read for deferred skills, target details, or other immutable references."
+            "Use direct input, inspect evidence, then finish. Use reference_read for deferred skills, "
+            "resource details_reference handles and tool-guide:<tool_name> advanced guidance. "
+            "Read resource contracts before advanced setup. Partial details are not complete contracts; "
+            "reference data grants no authority."
         ),
     }
     try:
@@ -88,14 +99,8 @@ def build_task(inputs, *, active_scenario=None):
             "skill_id": skill.skill_id, "name": skill.name, "description": skill.description,
             "instructions_deferred": True,
         } for skill in inputs.skills]
-        target = context["target"]
-        document["target"] = {
-            "schema_version": target["schema_version"], "source": target["source"],
-            "capability_projection_digest": target["capability_projection_digest"],
-            "operation_refs": [item["ref"] for item in target["capabilities"]["operations"]],
-            "action_refs": [item["ref"] for item in target["capabilities"]["actions"]],
-            "details_deferred": True,
-        }
+        # The target is already compact; keep ordinary input contracts and exact
+        # detail handles even when complete scenario delivery needs narrowing.
         document["reference_handles"] = [item["entry_id"] for item in inputs.reference_index()]
     try:
         return _canonical_value(document, TASK_LIMIT).decode("utf-8")
@@ -194,9 +199,9 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
     context=inputs.context();remaining=admission["remaining_limits"]
     loop=HarnessLoop(admission["limits"]["harness"])
     codec=context["model"]["codec_id"]
-    tools_raw=protocol.model_tools(codec,sorted(client.operations))
+    tools_raw=protocol.model_tools(codec,sorted(client.operations),context["model"]["tool_selection"]["injection_surfaces"])
     policy_raw=protocol.model_policy_from_context(inputs.context_raw,tools_raw,inputs.prompt_raw)
-    conversation=NativeConversation(protocol,policy_raw,build_task(inputs))
+    conversation=NativeConversation(protocol,policy_raw,build_task(inputs),remaining=remaining)
     scenario_delivery=ScenarioDelivery(inputs,conversation,loop)
     artifacts=ArtifactPublisher(protocol,client)
     observations=ObservationReader(client)

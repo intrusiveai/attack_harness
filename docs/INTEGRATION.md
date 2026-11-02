@@ -7,17 +7,17 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.3.0**, pinned in
+The release consumes Operator shared contract **0.4.0**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate the exact package digest.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.3.0` |
-| Shared package digest | `sha256:1ec7a4c0d8d5e4783c6f2bf5c473d3722c47dd193922b4c63feb1e0a0aac7502` |
-| Contract source commit | `dc2f1c40a3e6c3c88209e5f393493e6a627fc03f` |
-| Contract source tree | `6f0c481186104e2b8e78f1227bcb2d11c425b96b` |
-| Integration/inspection Operator commit | `e4de591a40ce25a9a37d310ff24e43374337ac15` |
+| Shared package version | `0.4.0` |
+| Shared package digest | `sha256:9c50335bda8b5442cae3e11b60319d9f41e5d626032096161cda985add909bfe` |
+| Contract source commit | `f84ccf374b859af66a32201a0f953dd9e3a3fc3c` |
+| Contract source tree | `b32b619335764feb2ada1c7b3e2cca3d3b311b9d` |
+| Integration/inspection Operator commit | `f84ccf374b859af66a32201a0f953dd9e3a3fc3c` |
 | Minimum Operator product version | `0.1.0` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
@@ -35,12 +35,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/dc2f1c40a3e6c3c88209e5f393493e6a627fc03f/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -49,7 +49,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -236,7 +236,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/e4de591a40ce25a9a37d310ff24e43374337ac15/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -257,3 +257,17 @@ FIFO and spool with controlled model responses and local targets. The fixture
 relocates guest paths and uses a confinement shim; image inspection and actual
 container campaigns exercise different boundaries. Use the same contract and
 image identities when running a deployed integration through Operator.
+
+## Context behavior
+
+Matching Operator and Harness builds require shared package 0.4.0 and its exact
+locked digest. Old packages fail compatibility before campaign execution.
+Frozen injection surfaces select the same tools in Go and Python; restores keep
+that catalog. Context budget results are validated against native response usage.
+
+Controlled FIFO/spool process tests cover resource reads, warning-triggered
+compaction, follow-up scenario execution, finish and retained report/export facts.
+They do not qualify a live provider or native Docker containment. See Operator's
+`docs/MODEL_CONTEXT_VERIFICATION.md` for measured JSON byte reductions. The baseline
+has no exact token preflight. Context/budget-limit finalization remains honest when
+another bounded, funded model call is impossible.

@@ -95,7 +95,7 @@ class FixedHandlers:
             raise ToolError("INVALID_RANGE", "Reference offset exceeds content size.")
         if task is not None:
             self.scenario_delivery.activate(content, task)
-        selected = content[offset:offset + arguments["max_bytes"]]
+        selected = content[offset:offset + arguments.get("max_bytes",4096)]
         if selected:
             self.loop.reserve_read("content", source["digest"], offset, len(selected))
             self.loop.settle_read(len(selected))
@@ -106,8 +106,7 @@ class FixedHandlers:
             "offset": offset,
             "raw_length": len(selected),
             "eof": offset + len(selected) == len(content),
-            "content": base64.b64encode(selected).decode("ascii"),
-            "encoding": "base64",
+            **_present_content(selected,source["media_type"]),
         })
 
     def artifact_publish(self, arguments):
@@ -128,7 +127,7 @@ class FixedHandlers:
         try:
             chunk = self.observations.read(
                 arguments["receipt_id"], arguments["entry_id"],
-                arguments["offset"], arguments["max_bytes"],
+                arguments["offset"], arguments.get("max_bytes",4096),
             )
         except ObservationRejected as error:
             raise _operation_error(error.error) from None
@@ -143,8 +142,7 @@ class FixedHandlers:
             "entry_id": chunk.entry_id,
             "availability": chunk.availability,
             "offset": chunk.offset,
-            "content": base64.b64encode(chunk.content).decode("ascii"),
-            "encoding": "base64",
+            **_present_content(chunk.content,(chunk.artifact or {}).get("media_type","application/octet-stream")),
             "raw_length": len(chunk.content),
             "eof": chunk.eof,
             "artifact": chunk.artifact,
@@ -183,3 +181,10 @@ class FixedHandlers:
 
     def snapshot_request(self, arguments):
         return self._ordinary("engine.snapshot_request", arguments)
+
+
+def _present_content(content, media_type):
+    if media_type == 'application/json' or media_type.startswith('text/'):
+        try:return dict(content=content.decode('utf-8'),encoding='utf8',decoding='complete')
+        except UnicodeError:pass
+    return dict(content=base64.b64encode(content).decode('ascii'),encoding='base64',decoding='binary-or-incomplete-utf8')

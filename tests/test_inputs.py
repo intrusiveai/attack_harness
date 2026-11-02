@@ -56,9 +56,17 @@ class InputsTest(unittest.TestCase):
         context["contract"]["version"]=self.pin["package_version"]
         context["contract"]["digest"]=self.pin["package_digest"]
         context["contract"].update(p.registry_digests())
+        from operator_contracts.target_context import compact_target_context
+        _,resources=compact_target_context(p,encoded(context['target']))
+        for identifier,data in resources.items():
+            path='context/'+raw_digest(data)[7:]+'.json'
+            entry=dict(entry_id=identifier,root_kind='input',role='reference',path=path,media_type='application/json',**descriptor(data))
+            context['references'].append(entry);tree['entries'].append(entry);content['input/'+path]=data
+        context['references'].sort(key=lambda e:e['path']);tree['entries'].sort(key=lambda e:e['path'])
         context_raw=encoded(context)
         bundle,prompt=[base64.b64decode(case[k+"_base64"]) for k in ("bundle","prompt")]
         for entry in tree["entries"]:
+            if entry["role"]=="reference":continue
             raw={"engine-context":context_raw,"scenario-bundle":bundle,"system-prompt":prompt}[entry["role"]]
             entry.update(descriptor(raw));content["input/"+entry["path"]]=raw
         raw_tree=encoded(tree);content["manifests/input-tree.json"]=raw_tree
@@ -114,6 +122,12 @@ class InputsTest(unittest.TestCase):
         parent=self.root/"customer-skills/custom-1";parent.chmod(0o700)
         (parent/"SKILL.md").unlink();parent.chmod(0o555)
         with self.assertRaises(ContractError):self.load()
+
+    def test_modified_generated_detail_fails(self):
+        self.fixture()
+        path = next((self.root / "input/context").glob("*.json"))
+        path.chmod(0o644); path.write_bytes(b"{}"); path.chmod(0o444)
+        with self.assertRaises(ContractError): self.load()
 
     def test_modified_prompt_fails(self):
         self.fixture();path=self.root/"input/system-prompt.txt";path.chmod(0o644);path.write_bytes(b"changed");path.chmod(0o444)

@@ -153,7 +153,7 @@ class AdaptiveTest(unittest.TestCase):
                     if item["name"] == "native text and usage preserved")
         policy_raw = _canonical_value(case["policy"], 4 << 20)
         conversation = NativeConversation(self.protocol, policy_raw,
-                                          "Inspect the target.", compact_at=1)
+                                          "x" * (1 << 20), compact_at=1)
         conversation.extend(_canonical_value(
             [{"role":"user", "content":"x" * (1 << 20)}], 4 << 20))
         loop = HarnessLoop(LIMITS)
@@ -166,6 +166,69 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual(finalizer.reason, "context-limit")
         self.assertEqual(client.requests, [])
         self.assertEqual(loop.snapshot()["model_turns"], 1)
+
+    def test_warning_growth_funding_and_repeated_identity_preservation(self):
+        case = next(item for item in self.cases("model-codec.json")
+                    if item["name"] == "native text and usage preserved")
+        conversation = NativeConversation(self.protocol,
+            _canonical_value(case["policy"], 4 << 20), "Inspect the target.")
+        _, raw = conversation.body()
+        budget = deepcopy(case["result"])
+        budget["context_budget"]["near_prompt_limit"] = True
+        conversation.observe_budget(budget, raw)
+        conversation.extend(_canonical_value([
+            {"role":"assistant", "content":json.dumps({"receipt_id":"invented-receipt"}),
+             "tool_calls":[{"id":"call-1","type":"function","function":{"name":"snapshot_list","arguments":"{}"}}]},
+            {"role":"tool","tool_call_id":"call-1", "content":json.dumps(
+                {"receipt_id":"returned-receipt-1", "checkpoint_id":"saved-checkpoint-1",
+                 "content":json.dumps({"receipt_id":"target-text-receipt"})})}], 4 << 20))
+        self.assertTrue(conversation.needs_compaction())
+        body, _, digest, count = conversation.compaction_body()
+        self.assertIn("returned-receipt-1", json.dumps(body))
+        ledger = json.dumps(conversation._compaction_ledger)
+        self.assertNotIn("invented-receipt", ledger)
+        self.assertNotIn("target-text-receipt", ledger)
+        conversation.apply_compaction("Keep comparing observations.", digest, count)
+        conversation.extend(_canonical_value([{"role":"user", "content":"Continue."}], 4 << 20))
+        body, _, digest, count = conversation.compaction_body()
+        self.assertIn("returned-receipt-1", json.dumps(body))
+        self.assertIn("saved-checkpoint-1", json.dumps(body))
+        conversation.apply_compaction("Still investigating.", digest, count)
+        conversation._budget["near_prompt_limit"] = False
+        conversation.extend(_canonical_value([{"role":"user", "content":"x"*200000}], 4 << 20))
+        self.assertTrue(conversation.needs_compaction())
+        conversation._remaining = {"model_tokens":0, "model_turns":20}
+        self.assertFalse(conversation.can_fund_model())
+        conversation._remaining = {"model_tokens":10**8, "model_turns":0}
+        self.assertFalse(conversation.can_fund_model())
+
+    def test_returned_identity_ledger_for_each_native_codec(self):
+        value=json.dumps({"receipt_id":"returned-1", "content":json.dumps({"receipt_id":"untrusted-1"})})
+        cases={
+            "model-codec.json":{"role":"tool","content":value},
+            "responses-model-codec.json":{"type":"function_call_output","output":value},
+            "anthropic-model-codec.json":{"role":"user","content":[{"type":"tool_result","content":value}]},
+            "bedrock-model-codec.json":{"role":"user","content":[{"toolResult":{"content":[{"text":value}]}}]},
+            "gemini-model-codec.json":{"role":"user","parts":[{"functionResponse":{"response":{"output":value}}}]},
+        }
+        for filename,item in cases.items():
+            with self.subTest(filename=filename):
+                case=next(c for c in self.cases(filename) if c["mode"]=="context" and c["valid"])
+                conversation=NativeConversation(self.protocol,_canonical_value(case["policy"],4<<20),"Inspect target.")
+                conversation.extend(_canonical_value([item],4<<20))
+                conversation.compaction_body()
+                self.assertEqual(conversation._compaction_ledger,[{"kind":"receipt_id","identifier":"returned-1"}])
+
+    def test_exhausted_reservation_finishes_without_another_call(self):
+        case = next(item for item in self.cases("model-codec.json")
+                    if item["name"] == "native text and usage preserved")
+        conversation = NativeConversation(self.protocol,
+            _canonical_value(case["policy"],4<<20), "Inspect the target.",
+            remaining={"model_tokens":0,"model_turns":10})
+        loop=HarnessLoop(LIMITS); client=Client([]); finalizer=Finalizer()
+        AdaptiveHarness(self.protocol,client,loop,Dispatcher(self.protocol,loop,{}),conversation,finalizer).run()
+        self.assertEqual(client.requests,[])
+        self.assertEqual(finalizer.reason,"budget-limit")
 
 
 if __name__ == "__main__":
