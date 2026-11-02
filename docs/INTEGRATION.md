@@ -66,6 +66,26 @@ layout are documented in [the container specification](../GUEST_ARTIFACT_LAYOUT_
 
 ## Ordinary execution
 
+Harness includes complete scenario objects, bundle completion guidance, and
+evidence limitations in the initial task message when they fit its 768 KiB task
+budget. Supplied content stays in user/task data and cannot override system
+instructions or admitted capabilities. The portfolio derives scenario IDs and
+counts from the submitted bundle, independently of the number of invocations.
+
+For larger bundles, Harness retains complete campaign requirements and one active
+scenario, deferring skill and target details to the existing reference reader.
+The task lists local scenario read handles: `reference_read` loads the selected
+scenario's complete requirements into the next task message, even if the requested
+read returns only a small chunk. These handles are views of verified bundle data,
+not execution or artifact receipts. As a backstop, an attempt call selecting an
+unloaded scenario is withheld before target dispatch. Harness
+loads that scenario in full, then requires a new model turn to read it and
+reconstruct the call; other calls in the same response cannot bypass this boundary.
+Context switches consume the existing tool, model-turn, and read budgets. The
+complete active instructions survive history compaction. If they cannot fit with
+required campaign context, `scenario_context_limit` reports the failure without
+reducing requirements to a hypothesis or executing the call.
+
 The model uses three tools: `attempt_execute`, `observation_read`, and `finish`.
 Operator retains effective input before dispatch and returns authoritative
 execution receipts and permitted observation entries. If retention fails, it
@@ -142,6 +162,14 @@ A campaign with no executed attempt can report an untested or inconclusive
 assessment with empty evidence references. It cannot claim evidentiary success.
 Operator validates and retains the assessment, closes execution, and controls
 cleanup. Invalid assessments remain correctable and are not reported as accepted.
+
+The model is instructed to evaluate scenario requirements against inspected
+observations, follow up on requests for supplied details, and identify skipped
+actions and unresolved effects. Invocation success does not imply scenario or
+objective achievement. Missing evidence calls for partial/untested coverage and
+an appropriate inconclusive, not-tested, or not-observed outcome. Reference checks
+remain structural and evidence-based; Harness does not use keyword matching to
+decide whether free-text requirements were satisfied.
 
 Accepted finish reports `execution_admission: "closed"`,
 `finalization_status: "pending"`, and requires exit within 5,000 ms. A healthy
