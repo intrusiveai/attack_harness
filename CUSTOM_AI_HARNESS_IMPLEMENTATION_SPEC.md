@@ -11,7 +11,7 @@ boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_S
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.4.0** from the image and
+The Harness loads Operator's shared contract package **0.5.0** from the image and
 validates its exact digest against [the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
@@ -207,3 +207,14 @@ retains the task and exact returned identity ledger across successive compaction
 and labels summaries as interpretation. Insufficient budget or irreducible context
 uses the existing honest unavailable finish path. No provider or target replay is
 introduced. Exact token preflight is disabled in the baseline.
+
+## Operating policy supplied at startup
+
+Harness MUST consume the exact verified EngineContext `operation_timeouts_ms` map
+for every admitted ordinary operation and MUST validate `size_limits` through the
+shared Go/Python contract. It MUST NOT infer missing values or use registry duration
+constants. The host MUST receive the same policy that guided Harness request construction.
+Harness MUST use configured upload/read chunks and expose sizing allowances in task
+context. Explicit oversize arguments MUST be rejected with existing actionable
+argument diagnostics before sending. Safety ceilings, receipt integrity, target
+scope and campaign budget checks remain mandatory. See [integration](docs/INTEGRATION.md).

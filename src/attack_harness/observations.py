@@ -67,9 +67,14 @@ class ObservationReader:
     def observed(self, receipt_id, entry_id):
         return (receipt_id, entry_id) in self._metadata
 
-    def read(self, receipt_id, entry_id, offset, max_bytes=CHUNK_LIMIT):
+    def read(self, receipt_id, entry_id, offset, max_bytes=None):
         require(type(offset) is int and offset >= 0)
-        require(type(max_bytes) is int and 0 < max_bytes <= CHUNK_LIMIT)
+        if max_bytes is None: max_bytes = self.client.size_limits["observation_chunk_bytes"]
+        require(type(max_bytes) is int and max_bytes > 0)
+        if max_bytes > self.client.size_limits["observation_chunk_bytes"]:
+            raise ContractError("Observation read exceeds configured observation_chunk_bytes.",
+                reason="configured_size_exceeded", field_path="/max_bytes",
+                correction="Request a smaller chunk within size_limits.observation_chunk_bytes; continue reading by offset.")
         reply = self.client.request("engine.observation_read", {
             "receipt_id": receipt_id,
             "entry_id": entry_id,
@@ -111,7 +116,7 @@ class ObservationReader:
         while True:
             remaining = maximum_bytes - offset
             require(remaining >= 0)
-            chunk = self.read(receipt_id, entry_id, offset, min(CHUNK_LIMIT, max(1, remaining)))
+            chunk = self.read(receipt_id, entry_id, offset, min(self.client.size_limits["observation_chunk_bytes"], max(1, remaining)))
             require(chunk.offset == offset)
             if chunk.availability != "available":
                 require(not chunk.content and not chunk.eof and chunk.artifact is None)

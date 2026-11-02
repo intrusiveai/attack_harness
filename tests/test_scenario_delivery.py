@@ -74,6 +74,7 @@ class ScenarioInputs(Inputs):
         host.codec = c["model"]["codec_id"]
         host.context_limits = c["model"]["context_limits"]
         c["operations"] = sorted(host.operations)
+        c["operation_timeouts_ms"] = {op: 30000 for op in c["operations"]}
         c["model"]["profile_id"] = "vertical-slice-profile"
         c["model"]["profile_digest"] = "sha256:" + "9" * 64
         c["model"]["model_id"] = "fixture-model"

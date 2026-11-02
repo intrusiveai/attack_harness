@@ -61,6 +61,9 @@ class FakeInputs:
         self.events.append("inputs")
         self.initialize = protocol.validate_control("host", prefix[2])
 
+    def context(self):
+        return deepcopy(self._context)
+
     def initialized_body(self):
         body = deepcopy(self.initialize["body"])
         body.pop("timeout_ms")
@@ -71,7 +74,9 @@ class FakeInputs:
     def admit(self, initialized, admission):
         self.events.append("admit")
         self.protocol.validate_control("guest", initialized)
-        return deepcopy(self.protocol.validate_control("host", admission)["body"])
+        result = deepcopy(self.protocol.validate_control("host", admission)["body"])
+        self._context = {"operation_timeouts_ms": {op:30000 for op in result["operations"]}, "size_limits": dict(direct_input_bytes=32768, assessment_bytes=1<<20, artifact_bytes=16<<20, artifact_part_bytes=256<<10, observation_chunk_bytes=256<<10, snapshot_page_items=100)}
+        return result
 
 
 class StartupTest(unittest.TestCase):

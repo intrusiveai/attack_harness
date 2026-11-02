@@ -12,7 +12,7 @@ import re
 from .runtime import RuntimeStopped
 
 
-ARGUMENT_LIMIT = 256 << 10
+ARGUMENT_LIMIT = ORDINARY_LIMIT
 
 
 @dataclass(frozen=True)
@@ -172,7 +172,7 @@ class Dispatcher:
                 raw_handler = self._raw_handlers.get(call.name)
                 try:
                     if len(call.arguments) > ARGUMENT_LIMIT:
-                        raise ToolError("argument_limit", "Tool arguments exceed the 256 KiB limit.",
+                        raise ToolError("argument_limit", "Tool arguments exceed the ordinary frame safety ceiling.",
                             correction="Reduce this call's size; use bounded artifact publication for reusable content.")
                     if handler is None and raw_handler is None:
                         raise ToolError("unknown_tool", "Unknown tool name.",
@@ -190,6 +190,12 @@ class Dispatcher:
                                                 "failed", "restored"))
                 except ToolError as error:
                     handled = HandlerResult(error.value, error.outcome)
+                except ContractError as error:
+                    # Shared sizing checks run before any send. Do not turn a
+                    # transport failure or malformed host response into a retry.
+                    if isinstance(error, RuntimeStopped) or error.reason != "configured_size_exceeded":
+                        raise
+                    handled = HandlerResult(local_error(error), "invalid")
                 if handled.outcome == "invalid":
                     self._report(call, handled.value)
                 result = ToolResult(call.call_id, call.name, _content(handled.value), handled.outcome)
