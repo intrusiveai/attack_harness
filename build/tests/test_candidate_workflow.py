@@ -1,4 +1,5 @@
 import copy
+from contextlib import contextmanager
 import io
 import json
 import os
@@ -201,6 +202,33 @@ class CandidateWorkflowTest(unittest.TestCase):
         self.github, self.registry = FakeGitHub(), FakeRegistry()
         for platform in release.PLATFORMS:
             make_archive(self.directory, platform)
+
+    @contextmanager
+    def publication_fixture(self, contract_commit, runtime_commit):
+        """Exercise publication with controlled pins and fresh state for each case."""
+        lock_path = Path("build/contract-lock.json")
+        runtime_path = Path("build/operator-runtime-commit.txt")
+        read_bytes, read_text = Path.read_bytes, Path.read_text
+        lock = json.loads(read_bytes(lock_path))
+        lock["source"]["commit"] = contract_commit
+
+        def fixture_bytes(path, *args, **kwargs):
+            if path == lock_path:
+                return json.dumps(lock).encode()
+            return read_bytes(path, *args, **kwargs)
+
+        def fixture_text(path, *args, **kwargs):
+            if path == runtime_path:
+                return runtime_commit + "\n"
+            return read_text(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(Path, "read_bytes", fixture_bytes), \
+                patch.object(Path, "read_text", fixture_text):
+            root = Path(directory)
+            for platform in release.PLATFORMS:
+                make_archive(root, platform)
+            yield root, FakeGitHub(), FakeRegistry()
 
     def publish(self, run="123.1", source=SOURCE):
         return release.publish(self.github, self.registry, self.directory, BRANCH, source, run, "success")
@@ -426,29 +454,36 @@ class CandidateWorkflowTest(unittest.TestCase):
             self.publish()
         self.assertEqual(self.registry.copies, [])
 
-    def test_runtime_pin_can_differ_from_contract_source(self):
-        contract_commit = json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]
-        runtime_commit = Path("build/operator-runtime-commit.txt").read_text().strip()
-        self.assertNotEqual(runtime_commit, contract_commit)
-        self.publish()
-        self.assertIn(release.IMAGE + ":v1.2.3", self.registry.images)
-        self.assertEqual(self.github.dispatches, [
-            {"workflow": "publish-catalog.yml", "ref": "v1.2.3-candidate.123.1"}])
+    def test_selected_runtime_can_match_or_differ_from_contract_source(self):
+        contract_commit = "d" * 40
+        for runtime_commit in (contract_commit, "e" * 40):
+            with self.subTest(runtime_commit=runtime_commit), \
+                    self.publication_fixture(contract_commit, runtime_commit) as (directory, github, registry):
+                release.publish(github, registry, directory, BRANCH, SOURCE, "123.1", "success")
+                self.assertIn(release.IMAGE + ":v1.2.3", registry.images)
+                self.assertEqual(github.dispatches, [
+                    {"workflow": "publish-catalog.yml", "ref": "v1.2.3-candidate.123.1"}])
 
     def test_unpinned_inspector_never_publishes_even_at_contract_source(self):
-        contract_commit = json.loads(Path("build/contract-lock.json").read_bytes())["source"]["commit"]
-        for platform in release.PLATFORMS:
-            path = self.directory / ("attack-harness-" + platform.replace("/", "-") + ".inspection-report.json")
-            original = json.loads(path.read_bytes())
-            for commit in (contract_commit, "f" * 40, "main", ""):
-                with self.subTest(platform=platform, commit=commit):
-                    release.write_json(path, {**original, "operator_commit": commit})
-                    with self.assertRaisesRegex(ValueError, "unpinned Operator runtime"):
-                        self.publish()
-                    self.assertEqual(self.registry.copies, [])
-                    self.assertEqual(self.github.releases, {})
-                    self.assertEqual(self.github.dispatches, [])
-            release.write_json(path, original)
+        contract_commit = "d" * 40
+        for runtime_commit in (contract_commit, "e" * 40):
+            invalid_commits = ["f" * 40, "main", ""]
+            if contract_commit != runtime_commit:
+                invalid_commits.append(contract_commit)
+            for platform in release.PLATFORMS:
+                for commit in invalid_commits:
+                    with self.subTest(runtime_commit=runtime_commit, platform=platform, commit=commit), \
+                            self.publication_fixture(contract_commit, runtime_commit) as (directory, github, registry):
+                        path = directory / ("attack-harness-" + platform.replace("/", "-") + ".inspection-report.json")
+                        inspection = json.loads(path.read_bytes())
+                        release.write_json(path, {**inspection, "operator_commit": commit})
+                        with self.assertRaisesRegex(ValueError, "unpinned Operator runtime"):
+                            release.publish(github, registry, directory, BRANCH, SOURCE, "123.1", "success")
+                        self.assertEqual(registry.copies, [])
+                        self.assertEqual(registry.images, {})
+                        self.assertEqual(github.releases, {})
+                        self.assertEqual(github.tags, {})
+                        self.assertEqual(github.dispatches, [])
 
     def test_invalid_runtime_pin_fails_before_publication(self):
         for commit in ("", "main", "052781a", "f" * 41):
