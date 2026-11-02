@@ -158,7 +158,7 @@ identify the repository, environment, tag, and workflow file.
    `sha256:9c50335bda8b5442cae3e11b60319d9f41e5d626032096161cda985add909bfe`.
    Move any older generated `build/context/contracts` aside before rebuilding.
 2. Check out matching Operator runtime commit
-   `f84ccf374b859af66a32201a0f953dd9e3a3fc3c` in a second directory for integration
+   `009a451d495c96141c88a75f2eb387ba7a7363d9` in a second directory for integration
    and stopped-image inspection. Its shared contracts/schemas are unchanged from
    the package source; its database integration verifies snapshot backup evidence
    and exercises live oracle feedback through the Python Harness. CI builds the
@@ -179,7 +179,7 @@ identify the repository, environment, tag, and workflow file.
    python3 -m unittest discover -s build/tests -v
    ```
 
-   `make test-integration` runs Operator's authoritative explicit-origin and
+   `make test-integration` selects `^Test(Python|Harness)`: Operator's explicit-origin and
    corrected-finish fixtures, plus Harness's additional workflow and exit tests
    through a test-only overlay. Production Harness processes over FIFO/spool
    verify correction without duplicate dispatch, observation inspection, accepted
@@ -187,10 +187,24 @@ identify the repository, environment, tag, and workflow file.
    replace Operator's tests or modify runtime/contract bytes. Controlled responses
    do not establish live-model reliability or native container qualification.
 
+   Operator-only unit/service tests run in Operator CI, not again in this job.
+   New cross-component Go tests must use the `TestPython` or `TestHarness` prefix;
+   `build/verify_integration.py --run .` remains available for full host-package
+   diagnosis. The complete Python unit suite runs once per native architecture
+   inside the Docker test stage against packaged code. `make test` remains the
+   developer command for a host-side run; CI does not duplicate it before building.
+
+   Campaign tests share one freshly built immutable contract package and CLI per
+   test process, with fresh writable state and target/transport peers per campaign.
+   Business-rule variants run on FIFO, with representative scenario, direct-input,
+   rejection/export and accepted-finish workflows also on spool. Startup, large
+   inputs, compaction, restore, disconnects, cancellation and the full Harness
+   exit matrix retain both transports. No unique business-rule input is removed.
+
    Each Go integration test package has a 20-minute aggregate timeout to allow
-   the complete suite to run on native ARM64 runners. Individual operation
+   the cross-component suite to run on native ARM64 runners. Individual operation
    deadlines remain unchanged; the native-platform job is limited to 90 minutes.
-   Every test runs on each verification (`-count=1`). The workflow caches Go
+   Every selected integration test runs afresh (`-count=1`). The workflow caches Go
    dependencies and compiled packages through `setup-go`, keyed by the platform,
    toolchain and Operator dependency files. A cold or missing cache is supported;
    cached test results never substitute for execution. When the contract source
@@ -222,7 +236,7 @@ identify the repository, environment, tag, and workflow file.
    independently resolved Docker image ID separately: containerd-backed Docker can
    expose a manifest-based ID while classic Docker exposes the config ID.
 5. Run Operator's process integration suite with this Harness checkout (see its
-   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
+   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/009a451d495c96141c88a75f2eb387ba7a7363d9/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
    conclusion bindings. The release digest hashes the exact compatibility bytes,
    not normalized JSON. Record fixture/cross-platform results separately from
    native runtime and live-provider QA; neither latter activity blocks candidate

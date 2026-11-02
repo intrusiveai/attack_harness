@@ -17,7 +17,7 @@ alone is insufficient: both products validate the exact package digest.
 | Shared package digest | `sha256:9c50335bda8b5442cae3e11b60319d9f41e5d626032096161cda985add909bfe` |
 | Contract source commit | `f84ccf374b859af66a32201a0f953dd9e3a3fc3c` |
 | Contract source tree | `b32b619335764feb2ada1c7b3e2cca3d3b311b9d` |
-| Integration/inspection Operator commit | `f84ccf374b859af66a32201a0f953dd9e3a3fc3c` |
+| Integration/inspection Operator commit | `009a451d495c96141c88a75f2eb387ba7a7363d9` |
 | Minimum Operator product version | `0.1.0` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
@@ -251,6 +251,12 @@ package and images. Run integration tests with the separately pinned runtime:
 ```sh
 make test-integration OPERATOR_ROOT=/absolute/path/to/matching-operator PYTHON=.ci-venv/bin/python
 ```
+
+The default selects cross-component `TestPython*`/`TestHarness*` cases; host-only
+unit/service checks run in Operator CI. For diagnostic runs of the entire host
+packages, invoke `build/verify_integration.py` with `--run .` and the same required
+Operator/Python arguments. Contract packaging and the inspection CLI are reused
+within a test process; campaign state stays isolated.
 
 This runs the production Python entrypoint against Operator's Go service over
 FIFO and spool with controlled model responses and local targets. The fixture
