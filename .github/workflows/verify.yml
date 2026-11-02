@@ -84,7 +84,10 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.5'
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            operator_sandbox/go.mod
+            operator_sandbox/go.sum
       - name: Install pinned Docker
         uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
         with:
@@ -124,7 +127,9 @@ jobs:
           commit=$(cat build/operator-runtime-commit.txt)
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
           printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf 'current-commit=%s\n' "$(git -C ../operator_sandbox rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Check out matching Operator runtime
+        if: steps.operator-runtime.outputs.commit != steps.operator-runtime.outputs.current-commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox

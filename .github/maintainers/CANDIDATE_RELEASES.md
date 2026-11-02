@@ -187,6 +187,16 @@ identify the repository, environment, tag, and workflow file.
    replace Operator's tests or modify runtime/contract bytes. Controlled responses
    do not establish live-model reliability or native container qualification.
 
+   Each Go integration test package has a 20-minute aggregate timeout to allow
+   the complete suite to run on native ARM64 runners. Individual operation
+   deadlines remain unchanged; the native-platform job is limited to 90 minutes.
+   Every test runs on each verification (`-count=1`). The workflow caches Go
+   dependencies and compiled packages through `setup-go`, keyed by the platform,
+   toolchain and Operator dependency files. A cold or missing cache is supported;
+   cached test results never substitute for execution. When the contract source
+   and runtime pins match, the existing Operator checkout is reused; differing
+   pins still select the runtime checkout and verify identical contracts/schemas.
+
    In the matching Operator runtime checkout, run `go test ./contracts ./internal/imagerelease
    ./internal/dockercontrol ./cmd/operatorctl`. Run its shared Python fixtures with
    `PYTHONPATH=contracts/python /path/to/harness/.ci-venv/bin/python -m unittest
