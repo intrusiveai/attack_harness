@@ -19,6 +19,26 @@ release tag. The dispatchable catalog workflow must already exist on `main`
 (see the one-time setup below). A code fix requires a new candidate run rather
 than rerunning an old tagged workflow.
 
+## Verification schedule
+
+| Event | Checks and release work |
+| --- | --- |
+| PR opened, updated or reopened | `context` tests the publisher; `verify` runs source-lock/syntax checks, Python unit tests and shared-contract fixtures (`make test-pr`). No Docker builds or campaign integration. |
+| Merge or direct push to `candidate-v*` | Both native architectures run the full process integration, packaged Python suite, reproducible image builds and stopped-image inspection before prerelease publication. |
+| Candidate PR merged into `main` | Promotion eligibility and existing-image checks, followed by promotion/catalog publication. No rebuild or test-suite rerun. |
+| Other PR closure or push to `main` | No full verification or publication. |
+
+New commits cancel older active PR-check runs for the same PR. Candidate updates
+and promotion are isolated from PR cancellation; registry publication remains
+queued and serialized. Feature-branch pushes without an open PR do not start
+verification. Manual dispatch on a candidate performs full verification/publication;
+other refs run the fast checks. Promotion still requires a merged candidate PR.
+
+Use `context` and `verify` for required PR status checks, rather than candidate-only
+native matrix jobs. A fast PR pass does not qualify an image. Integration or build
+failures may be found after the candidate merge and MUST block publication;
+correct the candidate and wait for its complete run before promotion.
+
 ## One-time repository setup
 
 Perform these steps in [`intrusiveai/attack_harness`](https://github.com/intrusiveai/attack_harness)
@@ -191,8 +211,9 @@ identify the repository, environment, tag, and workflow file.
    New cross-component Go tests must use the `TestPython` or `TestHarness` prefix;
    `build/verify_integration.py --run .` remains available for full host-package
    diagnosis. The complete Python unit suite runs once per native architecture
-   inside the Docker test stage against packaged code. `make test` remains the
-   developer command for a host-side run; CI does not duplicate it before building.
+   inside the Docker test stage against packaged code. Fast PR checks use the
+   host-side unit suite without building images. Candidate jobs do not duplicate
+   that suite on the host before building.
 
    Campaign tests share one freshly built immutable contract package and CLI per
    test process, with fresh writable state and target/transport peers per campaign.

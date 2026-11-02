@@ -33,7 +33,7 @@ def version_for(branch):
 
 
 def context(event, name, ref, sha, repository):
-    result = dict(mode="verify", version="", branch="", source=sha, pr="")
+    result = dict(mode="ignore", version="", branch="", source=sha, pr="")
     if name == "pull_request" and event["action"] == "closed":
         result["mode"] = "ignore"
         pr = event["pull_request"]
@@ -42,12 +42,16 @@ def context(event, name, ref, sha, repository):
                 and pr["head"]["repo"]["full_name"] == repository == REPOSITORY):
             result.update(mode="promote", version=version_for(pr["head"]["ref"]),
                           branch=pr["head"]["ref"], source=pr["head"]["sha"], pr=str(pr["number"]))
+    elif name == "pull_request" and event["action"] in ("opened", "synchronize", "reopened"):
+        result["mode"] = "verify"
     elif name in ("push", "workflow_dispatch") and ref.startswith("refs/heads/candidate-v"):
         if event.get("deleted"):
             result["mode"] = "ignore"
         elif repository == REPOSITORY:
             branch = ref.removeprefix("refs/heads/")
             result.update(mode="publish", version=version_for(branch), branch=branch)
+    elif name == "workflow_dispatch":
+        result["mode"] = "verify"
     return result
 
 

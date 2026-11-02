@@ -7,9 +7,15 @@ CONTRACT_PACKAGE := build/context/contracts
 OPERATOR_RUNTIME_COMMIT := $(shell cat build/operator-runtime-commit.txt)
 CONTRACT_COMMIT := f84ccf374b859af66a32201a0f953dd9e3a3fc3c
 
-.PHONY: test test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
+.PHONY: test test-pr test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" OPERATOR_CONTRACT_SOURCE="$(abspath $(OPERATOR_ROOT))/schemas" $(PYTHON) -m unittest discover -s tests -v
+
+# Candidate image builds run the complete suite against packaged code; PRs use
+# this host-side suite without Docker or Go/Python campaign integration.
+test-pr: verify-source test
+	$(PYTHON) -c 'from pathlib import Path; [compile(p.read_bytes(), str(p), "exec") for p in [*Path("src").rglob("*.py"), *Path("build").glob("*.py"), Path("bootstrap.py")]]'
+	PYTHONPATH="$(OPERATOR_ROOT)/contracts/python" $(PYTHON) -m unittest discover -s "$(OPERATOR_ROOT)/contracts/python/tests"
 
 test-integration:
 	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --operator-commit "$(OPERATOR_RUNTIME_COMMIT)" --python "$(PYTHON)"

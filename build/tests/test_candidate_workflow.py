@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -249,7 +250,37 @@ class CandidateWorkflowTest(unittest.TestCase):
             pr["merged"], pr["head"]["repo"]["full_name"] = merged, repo
             self.assertEqual(release.context({"action": "closed", "pull_request": pr}, "pull_request", "", SOURCE, release.REPOSITORY)["mode"], "ignore")
         self.assertEqual(release.context({"deleted": True}, "push", "refs/heads/" + BRANCH, SOURCE, release.REPOSITORY)["mode"], "ignore")
-        self.assertEqual(release.context({}, "push", "refs/heads/main", SOURCE, release.REPOSITORY)["mode"], "verify")
+        self.assertEqual(release.context({}, "push", "refs/heads/main", SOURCE, release.REPOSITORY)["mode"], "ignore")
+
+    def test_context_cli_routes_pr_candidate_and_promotion_without_duplicate_runs(self):
+        feature = copy.deepcopy(self.github.pr)
+        feature["head"]["ref"], feature["base"]["ref"] = "feature/example", BRANCH
+        cases = [
+            ("pull_request", "refs/pull/42/merge", {"action": action, "pull_request": feature}, "verify")
+            for action in ("opened", "synchronize", "reopened")
+        ] + [
+            ("pull_request", "refs/heads/" + BRANCH, {"action": "closed", "pull_request": feature}, "ignore"),
+            ("push", "refs/heads/" + BRANCH, {}, "publish"),
+            ("workflow_dispatch", "refs/heads/" + BRANCH, {}, "publish"),
+            ("pull_request", "refs/heads/main", {"action": "closed", "pull_request": self.github.pr}, "promote"),
+            ("push", "refs/heads/main", {}, "ignore"),
+            ("push", "refs/heads/feature/example", {}, "ignore"),
+            ("workflow_dispatch", "refs/heads/feature/example", {}, "verify"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            for index, (name, ref, payload, expected) in enumerate(cases):
+                with self.subTest(name=name, ref=ref, action=payload.get("action")):
+                    event = Path(directory) / "event.json"
+                    event.write_text(json.dumps(payload))
+                    output = Path(directory) / f"output-{index}"
+                    subprocess.run([sys.executable, "-m", "build.publish_candidate", "context"], check=True,
+                                   env=dict(os.environ, GITHUB_EVENT_PATH=str(event), GITHUB_EVENT_NAME=name,
+                                            GITHUB_REF=ref, GITHUB_SHA=SOURCE,
+                                            GITHUB_REPOSITORY=release.REPOSITORY, GITHUB_OUTPUT=str(output)))
+                    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                    self.assertEqual(values["mode"], expected)
+                    if expected in ("publish", "promote"):
+                        self.assertEqual(values["version"], "v1.2.3")
 
     @patch("urllib.request.urlopen", side_effect=AssertionError("compatibility API must not be queried"))
     def test_complete_candidate_and_promotion_preserves_bytes_without_records(self, remote):

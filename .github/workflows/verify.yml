@@ -4,16 +4,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
   push:
-    branches: [main, 'candidate-v*']
+    branches: ['candidate-v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-candidate-${{ github.ref }}
-  cancel-in-progress: false
-  queue: max
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'closed' && format('pr-{0}', github.event.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
 
 jobs:
   context:
@@ -29,13 +28,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: release
+        run: python3 -m build.publish_candidate context
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.release.outputs.mode == 'verify' || steps.release.outputs.mode == 'publish'
         with:
           go-version-file: tools/release-publisher/go.mod
           cache-dependency-path: tools/release-publisher/go.mod
       - name: Test candidate publication and promotion
+        if: steps.release.outputs.mode == 'verify' || steps.release.outputs.mode == 'publish'
         run: python3 -m unittest discover -s build/tests -v
       - name: Test local publishers without external Go dependencies
+        if: steps.release.outputs.mode == 'verify' || steps.release.outputs.mode == 'publish'
         working-directory: tools/release-publisher
         env:
           GOWORK: 'off'
@@ -45,12 +49,39 @@ jobs:
           go test -race ./...
           go vet ./...
           python3 -m unittest discover -s scripts/tests -v
-      - id: release
-        run: python3 -m build.publish_candidate context
+
+  verify:
+    needs: context
+    if: needs.context.outputs.mode == 'verify'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: attack_harness
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: intrusiveai/operator_sandbox
+          ref: f84ccf374b859af66a32201a0f953dd9e3a3fc3c
+          path: operator_sandbox
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.15'
+      - name: Install locked test dependencies
+        working-directory: attack_harness
+        run: |
+          python3 -m venv .ci-venv
+          .ci-venv/bin/python -m pip install --disable-pip-version-check \
+            --require-hashes --only-binary=:all: --no-deps -r requirements-runtime.lock
+      - name: Fast source, unit and contract checks
+        working-directory: attack_harness
+        run: make test-pr OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
 
   native-platform:
     needs: context
-    if: needs.context.outputs.mode == 'verify' || needs.context.outputs.mode == 'publish'
+    if: needs.context.outputs.mode == 'publish'
     strategy:
       fail-fast: false
       matrix:
