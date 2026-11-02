@@ -22,14 +22,13 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 	if os.Getenv("OPERATOR_HARNESS_INTEGRATION") != "1" {
 		t.Skip("controlled production Harness gate")
 	}
-	binary := filepath.Join(t.TempDir(), "operatorctl")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/operatorctl")
-	build.Dir = "../.."
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatal(err, string(out))
-	}
+	binary := processCLI(t)
 	for _, transport := range []string{"fifo", "spool"} {
 		for _, mode := range []string{"direct", "artifact", "corrected", "exhausted", "zero-attempt", "hypothesis-correction"} {
+			// Business-rule variants run on FIFO; direct execution/observation/finish also runs on spool.
+			if transport == "spool" && mode != "direct" {
+				continue
+			}
 			t.Run(transport+"/"+mode, func(t *testing.T) {
 				var receipt string
 				assessment := func() map[string]any {

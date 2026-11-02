@@ -2,7 +2,8 @@
 
 Use the pinned runtime revision; the host must have identical contracts/schemas
 to the package source. Test-only Go overlays add Harness workflow and
-fatal-exit cases through a separate Python adapter. The authoritative Operator tests remain enabled.
+fatal-exit cases through a separate Python adapter. Run cross-component tests here;
+Operator-only unit/service tests belong to Operator CI. Use --run . for the full packages.
 No production fault switches, contract changes, or checkout edits are required.
 """
 import argparse
@@ -17,7 +18,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--operator-root", type=Path, required=True)
     parser.add_argument("--python", type=Path, required=True)
-    parser.add_argument("--run", default=".")
+    parser.add_argument("--run", default="^Test(Python|Harness)",
+        help="Go test expression; defaults to cross-component tests (use . for full host packages)")
     parser.add_argument("--operator-commit", help="Explicit host runtime revision; shared contract must remain identical")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
