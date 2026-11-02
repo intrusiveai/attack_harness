@@ -10,6 +10,7 @@ from attack_harness.observations import ObservationReader
 
 
 class ObservationClient:
+    size_limits = dict(direct_input_bytes=32768, assessment_bytes=1<<20, artifact_bytes=16<<20, artifact_part_bytes=256<<10, observation_chunk_bytes=256<<10, snapshot_page_items=100)
     def __init__(self, content, media_type="text/plain", *, digest=None, available=True):
         self.content = content
         self.media_type = media_type
@@ -85,6 +86,15 @@ class ObservationTest(unittest.TestCase):
         reader = ObservationReader(ObservationClient(b"abcd"))
         with self.assertRaises(ContractError):
             reader.read_all("receipt-1", "entry-1", maximum_bytes=3)
+
+    def test_configured_chunk_is_used_without_repairing_explicit_oversize(self):
+        client=ObservationClient(b"abcdef")
+        client.size_limits=dict(client.size_limits,observation_chunk_bytes=2)
+        reader=ObservationReader(client)
+        self.assertEqual(reader.read_all("receipt-1","entry-1").content,b"abcdef")
+        self.assertEqual([b["max_bytes"] for _,b,_ in client.calls],[2,2,2])
+        with self.assertRaises(ContractError): reader.read("receipt-1","entry-1",0,3)
+        self.assertEqual(len(client.calls),3)
 
 
 if __name__ == "__main__":

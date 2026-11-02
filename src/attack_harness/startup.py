@@ -147,6 +147,8 @@ class Startup:
             admission_raw, admission_message = self._next_control("admission_open")
             admission = inputs.admit(initialized_raw, admission_raw)
             merged = dict(admission,
+                          operation_timeouts_ms=inputs.context()["operation_timeouts_ms"],
+                          size_limits=inputs.context()["size_limits"],
                           campaign_id=admission_message["campaign_id"],
                           launch_id=admission_message["launch_id"],
                           run_revision=admission_message["run_revision"])

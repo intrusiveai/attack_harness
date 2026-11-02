@@ -55,6 +55,7 @@ class Clock:
 
 
 class ScriptedHost:
+    size_limits = dict(direct_input_bytes=32768, assessment_bytes=1<<20, artifact_bytes=16<<20, artifact_part_bytes=256<<10, observation_chunk_bytes=256<<10, snapshot_page_items=100)
     campaign_id="campaign-1";launch_id="launch-1";run_revision=1
     def __init__(self,protocol,payloads,observations):
         self.protocol=protocol;self.payloads=payloads;self.observations=observations

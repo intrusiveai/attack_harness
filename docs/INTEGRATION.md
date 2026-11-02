@@ -7,17 +7,17 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.4.0**, pinned in
+The release consumes Operator shared contract **0.5.0**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate the exact package digest.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.4.0` |
-| Shared package digest | `sha256:9c50335bda8b5442cae3e11b60319d9f41e5d626032096161cda985add909bfe` |
-| Contract source commit | `f84ccf374b859af66a32201a0f953dd9e3a3fc3c` |
-| Contract source tree | `b32b619335764feb2ada1c7b3e2cca3d3b311b9d` |
-| Integration/inspection Operator commit | `009a451d495c96141c88a75f2eb387ba7a7363d9` |
+| Shared package version | `0.5.0` |
+| Shared package digest | `sha256:9db8d03e9d759eba0c002444c9c96dbbe77991d47f97e2e9fd1b4b182bec74c3` |
+| Contract source commit | `485042787cc75e1776acaac11023ba9d210cc1f3` |
+| Contract source tree | `992210e4d42f3aa30a1ea740ccb16f88941a250a` |
+| Integration/inspection Operator commit | `485042787cc75e1776acaac11023ba9d210cc1f3` |
 | Minimum Operator product version | `0.1.0` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
@@ -35,12 +35,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/485042787cc75e1776acaac11023ba9d210cc1f3/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/485042787cc75e1776acaac11023ba9d210cc1f3/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -49,7 +49,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -119,8 +119,8 @@ Linking an exploratory receipt to an objective at finish does not change origin.
 
 Input is exactly one direct content value or a committed artifact receipt.
 Direct content supports the shared JSON, UTF-8, and base64 encodings, with a
-32,768-byte decoded limit and JSON depth limit of 16; the attempt request is
-bounded to 64 KiB. Target-specific limits also apply. Use `artifact_publish`
+host-configured `size_limits.direct_input_bytes` allowance and JSON depth limit of 16; the attempt request is
+bounded to the 4 MiB ordinary frame. Target-specific limits also apply. Use `artifact_publish`
 for larger or reusable content, then use its returned receipt. Operator resolves
 artifact descriptors; the model does not repeat hashes, sizes, or canonicalization
 metadata. Product code assigns execution bookkeeping and binding identities.
@@ -236,7 +236,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -266,7 +266,7 @@ image identities when running a deployed integration through Operator.
 
 ## Context behavior
 
-Matching Operator and Harness builds require shared package 0.4.0 and its exact
+Matching Operator and Harness builds require shared package 0.5.0 and its exact
 locked digest. Old packages fail compatibility before campaign execution.
 Frozen injection surfaces select the same tools in Go and Python; restores keep
 that catalog. Context budget results are validated against native response usage.
@@ -277,3 +277,35 @@ They do not qualify a live provider or native Docker containment. See Operator's
 `docs/MODEL_CONTEXT_VERIFICATION.md` for measured JSON byte reductions. The baseline
 has no exact token preflight. Context/budget-limit finalization remains honest when
 another bounded, funded model call is impossible.
+
+## Configured waits and sizes
+
+Operator supplies `operation_timeouts_ms` and `size_limits` in verified EngineContext.
+The timeout map has exactly one entry per admitted ordinary operation. Harness uses
+that value as its default request wait; an explicit shorter wait remains possible.
+There are no ordinary-operation duration constants in the registry or a separate
+Harness timeout configuration. Missing startup policy is incompatible and fails
+before execution. Snapshot restore preserves the frozen policy.
+
+Operator's installation settings control direct-input bytes, assessment bytes,
+whole-artifact bytes, upload-part bytes, observation-read bytes and snapshot page
+length. Harness includes those limits in model task context and validates requests
+against the shared implementation before sending them. Artifact publication and
+full observation reads select their chunks from the supplied limits. Local invalid
+calls remain correctable and do not dispatch target execution. The host independently
+checks every received request and retains the original integrity and budget checks.
+
+A typical multi-step target uses a 60-second native target turn, a 90-second Operator
+complete-attempt allowance, and a 120-second Harness wait configured by Operator.
+The native turn setting belongs to the target. Setup and observations consume the
+same complete-attempt budget. Smaller request/campaign deadlines still apply.
+An Operator timeout response can report successful target invocation with incomplete
+observations; Harness must retain that distinction, stop on a terminal result and
+never retry the invocation. Its eventual exit is supporting evidence, not a reason
+to replace Operator's structured timeout cause.
+
+Transport frame, JSON depth, numeric, eager-decoding and integrity-verification
+ceilings remain fixed for interoperability. Changing operating values within them
+requires no release or contract change. See Operator's authoritative
+[operating-limit contract](https://github.com/intrusiveai/operator_sandbox/blob/candidate-v0.1.4/schemas/OPERATING_LIMITS_CONTRACT.md)
+and [configuration guide](https://github.com/intrusiveai/operator_sandbox/blob/candidate-v0.1.4/docs/HOST_CONFIGURATION.md).

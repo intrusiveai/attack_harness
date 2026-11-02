@@ -69,6 +69,8 @@ def build_task(inputs, *, active_scenario=None):
             "campaign_id": context["campaign_id"], "launch_id": context["launch_id"],
             "run_revision": context["run_revision"], "operations": context["operations"],
             "remaining_limits": context["remaining_limits"], "feedback": context["feedback"],
+            "size_limits": context["size_limits"],
+            "operation_timeouts_ms": context["operation_timeouts_ms"],
             "omissions": context["omissions"], "context_limits": context["model"]["context_limits"],
         },
         "target": decode(target_raw, ORDINARY_LIMIT), "scenario_bundle": bundle,

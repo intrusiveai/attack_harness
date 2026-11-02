@@ -98,8 +98,12 @@ class ArtifactPublisher:
                 before_request=None):
         require(purpose in ("payload", "carrier", "conclusion", "supporting-data"))
         require(type(media_type) is str and type(content) is bytes)
-        maximum = CONCLUSION_LIMIT if purpose == "conclusion" else ARTIFACT_LIMIT
-        require(len(content) <= maximum)
+        maximum = self.client.size_limits["artifact_bytes"]
+        if purpose == "conclusion": maximum = min(maximum, self.client.size_limits["assessment_bytes"])
+        if len(content) > maximum:
+            raise ContractError("Artifact content exceeds the configured size_limits allowance.",
+                reason="configured_size_exceeded", field_path="/content",
+                correction="Reduce the content to the configured artifact/assessment allowance. No upload was started.")
         require(canonicalization in ("raw", "jcs-v1"))
         require(canonicalization != "jcs-v1" or media_type == "application/json")
         if canonicalization == "jcs-v1":
@@ -120,7 +124,7 @@ class ArtifactPublisher:
         upload_id = begin["upload_id"]
         offset = 0
         while offset < len(content):
-            part = content[offset:offset + PART_LIMIT]
+            part = content[offset:offset + self.client.size_limits["artifact_part_bytes"]]
             result = self._request("engine.artifact_put_part", {
                 "upload_id": upload_id,
                 "offset": offset,

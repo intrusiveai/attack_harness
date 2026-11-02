@@ -13,7 +13,7 @@ _REASONS = frozenset({
     "model-generation-failed", "model-contract-failed", "model-compaction-failed",
     "model-compaction-contract-failed", "finalization-failed", "incomplete-execution",
     "work-after-finish", "invalid_arguments", "invalid_structure", "duplicate_json_key",
-    "input_depth_exceeded", "invalid_base64", "direct_input_too_large",
+    "input_depth_exceeded", "invalid_base64", "direct_input_too_large", "configured_size_exceeded",
     "scenario_context_limit", "task_context_limit",
 })
 _MESSAGES = frozenset({
