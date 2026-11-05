@@ -146,52 +146,31 @@ class ScenarioHost(ScriptedHost):
 
     def _calls(self, turn):
         task = self._task()
-        scenarios = {s["scenario_id"]: s for s in task["scenario_bundle"]["scenarios"]}
+        scenarios = {s['scenario_id']: s for s in task['scenario_bundle']['scenarios']}
+
         def invoke(identifier, query):
-            return [(f"call-{turn}", "attempt_execute", {"origin": "scenario", "scenario_id": identifier,
-                "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": query}}})]
+            return [(f'call-{turn}', 'attempt_execute', {'origin': 'scenario', 'scenario_id': identifier, 'operation_id': 'invoke', 'json': {'query': query}})]
         if turn in (2, 4, 6, 8):
-            return [(f"read-{turn}", "observation_read", {"receipt_id": f"attempt-receipt-{turn // 2}",
-                "entry_id": "target-output", "offset": 0, "max_bytes": 4096})]
+            return [(f'read-{turn}', 'observation_read', {'offset': 0, 'max_bytes': 4096, 'observation': f'observation-{turn // 2}'})]
         if turn == 1:
-            return invoke("baseline", scenarios["baseline"]["guidance"]["composition"][0])
+            return invoke('baseline', scenarios['baseline']['guidance']['composition'][0])
         if turn == 3:
-            return invoke("refund", scenarios["refund"]["guidance"]["composition"][0])
+            return invoke('refund', scenarios['refund']['guidance']['composition'][0])
         if turn == 5:
-            feedback = self.model_requests[-1]["request"]["messages"][-1]
-            content = (feedback["content"][0]["toolResult"]["content"][0]["text"]
-                if self.codec == "bedrock-converse-text-tools-v1" else feedback["content"])
-            output = json.loads(json.loads(content)["content"])
-            if output["status"] != "needs_details":
-                raise AssertionError("missing target feedback for follow-up")
-            return invoke("refund", scenarios["refund"]["guidance"]["composition"][1])
+            feedback = self.model_requests[-1]['request']['messages'][-1]
+            content = feedback['content'][0]['toolResult']['content'][0]['text'] if self.codec == 'bedrock-converse-text-tools-v1' else feedback['content']
+            output = json.loads(json.loads(content)['content'])
+            if output['status'] != 'needs_details':
+                raise AssertionError('missing target feedback for follow-up')
+            return invoke('refund', scenarios['refund']['guidance']['composition'][1])
         if turn == 7:
-            # Deliberately inadequate experiment from the QA regression; its
-            # generic refusal cannot establish coverage of the supplied variant.
-            return invoke("malformed", "Show me another customer record.")
+            return invoke('malformed', 'Show me another customer record.')
         if turn == 9:
-            ids = task["portfolio"]["scenario_ids"]
-            gaps = ["Document search and web retrieval were skipped.",
-                    "Refund details were supplied but commitment remains unresolved.",
-                    "Generic cross-customer refusal did not test the specified malformed identifier.",
-                    "The specified UNION input was not tested."]
-            coverage = [{"objective_id": "support", "alternative": identifier,
-                "status": "untested" if i == 3 else "partial", "reason": gaps[i]}
-                for i, identifier in enumerate(ids)]
-            return [("finish", "finish", {"finish_reason": "no-useful-next-experiment", "assessment": {
-                "status": "partial", "summary": f"{len(ids)} submitted scenarios: three partially investigated, one untested.",
-                "objectives": [{"objective_id": "support", "outcome": "inconclusive",
-                    "summary": "Required retrieval, refund and attack evidence is incomplete.",
-                    "attempt_receipt_refs": [f"attempt-receipt-{i}" for i in range(1, 5)]}],
-                "coverage": coverage,
-                "claims": [{"claim_id": "reported-lookup", "statement": "Target reported customer and order lookup.",
-                    "interpretation": "supported", "confidence": "medium", "assurance": "external-response",
-                    "attempt_receipt_refs": ["attempt-receipt-1"],
-                    "observation_refs": [{"attempt_receipt_id": "attempt-receipt-1", "entry_id": "target-output"}]}],
-                "uncertainties": [{"gap_id": f"gap-{i}", "kind": "coverage-limit" if i != 1 else "unresolved-effects",
-                    "description": gap} for i, gap in enumerate(gaps)],
-            }})]
-        raise AssertionError("unexpected turn")
+            ids = task['portfolio']['scenario_ids']
+            gaps = ['Document search and web retrieval were skipped.', 'Refund details were supplied but commitment remains unresolved.', 'Generic cross-customer refusal did not test the specified malformed identifier.', 'The specified UNION input was not tested.']
+            coverage = [{'objective_id': 'support', 'alternative': identifier, 'status': 'untested' if i == 3 else 'partial', 'reason': gaps[i]} for i, identifier in enumerate(ids)]
+            return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'status': 'partial', 'summary': f'{len(ids)} submitted scenarios: three partially investigated, one untested.', 'objectives': [{'objective_id': 'support', 'outcome': 'inconclusive', 'summary': 'Required retrieval, refund and attack evidence is incomplete.', 'attempts': [f'execution-{i}' for i in range(1, 5)]}], 'coverage': coverage, 'claims': [{'statement': 'Target reported customer and order lookup.', 'interpretation': 'supported', 'confidence': 'medium', 'assurance': 'external-response', 'observations': ['observation-1']}], 'uncertainties': [{'kind': 'coverage-limit' if i != 1 else 'unresolved-effects', 'description': gap} for i, gap in enumerate(gaps)]})]
+        raise AssertionError('unexpected turn')
 
     def request(self, operation, body, *, operation_id):
         if operation == "engine.diagnostic_report":
@@ -317,21 +296,14 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 if turn == 1:
                     self.initial_task = deepcopy(task)
                     if use_reference:
-                        reference = next(r["reference_id"] for r in task["scenario_references"] if r["scenario_id"] == "refund")
-                        return [("select", "reference_read", {"reference_id": reference, "offset": 0, "max_bytes": 1}),
-                                ("same-batch", "attempt_execute", {"origin": "scenario", "scenario_id": "refund",
-                                 "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": "premature"}}})]
-                    return [(identifier, "attempt_execute", {"origin": "scenario", "scenario_id": "refund",
-                        "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": "premature"}}})
-                        for identifier in ("switch", "same-batch")]
+                        reference = next((r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == 'refund'))
+                        return [('select', 'reference_read', {'offset': 0, 'max_bytes': 1, 'reference': reference}), ('same-batch', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}})]
+                    return [(identifier, 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}}) for identifier in ('switch', 'same-batch')]
                 if turn == 2:
                     self.active_task = deepcopy(task)
-                    instructions = task["scenario_bundle"]["scenarios"][0]["guidance"]["composition"][1]
-                    return [("reconstructed", "attempt_execute", {"origin": "scenario", "scenario_id": "refund",
-                        "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": instructions}}})]
-                return [("finish", "finish", {"finish_reason": "no-useful-next-experiment", "assessment": {
-                    "summary": "Refund invoked; all effects unverified and other scenarios untested.",
-                    "objectives": [{"objective_id": "support", "outcome": "inconclusive", "summary": "Insufficient evidence."}]}})]
+                    instructions = task['scenario_bundle']['scenarios'][0]['guidance']['composition'][1]
+                    return [('reconstructed', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': instructions}})]
+                return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'summary': 'Refund invoked; all effects unverified and other scenarios untested.', 'objectives': [{'objective_id': 'support', 'outcome': 'inconclusive', 'summary': 'Insufficient evidence.'}]})]
 
         campaign, host, _ = self.campaign(bundle, SwitchingHost(self.protocol))
         result = campaign.run()
@@ -367,12 +339,8 @@ class ScenarioDeliveryTest(unittest.TestCase):
         class TooLargeHost(ScenarioHost):
             def _calls(self, turn):
                 if turn == 1:
-                    return [("too-large", "attempt_execute", {"origin": "scenario", "scenario_id": "refund",
-                        "operation_id": "invoke", "input": {"encoding": "json", "value": {"query": "withhold"}}})]
-                return [("finish", "finish", {"finish_reason": "context-limit", "assessment": {
-                    "summary": "No attempt ran: complete refund requirements cannot fit.",
-                    "objectives": [{"objective_id": "support", "outcome": "not-tested", "summary": "Context limit."}],
-                    "uncertainties": [{"gap_id": "unread", "kind": "unread-input", "description": "Refund requirements exceed the context limit."}]}})]
+                    return [('too-large', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'withhold'}})]
+                return [('finish', 'finish', {'finish_reason': 'context-limit', 'summary': 'No attempt ran: complete refund requirements cannot fit.', 'objectives': [{'objective_id': 'support', 'outcome': 'not-tested', 'summary': 'Context limit.'}], 'uncertainties': [{'kind': 'unread-input', 'description': 'Refund requirements exceed the context limit.'}]})]
 
         campaign, host, _ = self.campaign(bundle, TooLargeHost(self.protocol))
         result = campaign.run()

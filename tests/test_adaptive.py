@@ -177,11 +177,11 @@ class AdaptiveTest(unittest.TestCase):
         budget["context_budget"]["near_prompt_limit"] = True
         conversation.observe_budget(budget, raw)
         conversation.extend(_canonical_value([
-            {"role":"assistant", "content":json.dumps({"receipt_id":"invented-receipt"}),
+            {"role":"assistant", "content":json.dumps({"execution":"invented-receipt"}),
              "tool_calls":[{"id":"call-1","type":"function","function":{"name":"snapshot_list","arguments":"{}"}}]},
             {"role":"tool","tool_call_id":"call-1", "content":json.dumps(
-                {"receipt_id":"returned-receipt-1", "checkpoint_id":"saved-checkpoint-1",
-                 "content":json.dumps({"receipt_id":"target-text-receipt"})})}], 4 << 20))
+                {"execution":"returned-receipt-1", "snapshot":"saved-checkpoint-1",
+                 "content":json.dumps({"execution":"target-text-receipt"})})}], 4 << 20))
         self.assertTrue(conversation.needs_compaction())
         body, _, digest, count = conversation.compaction_body()
         self.assertIn("returned-receipt-1", json.dumps(body))
@@ -203,7 +203,7 @@ class AdaptiveTest(unittest.TestCase):
         self.assertFalse(conversation.can_fund_model())
 
     def test_returned_identity_ledger_for_each_native_codec(self):
-        value=json.dumps({"receipt_id":"returned-1", "content":json.dumps({"receipt_id":"untrusted-1"})})
+        value=json.dumps({"execution":"returned-1", "content":json.dumps({"execution":"untrusted-1"})})
         cases={
             "model-codec.json":{"role":"tool","content":value},
             "responses-model-codec.json":{"type":"function_call_output","output":value},
@@ -217,7 +217,7 @@ class AdaptiveTest(unittest.TestCase):
                 conversation=NativeConversation(self.protocol,_canonical_value(case["policy"],4<<20),"Inspect target.")
                 conversation.extend(_canonical_value([item],4<<20))
                 conversation.compaction_body()
-                self.assertEqual(conversation._compaction_ledger,[{"kind":"receipt_id","identifier":"returned-1"}])
+                self.assertEqual(conversation._compaction_ledger,[{"kind":"execution","identifier":"returned-1"}])
 
     def test_exhausted_reservation_finishes_without_another_call(self):
         case = next(item for item in self.cases("model-codec.json")

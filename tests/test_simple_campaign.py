@@ -28,15 +28,13 @@ class SimpleHost(ScriptedHost):
             return [(f"bad-{turn}", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke"})]
         turn -= self.mode == "corrected"
         if turn == 1:
-            return [("invoke", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke", "input": {
-                "encoding": "json", "value": {"query": "return MARKER"}}})]
+            return [("invoke", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke", "json": {"query": "return MARKER"}})]
         if turn == 2:
-            return [("read", "observation_read", {"receipt_id": "attempt-receipt-1",
-                "entry_id": "target-output", "offset": 0, "max_bytes": 1024})]
+            return [("read", "observation_read", {"observation": "observation-1", "max_bytes": 1024})]
         return [("finish", "finish", {"finish_reason": "objectives-addressed",
-            "assessment": {"summary": "Marker observed.", "objectives": [{
+            "summary": "Marker observed.", "objectives": [{
                 "objective_id": "objective-marker", "outcome": "supported", "summary": "Marker returned.",
-                "attempt_receipt_refs": ["attempt-receipt-1"]}]}})]
+                "observations": ["observation-1"]}]})]
 
     def request(self, operation, body, *, operation_id):
         if operation == "engine.diagnostic_report":
@@ -83,13 +81,13 @@ class SimpleCampaignTest(unittest.TestCase):
     def test_basic_direct_workflow_has_three_host_calls(self):
         host, _, _, result = self.run_campaign("direct")
         self.assertEqual([op for op, _, _ in host.events if op != "engine.model_generate"],
-            ["engine.attempt_execute", "engine.observation_read", "engine.finish"])
+            ["engine.attempt_execute", "engine.observation_read", "engine.diagnostic_report", "engine.finish"])
         self.assertEqual(result["finalization_status"], "pending")
 
     def test_model_corrects_missing_input_then_completes(self):
         host, loop, _, result = self.run_campaign("corrected")
         feedback = json.dumps(host.model_requests[1])
-        self.assertIn("/input", feedback)
+        self.assertIn("content_choice", feedback)
         self.assertIn("harness-local", feedback)
         self.assertEqual(len(host.attempt_ids), 1)
         self.assertEqual(loop.snapshot()["invalid_tool_calls"], 1)
@@ -115,14 +113,12 @@ class SimpleCampaignTest(unittest.TestCase):
         self.assertEqual(report["stopping"]["configured_limit"], 1)
         self.assertEqual(len(host.attempt_ids), 1)
 
-    def test_duplicate_keys_and_missing_range_have_safe_actionable_paths(self):
+    def test_duplicate_keys_and_obsolete_wrapper_have_actionable_paths(self):
         for tool, raw, path, correction in (
-            ("attempt_execute", b'{"operation_id":"invoke","input":{"encoding":"json","encoding":"utf8","text":"secret"}}',
-             "/input/encoding", "each JSON key once"),
-            ("finish", json.dumps({"finish_reason": "objectives-addressed", "assessment": {
-                "summary": "Untested", "objectives": [], "uncertainties": [{"gap_id": "gap",
-                "kind": "evidence-gap", "description": "missing", "input_refs": [{"entry_id": "entry", "range": {}}]}]}}).encode(),
-             "/assessment/uncertainties/0/input_refs/0/range/length", "offset and length"),
+            ("finish", b'{"finish_reason":"budget-limit","summary":"one","summary":"secret","objectives":[]}',
+             "/summary", "each JSON key once"),
+            ("finish", b'{"finish_reason":"budget-limit","assessment":{}}',
+             "/assessment", "omit the assessment wrapper"),
         ):
             loop = HarnessLoop(LIMITS); loop.begin_model()
             dispatcher = Dispatcher(self.protocol, loop, {tool: lambda _: self.fail("invalid call executed")})

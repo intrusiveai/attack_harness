@@ -4,6 +4,7 @@ from copy import deepcopy
 from operator_contracts import ContractError
 from operator_contracts.startup import require
 from operator_contracts.simple import validate_attempt_origin
+from operator_contracts.validation import decode, ORDINARY_LIMIT
 from .tools import HandlerResult, ToolError
 
 
@@ -33,14 +34,29 @@ class AttemptExecutor:
             return "attempt ID"
         return None
 
+    def reject_submission(self, call_id):
+        self._rejected_submissions.add(call_id)
+
     def __call__(self, call):
+        """Canonical service entry; model dispatch uses shared normalization first."""
+        try:
+            arguments = decode(call.arguments, ORDINARY_LIMIT)
+            require(type(arguments) is dict)
+            validate_attempt_origin(arguments, self._scenarios)
+            self.protocol._catalog.validate_value(
+                self.protocol._operations["engine.attempt_execute"]["request_schema"], arguments)
+        except ContractError as error:
+            self._rejected_submissions.add(call.call_id)
+            raise ToolError.from_contract(error) from None
+        return self.execute(call, arguments)
+
+    def execute(self, call, arguments):
         key = (call.batch_id, call.call_id, call.correlation)
         previous = self._history.get(key)
         if previous is not None:
             require(previous[0] == call.arguments)
             return deepcopy(previous[1])
         try:
-            arguments = self.protocol.validate_tool_arguments("attempt_execute", call.arguments)
             validate_attempt_origin(arguments, self._scenarios)
             if arguments["origin"] == "scenario" and self.scenario_delivery is not None:
                 self.scenario_delivery.require(arguments["scenario_id"])

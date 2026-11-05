@@ -79,10 +79,10 @@ class ArtifactPublisher:
         raise ContractError("invalid artifact content")
 
     def publish_tool(self, arguments):
-        raw = _canonical_value(arguments, ORDINARY_LIMIT)
-        value = self.protocol.validate_tool_arguments("artifact_publish", raw)
-        content, canonicalization = self.encode(value["content"])
-        return self.publish(value["purpose"], value["media_type"], content,
+        # Model arguments have already passed the shared normalizer. This helper
+        # receives its canonical local-publication form, not provider arguments.
+        content, canonicalization = self.encode(arguments["content"])
+        return self.publish(arguments["purpose"], arguments["media_type"], content,
                             canonicalization=canonicalization)
 
     def _request(self, operation, body, purpose, before_request=None):

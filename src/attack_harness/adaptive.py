@@ -152,7 +152,7 @@ class NativeConversation:
         history_raw = _canonical_value(history, ORDINARY_LIMIT)
         # Preserve exact returned identities separately from model-written summaries.
         identities={(v['kind'],v['identifier']) for v in getattr(self,'_compaction_ledger',[])}
-        keys={'receipt_id','attempt_receipt','artifact_receipt','record_receipt','entry_id','reference_id','checkpoint_id','session_id','action_id','parent_receipt','hypothesis_id','attempt_id','record_id','injection_id','source_session_id'}
+        keys={'execution','observation','artifact','record','hypothesis','reference','snapshot','session','injection'}
         def collect(value):
             if isinstance(value,dict):
                 for key,item in value.items():

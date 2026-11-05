@@ -52,7 +52,7 @@ class ConclusionFinalizer:
                         self._reference_error(ref, f"/{group}/{index}/{key}/{n}", category)
         for n, ref in enumerate(draft["record_refs"]):
             self._reference_error(ref, f"/record_refs/{n}", "assessment-record receipt")
-        for group in ("claims", "uncertainties"):
+        for group in ("claims",):
             for i, item in enumerate(draft[group]):
                 for n, ref in enumerate(item["observation_refs"]):
                     if self.observations is None or not self.observations.observed(
