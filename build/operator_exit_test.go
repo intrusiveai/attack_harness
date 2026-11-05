@@ -22,9 +22,9 @@ func TestHarnessExitProcess(t *testing.T) {
 				t.Setenv("HARNESS_TEST_EXIT_MODE", mode)
 				r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, request map[string]any) ([]byte, error) {
 					assessment := map[string]any{"summary": "No target attempt ran.", "objectives": []any{map[string]any{
-						"objective_id": "objective-marker", "outcome": "not-tested", "summary": "Untested.", "attempt_receipt_refs": []string{}}}}
+						"objective_id": "objective-marker", "outcome": "not-tested", "summary": "Untested.", "attempts": []string{}}}}
 					if mode == "healthy-unwind" && turn == 1 {
-						assessment["objectives"].([]any)[0].(map[string]any)["attempt_receipt_refs"] = []string{"unknown-receipt"}
+						assessment["objectives"].([]any)[0].(map[string]any)["attempts"] = []string{"unknown-receipt"}
 					} else if mode == "healthy-unwind" {
 						feedback, err := modelToolResult(request, "finish-1")
 						if err != nil || feedback["status"] != "error" {
@@ -35,8 +35,8 @@ func TestHarnessExitProcess(t *testing.T) {
 					if turn == 2 {
 						id = "finish-2"
 					}
-					return processResponse([]any{modelCall(id, "finish", map[string]any{
-						"finish_reason": "no-useful-next-experiment", "assessment": assessment})}), nil
+					assessment["finish_reason"] = "no-useful-next-experiment"
+					return processResponse([]any{modelCall(id, "finish", assessment)}), nil
 				}})
 				err := r.cmd.Wait()
 				r.waited = true
@@ -118,7 +118,7 @@ func TestHarnessExitProcess(t *testing.T) {
 				}
 				want := "engine.model_generate,engine.finish"
 				if mode == "healthy-unwind" {
-					want = "engine.model_generate,engine.finish,engine.model_generate,engine.finish"
+					want = "engine.model_generate,engine.diagnostic_report,engine.model_generate,engine.finish"
 				}
 				if mode == "runtime-fatal" {
 					want = "engine.diagnostic_report"

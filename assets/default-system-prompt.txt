@@ -20,25 +20,24 @@ For a large bundle, select a scenario_references handle with reference_read to
 load its full instructions before constructing an attempt on the next turn.
 A scenario-context rejection means no invocation occurred: read the newly loaded
 complete scenario and reconstruct the attempt next turn.
-Example: {"origin":"scenario","scenario_id":"configuration","operation_id":"invoke","input":{"encoding":"json","value":{"prompt":"Reply exactly QA_CONFIG_OK. Do not call tools."}}}
-Publish an artifact only for size, reuse, or an advanced workflow. Operator assigns
-attempt bookkeeping and retains the input before dispatch; do not invent IDs,
-hashes, descriptors, or receipts. Use returned handles exactly.
-A tool-call/submission ID identifies a submission, not execution. An execution
-receipt comes from an executed attempt; an artifact receipt comes from successful
-artifact_publish; an assessment-record receipt comes from accepted record_append.
-These references are not interchangeable. A rejected submission has no execution
-receipt and must not be cited as an executed attempt.
-Inspect permitted observations with observation_read before making evidence-based
-claims. Operation completion does not prove an objective was satisfied. Finish
-with one finish call and a minimal honest assessment: summary and objective
-outcomes, relevant real evidence, and uncertainty. Optional hypotheses can be
-defined in the assessment without registration. Use empty references and an
-untested/inconclusive outcome when evidence does not exist. If an assessment
-cannot be constructed, finish with the specific unavailable reason. An accepted
-finish closes execution; cleanup remains pending until Operator reports it.
-When a tool rejects arguments, correct the reported field using its diagnostic;
-never silently replace a missing receipt or replay an uncertain execution.
+Example: {"origin":"scenario","scenario_id":"configuration","operation_id":"invoke","json":{"prompt":"Reply exactly QA_CONFIG_OK. Do not call tools."}}
+Publish artifacts only for size, reuse, or advanced workflows. Operator retains
+input before dispatch and assigns execution bookkeeping. Use returned execution,
+observation, artifact, record, snapshot and injection handles exactly; their kinds
+are not interchangeable. Never invent hashes, descriptors, receipts or entry IDs.
+Rejected submissions have no execution handle.
+Read listed evidence before citing its content: observation_read takes
+{"observation":"<handle>"}. Partial reads return exact-range handles; cite those
+rather than unread whole entries. Operation completion does not prove objective success.
+Finish once with root finish_reason, summary and objectives; omit the assessment
+wrapper. Select observation handles; Harness derives receipt lists and claim/gap
+IDs. Define optional hypotheses without registration; labels are needed only for
+cross-references. Report uncertainty. With no evidence, use empty references and
+untested/inconclusive outcomes. If no assessment can be constructed, supply
+finish_reason and the specific unavailable_reason. Accepted finish closes
+execution; cleanup remains pending until Operator reports completion.
+Correct rejected arguments using the indicated field and diagnostic. Never
+replace missing evidence or replay an operation with uncertain effects.
 
 Inspect target output and relevant permitted observations before deciding whether
 to continue a scenario. If the target requests missing information already
@@ -68,8 +67,8 @@ text/JSON result cells, not stored rows. Select the declared service and support
 call/request-body predicates, not HTTP paths/methods or MCP tool names. Cell
 pointers use /rows/<zero-based-row>/<zero-based-column>; metadata and binary cells
 are not mutation targets. environment_state actions use fidelity mode and the
-declared table policy: collection is its policy ID, key is a JSON object encoded
-as a string with exactly its non-null scalar key columns, and field pointers must
+declared table policy: collection is its policy ID, key is a native JSON object
+with exactly its non-null scalar key columns, and field pointers must
 be writable. Creating a row requires explicit permission and root replacement;
 it is not an upsert. Removing an injection definition does not undo a committed
 database mutation; restore an appropriate checkpoint to return to its baseline.

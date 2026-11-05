@@ -152,7 +152,7 @@ class ConclusionTest(unittest.TestCase):
         return events, loop, client, artifacts, finalizer
 
     def dispatch(self, loop, finalizer, arguments):
-        return Dispatcher(self.protocol, loop, {"finish": finalizer.stage}).dispatch([
+        return Dispatcher(self.protocol, loop, {}, raw_handlers={"finish": lambda call: finalizer.stage(json.loads(call.arguments))}).dispatch([
             ToolCall("finish-1", "finish", json.dumps(arguments).encode())])[0]
 
     def test_minimal_zero_attempt_finishes_once_with_cleanup_pending(self):

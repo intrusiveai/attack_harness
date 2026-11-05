@@ -52,7 +52,7 @@ class ToolTest(unittest.TestCase):
                                             "snapshot_list": snapshots})
         calls = [
             ToolCall("provider-1", "reference_read",
-                     raw({"reference_id": "ref-1", "offset": 2, "max_bytes": 10})),
+                     raw({"reference": "ref-1", "offset": 2, "max_bytes": 10})),
             ToolCall("provider-2", "snapshot_list", raw({"offset": 0, "limit": 5})),
         ]
         results = dispatcher.dispatch(calls)
@@ -89,7 +89,7 @@ class ToolTest(unittest.TestCase):
         })
         calls = [
             ToolCall("provider-1", "restore_request",
-                     raw({"source_session": "source-1", "checkpoint_id": "checkpoint-1"})),
+                     raw({"snapshot": "checkpoint-1"})),
             ToolCall("provider-2", "reference_read", b"not-json"),
             ToolCall("provider-3", "unknown_tool", b"also-not-json"),
         ]

@@ -7,17 +7,17 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.5.0**, pinned in
+The release consumes Operator shared contract **0.6.0**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate the exact package digest.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.5.0` |
-| Shared package digest | `sha256:9db8d03e9d759eba0c002444c9c96dbbe77991d47f97e2e9fd1b4b182bec74c3` |
-| Contract source commit | `485042787cc75e1776acaac11023ba9d210cc1f3` |
-| Contract source tree | `992210e4d42f3aa30a1ea740ccb16f88941a250a` |
-| Integration/inspection Operator commit | `485042787cc75e1776acaac11023ba9d210cc1f3` |
+| Shared package version | `0.6.0` |
+| Shared package digest | `sha256:bdf6b558c8c56ee189fc0531413b6273d1bb6d9614929d0ddc1a9ca72bf8c8de` |
+| Contract source commit | `3c4f8d51df8cf04d308f343a27f83908d6fb304f` |
+| Contract source tree | `3eb6d5add1ba058344b5636a6779e139aa50ca6a` |
+| Integration/inspection Operator commit | `47e4aa4dc36e5b28c6c31b96354fcdbd4a2bd1a0` |
 | Minimum Operator product version | `0.1.0` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
@@ -35,12 +35,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/485042787cc75e1776acaac11023ba9d210cc1f3/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/485042787cc75e1776acaac11023ba9d210cc1f3/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/3c4f8d51df8cf04d308f343a27f83908d6fb304f/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -49,7 +49,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -104,12 +104,7 @@ For a target whose `invoke` operation accepts this JSON input:
   "origin": "scenario",
   "scenario_id": "configuration",
   "operation_id": "invoke",
-  "input": {
-    "encoding": "json",
-    "value": {
-      "prompt": "Reply exactly QA_CONFIG_OK. Do not call tools."
-    }
-  }
+  "json": {"prompt": "Reply exactly QA_CONFIG_OK. Do not call tools."}
 }
 ```
 
@@ -117,42 +112,71 @@ The scenario and operation must exist in the admitted campaign. The Harness
 validates and forwards the selection unchanged; it never infers the only scenario.
 Linking an exploratory receipt to an objective at finish does not change origin.
 
-Input is exactly one direct content value or a committed artifact receipt.
+Input is exactly one of `json`, `text`, `base64`, or `artifact` (a returned handle).
 Direct content supports the shared JSON, UTF-8, and base64 encodings, with a
 host-configured `size_limits.direct_input_bytes` allowance and JSON depth limit of 16; the attempt request is
 bounded to the 4 MiB ordinary frame. Target-specific limits also apply. Use `artifact_publish`
-for larger or reusable content, then use its returned receipt. Operator resolves
+for larger or reusable content, then use its returned `artifact` handle. Operator resolves
 artifact descriptors; the model does not repeat hashes, sizes, or canonicalization
 metadata. Product code assigns execution bookkeeping and binding identities.
 
 Omitted setup actions mean none. Omitted observation selection uses all permitted
-feedback. A supplied parent execution receipt expresses a follow-up experiment;
+feedback. A supplied `parent` execution handle expresses a follow-up experiment;
 Operator derives the corresponding bookkeeping. Defaults never repair an invalid
 supplied value.
 
 ## Evidence and references
 
-Use the returned execution receipt and observation entry ID with
-`observation_read`. Reads enforce campaign membership, permitted visibility,
-availability, integrity, and bounds. Responses distinguish empty output,
-unavailable content, and truncation. Inspect content before making claims about it.
+Use `observation_read` with the returned observation handle:
 
-| Reference | Source and meaning |
-| --- | --- |
-| Tool call/submission ID | Correlates a submitted call; does not prove execution. |
-| Execution receipt | Returned by Operator for an attempt; carries the authoritative execution disposition. |
-| Artifact receipt | Returned after successful artifact publication; identifies retained content and its purpose. |
-| Assessment-record receipt | Returned by accepted `record_append`; identifies an optional historical assessment record. |
+```json
+{"observation": "observation-1"}
+```
 
-These categories are not interchangeable. A rejected submission has no execution
-receipt. Receipt validity is determined from runtime state and authoritative host
-records, not from a prefix. When an optional evidence range is supplied, both
-offset and length are required; omitting the range references the whole entry.
+Omitted offset means zero; omitted size uses the bounded shared default. Reads
+preserve campaign membership, visibility, availability, integrity and range
+checks. A partial read returns a handle for precisely the inspected range. Its
+next read uses an explicit absolute offset inside that range, or the original
+whole-entry handle for another portion. Listing a handle is not inspection.
+Unavailable content and truncation remain explicit.
+
+Harness keeps a typed handle map in campaign memory, outside the model context.
+Execution, observation, artifact, historical-record, hypothesis, injection and
+checkpoint handles are distinct. Rejected submissions have no execution handle.
+Handles resolve only through verified runtime state, never identifier prefixes or
+model prose. Canonical receipts remain in Operator evidence. Compaction preserves
+returned handles; after a healthy restore, Operator revalidates injection cleanup
+against the current target binding while Harness retains
+immutable historical evidence.
 
 ## Finish and final state
 
-Call `finish` once with a finish reason and exactly one of an inline assessment,
-a committed assessment-draft receipt, or a specific unavailable reason. The
+Call `finish` once with root `finish_reason`, `summary`, and `objectives` fields.
+There is no nested `assessment` wrapper. For example, after inspecting the returned
+observation (using the actual objective ID and handle):
+
+```json
+{
+  "finish_reason": "objectives-addressed",
+  "summary": "The requested marker appeared.",
+  "objectives": [{
+    "objective_id": "configuration-check",
+    "outcome": "supported",
+    "summary": "Observed the expected response.",
+    "observations": ["observation-1"]
+  }]
+}
+```
+
+Harness expands observation handles and derives the corresponding execution
+receipt lists. The model does not repeat those receipts or assign claim/gap IDs.
+Optional hypothesis and uncertainty labels are only needed for cross-references.
+Normalization is supplied by the exact shared contract. Before submission,
+Harness retains observation selections for objectives, hypotheses and coverage
+through bounded diagnostic batches; retention failure prevents submission.
+
+Alternatively, supply `finish_reason` with a committed conclusion `artifact`
+handle or an explicit `unavailable_reason`, excluding inline assessment fields. The
 ordinary assessment contains a summary and objective outcomes; hypotheses,
 claims, historical records, and other optional collections are not prerequisites.
 Local hypotheses may be defined in the assessment without registration. Unknown
@@ -179,6 +203,17 @@ does not establish it. Duplicate delivery retains operation identity and must no
 duplicate effects. Interrupted finalization does not trigger campaign replay.
 
 ## Optional capabilities and failure handling
+
+`artifact_publish` takes `purpose`, `media_type` and one of `json`, `text`, or
+`base64`. `attempt_execute.setup` contains selector/placement decisions but no
+action ID/type wrapper; `injection` carries its content choice. Database row keys
+are native objects; Harness uses shared normalization for the host encoding.
+`record_append` uses `kind` and flat kind-specific fields. Snapshot inspection and
+restore use `snapshot`; deletion uses `injection`; reads use `reference` or
+`observation`. Snapshot creation keeps optional `label` and `description`.
+See the exact shared
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/MODEL_TOOL_NORMALIZATION.md)
+for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
 historical assessment records are exposed only when the admitted operation set
@@ -208,8 +243,7 @@ it does not connect to PostgreSQL or implement vector queries.
   address eligible text/JSON cells, not metadata or binary values. HTTP/MCP
   selectors do not apply. This changes the delivered result, not stored rows.
 - `environment_state` uses `fidelity` mode. `collection` names the declared table
-  policy; `key` is a JSON object encoded as a string, for example
-  `"{\"id\":\"one\"}"`. Include exactly its non-null scalar key columns.
+  policy; `key` is a native JSON object, for example `{"id":"one"}`. Include exactly its non-null scalar key columns.
   Field pointers must be writable. Row creation requires explicit permission,
   a record limit and authorized root replacement; it is not an implicit upsert.
 - Deleting an injection removes its definition, not an already committed database
@@ -236,7 +270,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/485042787cc75e1776acaac11023ba9d210cc1f3/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -266,7 +300,7 @@ image identities when running a deployed integration through Operator.
 
 ## Context behavior
 
-Matching Operator and Harness builds require shared package 0.5.0 and its exact
+Matching Operator and Harness builds require shared package 0.6.0 and its exact
 locked digest. Old packages fail compatibility before campaign execution.
 Frozen injection surfaces select the same tools in Go and Python; restores keep
 that catalog. Context budget results are validated against native response usage.

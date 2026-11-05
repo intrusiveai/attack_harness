@@ -54,6 +54,10 @@ class FixedHandlers:
         self.scenario_delivery = scenario_delivery
 
     def handlers(self):
+        # All model calls cross the shared normalization boundary with call identity.
+        return {}
+
+    def canonical_handlers(self):
         candidates = {
             "artifact_publish": self.artifact_publish,
             "injection_delete": self.injection_delete,
@@ -74,10 +78,13 @@ class FixedHandlers:
         }
 
     def raw_handlers(self):
-        if (self.attempts is None or
-                not _DEPENDENCIES["attempt_execute"] <= self.client.operations):
-            return {}
-        return {"attempt_execute": self.attempts}
+        from .model_tools import ModelTools
+        if not hasattr(self, "model_tools"):
+            self.model_tools = ModelTools(self)
+        names = set(self.canonical_handlers())
+        if self.attempts is not None and _DEPENDENCIES["attempt_execute"] <= self.client.operations:
+            names.add("attempt_execute")
+        return {name: self.model_tools.dispatch for name in names}
 
     def reference_read(self, arguments):
         task = None

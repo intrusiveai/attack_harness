@@ -15,6 +15,7 @@ from attack_harness.observations import ObservationReader
 from attack_harness.tools import Dispatcher, ToolCall
 from build.prepare_release import CODECS
 from test_attempts import Client, LIMITS, Reply
+from test_vertical_slice import Inputs
 from test_observations import ObservationClient
 
 
@@ -32,7 +33,10 @@ class DatabaseContractTest(unittest.TestCase):
         client = client or Client()
         loop = HarnessLoop(LIMITS)
         executor = AttemptExecutor(self.protocol, client, None, {}, {'scenarios': []}, loop)
-        dispatcher = Dispatcher(self.protocol, loop, {}, raw_handlers={'attempt_execute': executor})
+        inputs = Inputs({})
+        inputs.context = lambda: {'target': {'capabilities': {'services': [{'service_id': 'database', 'database_tables': [{'id': 'documents', 'keys': ['id', 'tenant']}]}]}}}
+        handlers = FixedHandlers(self.protocol, inputs, client, loop, attempts=executor)
+        dispatcher = Dispatcher(self.protocol, loop, {}, raw_handlers=handlers.raw_handlers())
         return client, loop, executor, dispatcher
 
     def test_shared_database_cases_dispatch_once_or_reject_before_host_contact(self):
@@ -44,8 +48,8 @@ class DatabaseContractTest(unittest.TestCase):
                 result = dispatcher.dispatch([call])[0]
                 self.assertEqual(result.outcome, 'success' if case['valid'] else 'invalid')
                 if case['valid']:
-                    self.assertEqual(client.requests[0][1], case['arguments'])
-                    executor(call)
+                    self.assertEqual(client.requests[0][1]['input']['value'], case['arguments']['json'])
+                    dispatcher._raw_handlers['attempt_execute'](call)
                     self.assertEqual(len(client.requests), 1)
                     self.assertEqual(executor.receipts, {'receipt-1'})
                 else:
@@ -76,17 +80,17 @@ class DatabaseContractTest(unittest.TestCase):
     def test_injection_fields_are_absent_without_the_admitted_injection_capability(self):
         tools = json.loads(self.protocol.model_tools('openai-chat-text-tools-v1', ['engine.attempt_execute']))
         schema = tools[0]['function']['parameters']
-        for field in ('pre_actions', 'injection_input', 'retain_injections'):
+        for field in ('setup', 'injection', 'retain_injections'):
             self.assertNotIn(field, schema['properties'])
         body = next(case['arguments'] for case in self.cases if case['valid'])
         self.assertFalse(Draft202012Validator(schema).is_valid(body))
 
     def test_state_selector_keeps_composite_json_key_and_host_policy_rejection(self):
         body = deepcopy(next(case['arguments'] for case in self.cases if case['valid']))
-        parameters = body['pre_actions'][0]['parameters']
+        parameters = body['setup'][0]
         parameters.update(surface='environment_state', mode='fidelity',
             selector={'service': 'database', 'collection': 'documents',
-                      'key': '{"tenant":"one", "id":7}'},
+                      'key': {'tenant': 'one', 'id': 7}},
             placement={'operation': 'replace', 'pointer': '/body'})
         error = {'code': 'POLICY_DENIED', 'message': 'Database field is not writable.',
                  'effect_state': 'none', 'disposition': 'correct-and-resubmit'}
@@ -98,7 +102,7 @@ class DatabaseContractTest(unittest.TestCase):
         loop.begin_model()
         result = dispatcher.dispatch([ToolCall('state', 'attempt_execute', json.dumps(body).encode())])[0]
         self.assertEqual(result.outcome, 'preflight-rejected')
-        self.assertEqual(client.requests[0][1], body)
+        self.assertEqual(client.requests[0][1]['pre_actions'][0]['parameters']['selector']['key'], '{"id":7,"tenant":"one"}')
         self.assertEqual(json.loads(result.content), {'status': 'error', **error})
         self.assertFalse(executor.receipts)
         self.assertFalse(executor.dispatched)

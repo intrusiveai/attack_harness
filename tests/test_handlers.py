@@ -115,7 +115,7 @@ class HandlerTest(unittest.TestCase):
 
     def test_only_advertised_direct_handlers_are_installed(self):
         _, _, service = self.service({"engine.injection_delete", "engine.snapshot_list"})
-        self.assertEqual(set(service.handlers()), {
+        self.assertEqual(set(service.canonical_handlers()), {
             "reference_read", "injection_delete", "snapshot_list",
         })
 

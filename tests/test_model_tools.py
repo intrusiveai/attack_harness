@@ -1,0 +1,211 @@
+"""Runtime handles, shared normalization, evidence retention and call recovery."""
+from copy import deepcopy
+import base64
+import json
+import os
+from pathlib import Path
+import unittest
+
+from operator_contracts import ContractError, Protocol
+from operator_contracts.loop import HarnessLoop
+from attack_harness.artifacts import ArtifactPublisher
+from attack_harness.attempts import AttemptExecutor
+from attack_harness.conclusion import ConclusionFinalizer
+from attack_harness.handlers import FixedHandlers
+from attack_harness.observations import ObservationReader
+from attack_harness.runtime import RuntimeStopped
+from attack_harness.tools import Dispatcher, ToolCall
+from test_vertical_slice import ScriptedHost, Inputs, LIMITS, Clock, Reply
+
+
+class Host(ScriptedHost):
+    def __init__(self, protocol):
+        super().__init__(protocol, [], [b'{"answer":"MARKER"}'] * 4)
+        self.operations |= {"engine.snapshot_request", "engine.snapshot_list", "engine.snapshot_inspect",
+                            "engine.restore_request", "engine.injection_delete"}
+        self.reject_selection = False
+        self.error = None
+        self.snapshot = dict(campaign_id=self.campaign_id, source_session="session-raw", checkpoint_id="checkpoint-raw",
+            label="before", description="baseline", created_at="2026-11-05T00:00:00Z", status="ready", canonical_size_bytes=1)
+
+    def request(self, operation, body, *, operation_id):
+        if self.error and operation == "engine.finish":
+            r = Reply({}); r.error = self.error
+            return r
+        if operation == "engine.diagnostic_report" and body.get("observation_selections") and self.reject_selection:
+            r = Reply({}); r.error = dict(code="POLICY_DENIED", message="Retention failed.", effect_state="none", disposition="correct-and-resubmit")
+            return r
+        if operation == "engine.observation_read":
+            index = int(body["receipt_id"].rsplit("-", 1)[1]) - 1
+            content = self.observations[index]; offset = body["offset"]
+            # Keep the full metadata but return only the requested bytes.
+            result = super().request(operation, body, operation_id=operation_id).result
+            part = content[offset:offset + body["max_bytes"]]
+            result.update(content=base64.b64encode(part).decode(), raw_length=len(part), eof=offset + len(part) == len(content))
+            return Reply(result)
+        if operation in ("engine.snapshot_request", "engine.snapshot_inspect", "engine.snapshot_list"):
+            self.events.append((operation, deepcopy(body), operation_id))
+            return Reply(dict(snapshots=[self.snapshot], offset=0, total=1) if operation.endswith("list") else dict(snapshot=self.snapshot))
+        if operation == "engine.restore_request":
+            self.events.append((operation, deepcopy(body), operation_id)); self.run_revision += 1
+            return Reply(dict(previous_run_revision=self.run_revision - 1, run_revision=self.run_revision,
+                              transition_receipt="restore-raw", harness_disposition="continue"))
+        if operation == "engine.injection_delete":
+            self.events.append((operation, deepcopy(body), operation_id))
+            return Reply(dict(receipt_id="delete-raw", **body, outcome="deleted"))
+        result = super().request(operation, body, operation_id=operation_id)
+        if operation == "engine.attempt_execute" and body.get("retain_injections"):
+            result.result["cleanup_state"] = "not-requested"
+        return result
+
+
+class ModelToolsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = Path(os.environ["OPERATOR_CONTRACT_SOURCE"])
+        cls.protocol = Protocol(cls.source)
+
+    def setUp(self):
+        self.host = Host(self.protocol)
+        self.loop = HarnessLoop(dict(LIMITS, max_invalid_tool_calls=20, max_consecutive_invalid_tool_calls=10))
+        self.inputs = Inputs({"scenarios": [{"scenario_id": "configuration"}]})
+        artifacts = ArtifactPublisher(self.protocol, self.host)
+        observations = ObservationReader(self.host)
+        attempts = AttemptExecutor(self.protocol, self.host, artifacts, {}, self.inputs.bundle(), self.loop)
+        finalizer = ConclusionFinalizer(self.protocol, self.host, self.inputs, self.loop, artifacts,
+            attempts=attempts, observations=observations, campaign_deadline_ms=100000,
+            artifact_remaining=1 << 20, clock=Clock())
+        self.handlers = FixedHandlers(self.protocol, self.inputs, self.host, self.loop,
+            artifacts=artifacts, observations=observations, attempts=attempts, finalizer=finalizer)
+        self.dispatcher = Dispatcher(self.protocol, self.loop, {}, raw_handlers=self.handlers.raw_handlers())
+        self.model = self.handlers.model_tools
+        self.serial = 0
+
+    def call(self, name, arguments, identifier=None):
+        self.serial += 1
+        self.loop.begin_model()
+        call = ToolCall(identifier or f"call-{self.serial}", name,
+            arguments if isinstance(arguments, bytes) else json.dumps(arguments).encode())
+        result = self.dispatcher.dispatch([call])[0]
+        return json.loads(result.content)
+
+    def execute(self):
+        return self.call("attempt_execute", dict(origin="scenario", scenario_id="configuration", operation_id="invoke", json={"query": "marker"}))
+
+    def finish(self, observation):
+        return dict(finish_reason="objectives-addressed", summary="Marker observed.",
+            objectives=[dict(objective_id="objective-marker", outcome="supported", summary="Observed.", observations=[observation])],
+            claims=[dict(statement="Marker returned.", interpretation="supported", assurance="external-response", confidence="high", observations=[observation])])
+
+    def test_four_attempt_qa_finish_derives_claim_receipts_and_retains_selections(self):
+        handles = []
+        for _ in range(4):
+            result = self.execute()
+            self.assertNotIn("receipt_id", result)
+            observed = self.call("observation_read", {"observation": result["observations"][0]["observation"]})
+            handles.append(observed["observation"])
+        bad = self.call("finish", b'{"finish_reason":"objectives-addressed","summary":"one","summary":"two","objectives":[]}')
+        self.assertEqual(bad["diagnostic"]["field_path"], "/summary")
+        draft = self.finish(handles[0])
+        draft["claims"] *= 4
+        draft["claims"] = [dict(c, observations=[h]) for c, h in zip(draft["claims"], handles)]
+        result = self.call("finish", draft, "finish-good")
+        self.assertEqual(result["assessment_state"], "committed")
+        self.assertEqual(len(self.host.attempt_ids), 4)
+        assessment = json.loads(self.host.conclusion_raw)
+        for i, claim in enumerate(assessment["claims"], 1):
+            self.assertEqual(claim["attempt_receipt_refs"], [f"attempt-receipt-{i}"])
+        operations = [op for op, _, _ in self.host.events]
+        self.assertEqual(operations[-2:], ["engine.diagnostic_report", "engine.finish"])
+        self.assertNotIn("stopping", self.host.events[-2][1])
+        same = self.model.dispatch(ToolCall("finish-good", "finish", json.dumps(draft).encode()))
+        self.assertEqual(same.value, result)
+        self.assertEqual([op for op, _, _ in self.host.events].count("engine.finish"), 1)
+
+    def test_wrong_kind_unread_and_partial_evidence_are_correctable(self):
+        result = self.execute(); whole = result["observations"][0]["observation"]
+        for handle, reason in ((whole, "evidence_not_inspected"), (result["execution"], "wrong_handle_kind"), ("invented", "unknown_handle")):
+            rejected = self.call("finish", self.finish(handle))
+            self.assertEqual(rejected["diagnostic"]["reason"], reason)
+            self.assertEqual(rejected["diagnostic"]["field_path"], "/objectives/0/observations/0")
+        part = self.call("observation_read", dict(observation=whole, offset=2, max_bytes=4))
+        self.assertNotEqual(part["observation"], whole)
+        self.assertFalse(self.model.resources[whole]["inspected"])
+        extent = self.model.resources[part["observation"]]["value"]["range"]
+        self.assertEqual(extent, dict(offset=2, length=4))
+        rejected = self.call("observation_read", dict(observation=part["observation"]))
+        self.assertEqual(rejected["diagnostic"]["reason"], "range_exceeded")
+        reread = self.call("observation_read", dict(observation=part["observation"], offset=2, max_bytes=100))
+        self.assertEqual(reread["raw_length"], 4)
+        self.assertEqual(reread["observation"], part["observation"])
+        self.assertEqual(self.call("finish", self.finish(part["observation"]))["assessment_state"], "committed")
+
+    def test_selection_retention_failure_prevents_assessment_submission(self):
+        whole = self.execute()["observations"][0]["observation"]
+        self.call("observation_read", dict(observation=whole))
+        self.host.reject_selection = True
+        self.assertEqual(self.call("finish", self.finish(whole))["status"], "error")
+        self.assertFalse(any(op == "engine.finish" for op, _, _ in self.host.events))
+
+    def test_host_error_path_maps_to_model_handle_without_replacing_cause(self):
+        whole = self.execute()["observations"][0]["observation"]
+        self.call("observation_read", dict(observation=whole))
+        self.host.error = dict(code="POLICY_DENIED", effect_state="none", disposition="correct-and-resubmit", message="Denied.",
+            diagnostic=dict(source="operator", stage="references", reason="invalid_attempt", field_path="/assessment/claims/0/attempt_receipt_refs/0"))
+        result = self.call("finish", self.finish(whole))
+        self.assertEqual(result["diagnostic"]["field_path"], "/claims/0/observations/0")
+        self.assertEqual(result["diagnostic"]["reason"], "invalid_attempt")
+        self.assertEqual(result["diagnostic"]["source"], "operator")
+
+    def test_duplicate_calls_do_not_repeat_host_effects_and_conflicts_are_explicit(self):
+        body = dict(origin="exploratory", operation_id="invoke", json={"query": "one"})
+        first = self.call("attempt_execute", body, "same")
+        self.assertEqual(self.call("attempt_execute", body, "same"), first)
+        result = self.call("attempt_execute", dict(body, json={"query": "two"}), "same")
+        self.assertEqual(result["diagnostic"]["reason"], "call_identity_conflict")
+        self.assertEqual(len(self.host.attempt_ids), 1)
+
+    def test_restore_revalidates_known_injections_through_current_host_binding(self):
+        self.host.snapshot["parent"] = dict(source_session="session-raw", checkpoint_id="earlier-checkpoint")
+        snapshot = self.call("snapshot_request", {})
+        self.assertIsInstance(snapshot["snapshot"], str)
+        self.assertIsInstance(snapshot["parent"], str)
+        self.assertEqual(self.call("snapshot_inspect", {"snapshot": snapshot["snapshot"]})["snapshot"], snapshot["snapshot"])
+        listed = self.call("snapshot_list", {"session": snapshot["session"]})
+        self.assertEqual(listed["snapshots"][0]["snapshot"], snapshot["snapshot"])
+        injection = self.model.register("injection", dict(attempt_receipt_id="receipt", action_id="action"), live=True)
+        self.assertEqual(self.call("injection_delete", {"injection": injection})["outcome"], "deleted")
+        self.assertFalse(self.model.resources[injection]["live"])
+        restored = self.call("restore_request", {"snapshot": snapshot["snapshot"]})
+        self.assertEqual(restored["run_revision"], 2)
+        self.assertTrue(self.model.resources[injection]["live"])
+        self.assertEqual(self.call("injection_delete", {"injection": injection})["outcome"], "deleted")
+        deletions = [event for event in self.host.events if event[0] == "engine.injection_delete"]
+        self.assertEqual(len(deletions), 2)
+        self.assertNotEqual(deletions[0][2], deletions[1][2])
+        self.assertEqual(self.call("injection_delete", {"injection": "unknown"})["diagnostic"]["reason"], "unknown_handle")
+
+    def test_historical_records_and_local_forward_hypotheses(self):
+        hypothesis = self.call("record_append", dict(kind="hypothesis", origin="exploratory", statement="Could a marker appear?"))
+        self.assertIn("hypothesis", hypothesis)
+        draft = dict(finish_reason="budget-limit", summary="Untested.", objectives=[], hypotheses=[
+            dict(label="child", parent="parent", origin="exploratory", outcome="not-tested", summary="Child untested."),
+            dict(label="parent", parent=hypothesis["hypothesis"], origin="exploratory", outcome="not-tested", summary="Parent untested.")])
+        result = self.call("finish", draft)
+        self.assertEqual(result["assessment_state"], "committed")
+        actual = json.loads(self.host.conclusion_raw)["hypotheses"]
+        self.assertEqual(actual[0]["provenance"]["parent_hypothesis_id"], actual[1]["hypothesis_id"])
+
+    def test_shared_normalization_fixtures_remain_exact(self):
+        for case in json.loads((self.source / "fixtures/tool-normalization.json").read_text()):
+            with self.subTest(case=case["name"]):
+                raw = json.dumps(case["arguments"]).encode()
+                if "reason" in case:
+                    with self.assertRaises(ContractError) as caught:
+                        self.protocol.normalize_tool_arguments(case["tool"], raw, case["context"])
+                    self.assertEqual((caught.exception.reason, caught.exception.field_path), (case["reason"], case["path"]))
+                else:
+                    self.assertEqual(self.protocol.normalize_tool_arguments(case["tool"], raw, case["context"]), case["expected"])
+
+
+if __name__ == "__main__": unittest.main()

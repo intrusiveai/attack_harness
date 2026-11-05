@@ -1,0 +1,226 @@
+"""Shared normalization over campaign-owned handles; host services stay canonical."""
+from copy import deepcopy
+import hashlib
+
+from operator_contracts import ContractError
+from operator_contracts.canonical import _canonical_value
+from operator_contracts.tool_normalization import remap_tool_path
+from operator_contracts.validation import ORDINARY_LIMIT
+
+from .runtime import RuntimeStopped
+from .tools import HandlerResult, ToolError
+
+
+class ModelTools:
+    """One bounded resource map and duplicate-call ledger for the admitted campaign."""
+
+    def __init__(self, handlers):
+        self.handlers = handlers
+        self.protocol, self.client = handlers.protocol, handlers.client
+        self.resources, self._identities, self._counts, self._calls = {}, {}, {}, {}
+        self.database_keys = {}
+        self.campaign_id = self.client.campaign_id
+        inputs = handlers.inputs
+        for entry in inputs.reference_index():
+            self.register("reference", {"reference_id": entry["entry_id"],
+                "entry_id": entry["entry_id"]}, handle=entry["entry_id"], available=True)
+        delivery = handlers.scenario_delivery
+        if delivery is not None:
+            for identifier in delivery.references:
+                self.register("reference", {"reference_id": identifier, "entry_id": identifier},
+                              handle=identifier, available=True)
+        # Capabilities are verified startup data, never observation/model content.
+        target = inputs.context()["target"]
+        for service in target.get("capabilities", {}).get("services", []):
+            for policy in service.get("database_tables", []):
+                self.database_keys[service["service_id"] + "/" + policy["id"]] = policy["keys"]
+
+    def register(self, kind, value, *, handle=None, available=False, inspected=False, live=False):
+        identity = (kind, _canonical_value(value, ORDINARY_LIMIT))
+        previous = self._identities.get(identity)
+        if previous is not None:
+            resource = self.resources[previous]
+            resource.update(available=available, inspected=resource["inspected"] or inspected, live=live)
+            return previous
+        if len(self.resources) >= 4096:
+            self.client.fail("budget-limit")  # Never invite replay after a successful host effect.
+        if handle is None:
+            index = self._counts.get(kind, 0) + 1
+            while f"{kind}-{index}" in self.resources:
+                index += 1
+            self._counts[kind] = index
+            handle = f"{kind}-{index}"
+        if handle in self.resources:
+            raise ContractError("Conflicting verified resource identity.")
+        self.resources[handle] = dict(kind=kind, campaign_id=self.campaign_id,
+            value=deepcopy(value), available=available, inspected=inspected, live=live)
+        self._identities[identity] = handle
+        return handle
+
+    def _context(self, arguments, call_id):
+        selected = {}
+        def collect(value):
+            if isinstance(value, str) and value in self.resources:
+                selected[value] = self.resources[value]
+            elif isinstance(value, dict):
+                for item in value.values(): collect(item)
+            elif isinstance(value, list):
+                for item in value: collect(item)
+        collect(arguments)
+        return dict(campaign_id=self.campaign_id, call_id=call_id,
+                    resources=selected, database_keys=self.database_keys)
+
+    def _retain_selections(self, call, selections):
+        for offset in range(0, len(selections), 32):
+            report = dict(tool_name=call.name, diagnostic={
+                "source": "harness-local", "stage": "references", "reason": "observation_selection",
+                "message": "Selected inspected observations for assessment references.",
+                "execution_occurred": "no", "resubmission_safe": True,
+            }, observation_selections=selections[offset:offset + 32])
+            reply = self.client.request("engine.diagnostic_report", report,
+                operation_id=self.client.operation_id("observation-selection"))
+            if reply.error is not None:
+                # A required retention failure prevents assessment submission.
+                raise ToolError.from_host(reply.error)
+
+    @staticmethod
+    def _remap(value, paths):
+        result = deepcopy(value)
+        diagnostic = result.get("diagnostic")
+        if diagnostic and "field_path" in diagnostic:
+            diagnostic["field_path"] = remap_tool_path(paths, diagnostic["field_path"])
+        for error in result.get("errors", []):
+            if "instance_path" in error:
+                error["instance_path"] = remap_tool_path(paths, error["instance_path"])
+        return result
+
+    def dispatch(self, call):
+        key = (call.batch_id, call.call_id, call.correlation)
+        signature = (call.name, call.arguments)
+        if key in self._calls:
+            old, result = self._calls[key]
+            if old != signature:
+                error = ToolError("call_identity_conflict", "Call identity was reused with different arguments.",
+                    correction="Inspect the prior result before choosing another action; do not replay uncertain effects.")
+                error.value["diagnostic"].update(execution_occurred="unknown", resubmission_safe=False)
+                raise error
+            if result is None:
+                self.client.fail("operation-failed")
+            return deepcopy(result)
+        stable = "native-" + hashlib.sha256(_canonical_value(list(key), 4096)).hexdigest()
+        paths = {}
+        try:
+            arguments = self.protocol.validate_tool_arguments(call.name, call.arguments)
+            normalized = self.protocol.normalize_tool_arguments(call.name, call.arguments,
+                self._context(arguments, stable))
+            paths = normalized["paths"]
+        except ContractError as error:
+            if call.name == "attempt_execute":
+                self.handlers.attempts.reject_submission(call.call_id)
+            result = HandlerResult(ToolError.from_contract(error).value, "invalid")
+            self._calls[key] = (signature, result)
+            return deepcopy(result)
+        self._calls[key] = (signature, None)
+        try:
+            body = normalized["arguments"]
+            self._retain_selections(call, normalized["observation_selections"])
+            if call.name == "attempt_execute":
+                handled = self.handlers.attempts.execute(call, body)
+            else:
+                handled = self.handlers.canonical_handlers()[call.name](body)
+            if handled.outcome in ("invalid", "preflight-rejected"):
+                result = HandlerResult(self._remap(handled.value, paths), handled.outcome)
+            else:
+                result = HandlerResult(self._present(call.name, body, handled.value), handled.outcome)
+        except ToolError as error:
+            result = HandlerResult(self._remap(error.value, paths), error.outcome)
+        except ContractError as error:
+            if isinstance(error, RuntimeStopped) or error.reason != "configured_size_exceeded":
+                raise
+            error = ToolError.from_contract(error)
+            result = HandlerResult(self._remap(error.value, paths), "invalid")
+        self._calls[key] = (signature, deepcopy(result))
+        return result
+
+    def _snapshot(self, metadata):
+        value = deepcopy(metadata)
+        session = value.pop("source_session")
+        checkpoint = value.pop("checkpoint_id")
+        value["snapshot"] = self.register("checkpoint", dict(source_session=session,
+            checkpoint_id=checkpoint), available=metadata.get("status") == "ready")
+        value["session"] = self.register("session", dict(source_session=session), available=True)
+        if "parent" in value:
+            value["parent"] = self.register("checkpoint", value["parent"])
+        return value
+
+    def _present(self, name, body, result):
+        value = deepcopy(result)
+        if name == "attempt_execute":
+            receipt = value.pop("receipt_id")
+            value.pop("attempt_id", None); value.pop("request_id", None)
+            value.pop("api_version", None); value.pop("kind", None)
+            value.pop("target_output", None); value.pop("observations", None)
+            value["execution"] = self.register("execution", dict(attempt_receipt_id=receipt), available=True)
+            feedback = value.pop("feedback", {})
+            value["feedback"] = {k: v for k, v in feedback.items() if k != "entries"}
+            value["observations"] = []
+            for entry in feedback.get("entries", []):
+                # The host's permitted feedback manifest contains both
+                # target-visible output and Harness-only observations.
+                item = {k: v for k, v in entry.items() if k not in ("entry_id", "artifact")}
+                item["observation"] = self.register("observation", dict(attempt_receipt_id=receipt,
+                    entry_id=entry["entry_id"]), available=entry["availability"] == "available")
+                if "artifact" in entry:
+                    item.update({k: entry["artifact"][k] for k in ("size_bytes", "media_type")})
+                value["observations"].append(item)
+            if body.get("retain_injections") and result["cleanup_state"] == "not-requested":
+                value["injections"] = [{"injection": self.register("injection",
+                    dict(attempt_receipt_id=receipt, action_id=action["action_id"]), live=True)}
+                    for action in body["pre_actions"]]
+        elif name == "artifact_publish":
+            artifact = value["artifact"]
+            value = dict(status=value["status"], artifact=self.register("artifact",
+                dict(artifact_receipt=value["artifact_receipt"], purpose=value["purpose"]), available=True),
+                purpose=value["purpose"], media_type=artifact["media_type"], size_bytes=artifact["size_bytes"])
+        elif name in ("observation_read", "reference_read"):
+            observation = name == "observation_read"
+            kind = "observation" if observation else "reference"
+            canonical = (dict(attempt_receipt_id=body["receipt_id"], entry_id=body["entry_id"])
+                         if observation else dict(reference_id=body["reference_id"], entry_id=body["reference_id"]))
+            available = not observation or value["availability"] == "available"
+            whole = value["offset"] == 0 and value["eof"]
+            if value["raw_length"] and not whole:
+                canonical["range"] = dict(offset=value["offset"], length=value["raw_length"])
+            value[kind] = self.register(kind, canonical, available=available,
+                inspected=available and (whole or bool(value["raw_length"])))
+            value.pop("receipt_id", None); value.pop("entry_id", None); value.pop("reference_id", None)
+            artifact = value.pop("artifact", None)
+            if artifact: value.update({k: artifact[k] for k in ("size_bytes", "media_type")})
+            if not value["eof"] and available:
+                value["next_offset"] = value["offset"] + value["raw_length"]
+            if "source" in value:
+                value["source"] = {k: v for k, v in value["source"].items() if k not in ("path", "digest")}
+        elif name == "record_append":
+            value["record"] = self.register("record", dict(record_receipt_id=value.pop("receipt_id")), available=True)
+            if body["record_kind"] == "hypothesis":
+                value["hypothesis"] = self.register("hypothesis", dict(hypothesis_id=body["record"]["hypothesis_id"]), available=True)
+        elif name in ("snapshot_request", "snapshot_inspect"):
+            value = {**value, **self._snapshot(value.pop("snapshot"))}
+            value.pop("receipt_id", None)
+        elif name == "snapshot_list":
+            value["snapshots"] = [self._snapshot(item) for item in value["snapshots"]]
+        elif name == "restore_request":
+            # INJECTION_CLEANUP_CONTRACT keeps same-campaign action mappings
+            # valid across healthy restores, including previously deleted
+            # injections. A fresh deletion goes to Operator, which revalidates
+            # ownership and the current binding and confirms presence/absence.
+            # Never reuse a historical cleanup result for that new operation.
+            for resource in self.resources.values():
+                if resource["kind"] == "injection": resource["live"] = True
+            if "snapshot" in value:
+                value["snapshot"] = self._snapshot(value["snapshot"])
+        elif name == "injection_delete":
+            handle = self._identities[("injection", _canonical_value(body, ORDINARY_LIMIT))]
+            self.resources[handle]["live"] = False
+            value = dict(injection=handle, outcome=value["outcome"])
+        return value

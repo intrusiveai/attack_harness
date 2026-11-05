@@ -93,6 +93,8 @@ class ObservationReader:
             require(artifact is not None)
             require(offset + len(content) <= artifact["size_bytes"])
             require(result["eof"] == (offset + len(content) == artifact["size_bytes"]))
+            if offset == 0 and result["eof"]:
+                require("sha256:" + hashlib.sha256(content).hexdigest() == artifact["digest"])
         else:
             require(not content and not result["eof"] and artifact is None)
         metadata = (result["availability"], artifact, result["truncated"], result.get("reason", ""))

@@ -30,18 +30,18 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 				continue
 			}
 			t.Run(transport+"/"+mode, func(t *testing.T) {
-				var receipt string
+				var observation string
 				assessment := func() map[string]any {
 					refs := []string{}
 					outcome := "not-tested"
-					if receipt != "" {
-						refs = append(refs, receipt)
+					if observation != "" {
+						refs = append(refs, observation)
 						outcome = "inconclusive"
 					}
-					return map[string]any{"finish_reason": "no-useful-next-experiment", "assessment": map[string]any{
+					return map[string]any{"finish_reason": "no-useful-next-experiment",
 						"summary": "Honest controlled assessment.", "objectives": []any{map[string]any{
-							"objective_id": "objective-marker", "outcome": outcome, "summary": "Report only observed evidence.", "attempt_receipt_refs": refs}},
-					}}
+							"objective_id": "objective-marker", "outcome": outcome, "summary": "Report only observed evidence.", "observations": refs}},
+					}
 				}
 				r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
 					if mode == "exhausted" || mode == "corrected" && turn == 1 {
@@ -55,11 +55,10 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 					}
 					if mode == "hypothesis-correction" {
 						draft := assessment()
-						a := draft["assessment"].(map[string]any)
-						h := localHypothesis("local-child", "local-parent")
+						a := draft
+						h := map[string]any{"label": "local-child", "parent": "local-parent", "origin": "exploratory", "outcome": "not-tested", "summary": "Untested hypothesis."}
 						h["objective_refs"] = []string{"objective-marker"}
-						h["provenance"].(map[string]any)["origin"] = "exploratory"
-						delete(h["provenance"].(map[string]any), "scenario_id")
+
 						if turn == 1 {
 							a["hypotheses"] = []any{h}
 						} else if turn == 2 {
@@ -67,9 +66,9 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 							if e != nil || rejected["status"] != "error" {
 								return nil, fmt.Errorf("invalid assessment falsely accepted: %v %v", rejected, e)
 							}
-							parent := localHypothesis("local-parent", "")
+							parent := map[string]any{"label": "local-parent", "origin": "exploratory", "outcome": "not-tested", "summary": "Untested parent."}
 							parent["objective_refs"] = []string{"objective-marker"}
-							parent["provenance"] = map[string]any{"origin": "exploratory"}
+
 							a["hypotheses"] = []any{h, parent}
 						} else {
 							return nil, fmt.Errorf("assessment correction did not finish")
@@ -98,31 +97,33 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 					}
 					switch step {
 					case 1:
-						input := map[string]any{"encoding": "json", "value": map[string]any{"query": "baseline"}}
+						input := map[string]any{"origin": "exploratory", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}}
 						if mode == "artifact" {
 							a, e := modelToolResult(q, "payload")
 							if e != nil {
 								return nil, e
 							}
-							input = map[string]any{"artifact_receipt": a["artifact_receipt"]}
+							delete(input, "json")
+							input["artifact"] = a["artifact"]
 						}
-						return processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke", "input": input})}), nil
+						return processResponse([]any{modelCall("invoke", "attempt_execute", input)}), nil
 					case 2:
 						a, e := modelToolResult(q, "invoke")
 						if e != nil || a["status"] != "completed" {
 							return nil, fmt.Errorf("execution: %v %v", a, e)
 						}
-						receipt = a["receipt_id"].(string)
-						entries := a["feedback"].(map[string]any)["entries"].([]any)
+
+						entries := a["observations"].([]any)
 						if len(entries) != 1 {
-							return nil, fmt.Errorf("missing feedback")
+							return nil, fmt.Errorf("missing feedback: %v", a)
 						}
-						return processResponse([]any{modelCall("read", "observation_read", map[string]any{"receipt_id": receipt, "entry_id": entries[0].(map[string]any)["entry_id"], "offset": 0, "max_bytes": 4096})}), nil
+						return processResponse([]any{modelCall("read", "observation_read", map[string]any{"observation": entries[0].(map[string]any)["observation"]})}), nil
 					case 3:
 						evidence, e := modelToolResult(q, "read")
 						if e != nil {
 							return nil, e
 						}
+						observation = evidence["observation"].(string)
 						raw, e := modelContent(evidence)
 						if e != nil || string(raw) != `{"answer":"test"}` {
 							return nil, fmt.Errorf("wrong evidence: %v", evidence)
@@ -191,7 +192,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						var info struct {
 							Diagnostic *campaign.WorkflowDiagnostic `json:"workflow_diagnostic"`
 						}
-						if json.Unmarshal(raw, &info) != nil || info.Diagnostic == nil || info.Diagnostic.Stopping != "invalid-call-limit" || info.Diagnostic.Observed != 5 || info.Diagnostic.Limit != 5 || info.Diagnostic.FieldPath != "/input" {
+						if json.Unmarshal(raw, &info) != nil || info.Diagnostic == nil || info.Diagnostic.Stopping != "invalid-call-limit" || info.Diagnostic.Observed != 5 || info.Diagnostic.Limit != 5 || info.Diagnostic.Reason != "content_choice" {
 							t.Fatal(string(raw))
 						}
 						t.Log("user-visible stopping reason:", info.Diagnostic.Message())

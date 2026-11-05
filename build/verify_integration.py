@@ -51,8 +51,20 @@ def main():
         source = source.replace(marker,
             'if service.StopAccepted() || os.Getenv("HARNESS_TEST_EXIT_MODE") == "runtime-fatal" {')
         helper_copy.write_text(source)
+        campaign = operator / "internal/preparation/python_campaign_test.go"
+        campaign_copy = Path(directory) / campaign.name
+        source = campaign.read_text()
+        old_identity = 'attempts[0]["attempt_id"] == attempts[1]["attempt_id"]'
+        if source.count(old_identity) != 1:
+            raise SystemExit("Operator campaign fixture changed; review model handle identity assertion")
+        # The model now receives an execution handle, not internal bookkeeping.
+        campaign_copy.write_text(source.replace(old_identity,
+            'attempts[0]["execution"] == attempts[1]["execution"]'))
         overlay.write_text(json.dumps({"Replace": {
             str(original): str(replacement), str(helper): str(helper_copy),
+            str(campaign): str(campaign_copy),
+            str(operator / "internal/preparation/conclusion_diagnostic_process_test.go"):
+                str(root / "build/operator_conclusion_diagnostic_test.go"),
             str(operator / "internal/preparation/harness_exit_process_test.go"):
                 str(root / "build/operator_exit_test.go"),
         }}))
