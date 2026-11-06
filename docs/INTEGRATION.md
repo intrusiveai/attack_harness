@@ -7,17 +7,17 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.6.0**, pinned in
+The release consumes Operator shared contract **0.6.1**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate the exact package digest.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.6.0` |
-| Shared package digest | `sha256:bdf6b558c8c56ee189fc0531413b6273d1bb6d9614929d0ddc1a9ca72bf8c8de` |
-| Contract source commit | `3c4f8d51df8cf04d308f343a27f83908d6fb304f` |
-| Contract source tree | `3eb6d5add1ba058344b5636a6779e139aa50ca6a` |
-| Integration/inspection Operator commit | `47e4aa4dc36e5b28c6c31b96354fcdbd4a2bd1a0` |
+| Shared package version | `0.6.1` |
+| Shared package digest | `sha256:a1972ee9aad5d9142c77d24c41b6ec434a0ea2fe283bf7eaf6b2e06b73d13dea` |
+| Contract source commit | `5e87aef5a8f56ff51932a55ff1bb5692b9023753` |
+| Contract source tree | `585af1c66917d9011ee7d6882ac911a3eb04386c` |
+| Integration/inspection Operator commit | `945562d6709eb96dac540eba0332e968aad3897a` |
 | Minimum Operator product version | `0.1.0` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
@@ -35,12 +35,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/3c4f8d51df8cf04d308f343a27f83908d6fb304f/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/5e87aef5a8f56ff51932a55ff1bb5692b9023753/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -49,7 +49,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -212,7 +212,7 @@ are native objects; Harness uses shared normalization for the host encoding.
 restore use `snapshot`; deletion uses `injection`; reads use `reference` or
 `observation`. Snapshot creation keeps optional `label` and `description`.
 See the exact shared
-[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/schemas/MODEL_TOOL_NORMALIZATION.md)
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/MODEL_TOOL_NORMALIZATION.md)
 for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
@@ -270,7 +270,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/3c4f8d51df8cf04d308f343a27f83908d6fb304f/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -300,7 +300,7 @@ image identities when running a deployed integration through Operator.
 
 ## Context behavior
 
-Matching Operator and Harness builds require shared package 0.6.0 and its exact
+Matching Operator and Harness builds require shared package 0.6.1 and its exact
 locked digest. Old packages fail compatibility before campaign execution.
 Frozen injection surfaces select the same tools in Go and Python; restores keep
 that catalog. Context budget results are validated against native response usage.
