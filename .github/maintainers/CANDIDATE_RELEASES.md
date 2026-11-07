@@ -9,7 +9,7 @@ at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
 These workflows publish images and the website's release catalog. Compatibility
 is verified locally from each image using the exact
-[release contract and runtime pins](../../docs/INTEGRATION.md#locked-contract-and-runtime).
+[approved interface and test provenance](../../docs/INTEGRATION.md#locked-contract-and-runtime).
 Catalog publication requires the production reviewer. The guest's execution,
 assessment, and image bindings are described in the integration guide.
 
@@ -172,23 +172,17 @@ identify the repository, environment, tag, and workflow file.
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `f84ccf374b859af66a32201a0f953dd9e3a3fc3c`
-   in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.4.0`, digest
-   `sha256:9c50335bda8b5442cae3e11b60319d9f41e5d626032096161cda985add909bfe`.
-   Move any older generated `build/context/contracts` aside before rebuilding.
-2. Check out matching Operator runtime commit
-   `009a451d495c96141c88a75f2eb387ba7a7363d9` in a second directory for integration
-   and stopped-image inspection. Its shared contracts/schemas are unchanged from
-   the package source; its database integration verifies snapshot backup evidence
-   and exercises live oracle feedback through the Python Harness. CI builds the
-   package first, then checks out this runtime revision in its Operator directory.
-   `build/operator-runtime-commit.txt` is the shared runtime pin for CI checkout,
-   local integration tests, and publication's inspection-report check. When
-   updating Operator, change that pin; keep the contract source lock tied to the
-   exact package bytes. The two revisions may differ only while their shared
-   contracts/schemas remain identical, as verified by the integration gate.
-   Install the locked dependencies, verify the package, and run the tests:
+1. Select an Operator checkout supplying shared validators and exact AsyncAPI
+   document version `0.7.0`, SHA-256
+   `b40a8028420d8fd897d32e75c2921668470f9f98c6f7c202793b4c99fe169cc5`.
+   `build/contract-lock.json` approves this interface identity. Package manifests
+   independently verify every distributed file; their hash is not compatibility.
+   Move older generated `build/context/contracts` aside before rebuilding.
+2. Use a compatible Operator for integration and stopped-image inspection.
+   `build/operator-runtime-commit.txt` selects CI test provenance. Another revision
+   with the approved interface may be used locally, without comparing whole source
+   trees or requiring commit equality. Inspection reports bind the interface pair
+   and actual image bytes. Install locked dependencies and run the tests:
 
    ```sh
    python3 -m venv .ci-venv
@@ -299,7 +293,7 @@ identify the repository, environment, tag, and workflow file.
    contains that unique candidate version with `tags: ["rc"]`, its unique GHCR
    tag, and the same index digest. Confirm `contract_package_version` equals the
    package version in both platform build reports and embedded compatibility
-   files (`0.4.0` for the current contract). It must remain absent from the stable
+   files (`0.7.0` for the current contract). It must remain absent from the stable
    listing on the [releases website](https://releases.intrusive.ai/).
 
 The rolling image `ghcr.io/intrusiveai/attack_harness:v1.2.3` is convenient for QA
@@ -344,7 +338,7 @@ image digests to identify the published bytes; they are not compatibility record
    The unique candidate entry stays labeled `rc`; the final entry is separate.
 6. Reload the releases website. The version is eligible for its stable listing,
    which displays the first two entries labeled exactly `release`. Confirm its
-   **Shared contract: 0.4.0** indicator matches the promoted package version.
+   **Shared contract: 0.7.0** indicator matches the promoted package version.
    No site build or redeployment is needed. Use a new version for further candidate
    work; promotion freezes `v1.2.3` against later candidate writes.
 

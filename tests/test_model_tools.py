@@ -103,7 +103,7 @@ class ModelToolsTest(unittest.TestCase):
             result = self.execute()
             self.assertNotIn("receipt_id", result)
             observed = self.call("observation_read", {"observation": result["observations"][0]["observation"]})
-            handles.append(observed["observation"])
+            handles.append(observed["citation"])
         bad = self.call("finish", b'{"finish_reason":"objectives-addressed","summary":"one","summary":"two","objectives":[]}')
         self.assertEqual(bad["diagnostic"]["field_path"], "/summary")
         draft = self.finish(handles[0])
@@ -122,6 +122,44 @@ class ModelToolsTest(unittest.TestCase):
         self.assertEqual(same.value, result)
         self.assertEqual([op for op, _, _ in self.host.events].count("engine.finish"), 1)
 
+    def test_pagination_instructions_are_executable_and_bound_to_readable_extent(self):
+        whole = self.execute()['observations'][0]['observation']
+        first = self.call('observation_read', dict(observation=whole, max_bytes=4))
+        self.assertEqual(first['readable_observation'], whole)
+        self.assertNotEqual(first['citation'], whole)
+        self.assertFalse(self.model.resources[whole]['inspected'])
+        rejected = self.call('finish', self.finish(whole))
+        self.assertEqual(rejected['diagnostic']['reason'], 'evidence_not_inspected')
+        self.assertIn(first['citation'], rejected['diagnostic']['correction'])
+        next_read = first['continuation']
+        self.assertEqual(next_read, dict(tool='observation_read', arguments=dict(observation=whole, offset=4, max_bytes=4)))
+        second = self.call(next_read['tool'], next_read['arguments'])
+        self.assertEqual(second['offset'], 4)
+        bounded = self.call('observation_read', dict(observation=first['citation'], offset=0, max_bytes=2))
+        last = self.call(bounded['continuation']['tool'], bounded['continuation']['arguments'])
+        self.assertEqual(last['offset'] + last['raw_length'], 4)
+        self.assertNotIn('continuation', last)
+        self.assertFalse(last['eof'])  # End of permitted range, not end of entry.
+        while 'continuation' in second:
+            second = self.call(second['continuation']['tool'], second['continuation']['arguments'])
+        self.assertTrue(second['eof'])
+        self.assertFalse(self.model.resources[whole]['inspected'])
+        self.assertEqual(self.call('finish', self.finish(first['citation']))['assessment_state'], 'committed')
+
+    def test_finish_structural_errors_preserve_specific_shared_corrections(self):
+        for changes, path, correction in (
+            ({'observations': []}, '/observations', 'supported assessment item'),
+            ({'uncertainties': [{'kind': 'invented', 'description': 'gap'}]}, '/uncertainties/0/kind', 'evidence-gap'),
+            ({'uncertainties': ['gap']}, '/uncertainties/0', 'object'),
+        ):
+            with self.subTest(path=path):
+                result = self.call('finish', dict(finish_reason='budget-limit', summary='Not tested.', objectives=[], **changes))
+                self.assertEqual(result['diagnostic']['field_path'], path)
+                self.assertIn(correction, result['diagnostic']['correction'])
+                self.assertEqual(result['diagnostic']['execution_occurred'], 'no')
+                self.assertTrue(result['diagnostic']['resubmission_safe'])
+        self.assertFalse(any(op == 'engine.finish' for op, _, _ in self.host.events))
+
     def test_wrong_kind_unread_and_partial_evidence_are_correctable(self):
         result = self.execute(); whole = result["observations"][0]["observation"]
         for handle, reason in ((whole, "evidence_not_inspected"), (result["execution"], "wrong_handle_kind"), ("invented", "unknown_handle")):
@@ -129,16 +167,16 @@ class ModelToolsTest(unittest.TestCase):
             self.assertEqual(rejected["diagnostic"]["reason"], reason)
             self.assertEqual(rejected["diagnostic"]["field_path"], "/objectives/0/observations/0")
         part = self.call("observation_read", dict(observation=whole, offset=2, max_bytes=4))
-        self.assertNotEqual(part["observation"], whole)
+        self.assertNotEqual(part["citation"], whole)
         self.assertFalse(self.model.resources[whole]["inspected"])
-        extent = self.model.resources[part["observation"]]["value"]["range"]
+        extent = self.model.resources[part["citation"]]["value"]["range"]
         self.assertEqual(extent, dict(offset=2, length=4))
-        rejected = self.call("observation_read", dict(observation=part["observation"]))
+        rejected = self.call("observation_read", dict(observation=part["citation"]))
         self.assertEqual(rejected["diagnostic"]["reason"], "range_exceeded")
-        reread = self.call("observation_read", dict(observation=part["observation"], offset=2, max_bytes=100))
+        reread = self.call("observation_read", dict(observation=part["citation"], offset=2, max_bytes=100))
         self.assertEqual(reread["raw_length"], 4)
-        self.assertEqual(reread["observation"], part["observation"])
-        self.assertEqual(self.call("finish", self.finish(part["observation"]))["assessment_state"], "committed")
+        self.assertEqual(reread["citation"], part["citation"])
+        self.assertEqual(self.call("finish", self.finish(part["citation"]))["assessment_state"], "committed")
 
     def test_selection_retention_failure_prevents_assessment_submission(self):
         whole = self.execute()["observations"][0]["observation"]

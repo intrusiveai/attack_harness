@@ -4,8 +4,7 @@ PLATFORM ?= linux/arm64
 INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-OPERATOR_RUNTIME_COMMIT := $(shell cat build/operator-runtime-commit.txt)
-CONTRACT_COMMIT := 5e87aef5a8f56ff51932a55ff1bb5692b9023753
+CONTRACT_VERSION := $(shell $(PYTHON) -c 'import json; print(json.load(open("build/contract-lock.json"))["package"]["package_version"])')
 
 .PHONY: test test-pr test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
 test:
@@ -18,7 +17,7 @@ test-pr: verify-source test
 	PYTHONPATH="$(OPERATOR_ROOT)/contracts/python" $(PYTHON) -m unittest discover -s "$(OPERATOR_ROOT)/contracts/python/tests"
 
 test-integration:
-	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --operator-commit "$(OPERATOR_RUNTIME_COMMIT)" --python "$(PYTHON)"
+	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --python "$(PYTHON)"
 
 verify-source:
 	$(PYTHON) build/source_lock.py --root . --lock build/source-lock.json
@@ -26,11 +25,10 @@ verify-source:
 contract-package: $(CONTRACT_PACKAGE)/package.json
 
 $(CONTRACT_PACKAGE)/package.json:
-	@test "$$(git -C "$(OPERATOR_ROOT)" rev-parse HEAD)" = "$(CONTRACT_COMMIT)"
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.6.1
+		--package-version $(CONTRACT_VERSION)
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \

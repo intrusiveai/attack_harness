@@ -123,7 +123,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						if e != nil {
 							return nil, e
 						}
-						observation = evidence["observation"].(string)
+						observation = evidence["citation"].(string)
 						raw, e := modelContent(evidence)
 						if e != nil || string(raw) != `{"answer":"test"}` {
 							return nil, fmt.Errorf("wrong evidence: %v", evidence)

@@ -51,7 +51,7 @@ both the findings and the limits of the evidence.
 ## Installation and usage
 
 Install and run Attack Harness through **Operator Sandbox**. Start with
-[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/README.md#getting-started)
+[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/README.md#getting-started)
 for host installation, model credentials, target configuration, and campaign
 commands.
 
@@ -60,8 +60,8 @@ selects it in Operator's `engine.image` configuration. Operator verifies the ima
 embedded image compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
-Release **v0.1.4** requires Operator version **0.1.0 or later** with the exact
-shared contract **0.4.0** package digest pinned by this release. The
+Release **v0.1.4** requires an Operator implementation of shared contract
+**0.7.0** with the exact AsyncAPI document-byte hash approved by this release. The
 [integration guide](docs/INTEGRATION.md) provides the immutable contract identity,
 image selection steps, tool examples, and compatibility checks.
 
@@ -69,22 +69,22 @@ image selection steps, tool examples, and compatibility checks.
 
 - [Runtime behavior and architecture](CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md)
 - [Container image and artifact layout](GUEST_ARTIFACT_LAYOUT_SPEC.md)
-- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/SHARED_CONTRACT.md)
-- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/docs/SKILLS.md)
-- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/f84ccf374b859af66a32201a0f953dd9e3a3fc3c/HOST_RUNTIME_PROFILES.md)
+- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SHARED_CONTRACT.md)
+- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/docs/SKILLS.md)
+- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/HOST_RUNTIME_PROFILES.md)
 
 ## Development
 
 Use Python 3.12 or later and Go 1.26.5; CI uses Python 3.13.15. Image builds need
 Docker and Buildx with the versions pinned in `.github/workflows/verify.yml`.
-The shared Python package is supplied by Operator's locked source, not a public
-package-index installation.
+The shared Python validators are supplied by the reviewed Operator distribution,
+not a public package-index installation.
 
-Prepare two Operator checkouts using the exact
-[contract source and runtime pins](docs/INTEGRATION.md#locked-contract-and-runtime).
-The contract checkout produces the package; the runtime checkout supplies the
-host used for process integration and image inspection. From this repository:
+Use an Operator checkout implementing the approved
+[interface version and exact document hash](docs/INTEGRATION.md#locked-contract-and-runtime).
+The CI revision is recorded for reproducibility; another implementation with the
+same interface identity remains compatible. From this repository:
 
 ```sh
 python3 -m venv .ci-venv

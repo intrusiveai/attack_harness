@@ -110,7 +110,8 @@ class SimpleCampaignTest(unittest.TestCase):
         self.assertEqual(result["assessment_state"], "unavailable")
         self.assertEqual(host.events[-1][1]["unavailable"]["reason"], "budget-limit")
         report = next(body for operation, body, _ in reversed(host.events) if operation == "engine.diagnostic_report")
-        self.assertEqual(report["stopping"]["configured_limit"], 1)
+        self.assertEqual(report["diagnostic"]["reason"], "budget-limit")
+        self.assertNotIn("stopping", report)  # The failed read was never charged.
         self.assertEqual(len(host.attempt_ids), 1)
 
     def test_duplicate_keys_and_obsolete_wrapper_have_actionable_paths(self):

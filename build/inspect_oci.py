@@ -207,7 +207,6 @@ def inspect(archive, platform, contract_lock):
             "predicate_types":sorted(predicates),
         },
         "contract":lock["package"],
-        "contract_source":lock["source"],
         "compatibility":{
             "path":"/" + COMPATIBILITY_PATH,
             "size_bytes":len(compatibility_raw),

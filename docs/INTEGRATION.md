@@ -7,26 +7,28 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.6.1**, pinned in
+The release consumes Operator shared contract **0.7.0**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
-alone is insufficient: both products validate the exact package digest.
+alone is insufficient: both products validate SHA-256 of the exact `schemas/asyncapi.json` bytes,
+including formatting and the final newline.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.6.1` |
-| Shared package digest | `sha256:a1972ee9aad5d9142c77d24c41b6ec434a0ea2fe283bf7eaf6b2e06b73d13dea` |
-| Contract source commit | `5e87aef5a8f56ff51932a55ff1bb5692b9023753` |
-| Contract source tree | `585af1c66917d9011ee7d6882ac911a3eb04386c` |
-| Integration/inspection Operator commit | `945562d6709eb96dac540eba0332e968aad3897a` |
-| Minimum Operator product version | `0.1.0` |
+| Shared package version | `0.7.0` |
+| Shared package digest | `sha256:b40a8028420d8fd897d32e75c2921668470f9f98c6f7c202793b4c99fe169cc5` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
 
-The integration and inspection revision is pinned independently in
-[`build/operator-runtime-commit.txt`](../build/operator-runtime-commit.txt). Its
-shared contracts and schemas match the package source. CI checkout, local
-integration, and publication's inspection check use this same runtime pin.
-The minimum product version does not replace exact contract matching.
+Compatibility depends on this version/hash pair, not an Operator product version,
+source commit, validator-source hash, or whole-source-tree comparison. Implementation
+changes that retain these exact interface bytes remain compatible. The separate
+`operator.dev/contract-package/v2` distribution manifest verifies inventory bytes,
+paths and schema/registry projections; its hash is not the compatibility identity.
+
+[`build/operator-runtime-commit.txt`](../build/operator-runtime-commit.txt) selects
+reproducible integration-test provenance for CI. Local tests may use another
+implementation of the approved interface. Documentation links below identify the
+reviewed definitions and validators, not an admission requirement on that commit.
 
 The [release catalog](https://releases.intrusive.ai/docs/releases/attack_harness.json)
 records `contract_package_version` from the published images. The releases site's
@@ -35,12 +37,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/5e87aef5a8f56ff51932a55ff1bb5692b9023753/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/aa2cec69c063136377cd0b807bd1116f8ffb484c/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -49,7 +51,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -135,9 +137,9 @@ Use `observation_read` with the returned observation handle:
 
 Omitted offset means zero; omitted size uses the bounded shared default. Reads
 preserve campaign membership, visibility, availability, integrity and range
-checks. A partial read returns a handle for precisely the inspected range. Its
-next read uses an explicit absolute offset inside that range, or the original
-whole-entry handle for another portion. Listing a handle is not inspection.
+checks. A partial read returns `citation` for precisely the inspected range and
+`readable_observation` for further reads. Follow the returned `continuation`
+request; it stays inside the original handle's permitted range. Listing a handle is not inspection.
 Unavailable content and truncation remain explicit.
 
 Harness keeps a typed handle map in campaign memory, outside the model context.
@@ -212,7 +214,7 @@ are native objects; Harness uses shared normalization for the host encoding.
 restore use `snapshot`; deletion uses `injection`; reads use `reference` or
 `observation`. Snapshot creation keeps optional `label` and `description`.
 See the exact shared
-[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/schemas/MODEL_TOOL_NORMALIZATION.md)
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/MODEL_TOOL_NORMALIZATION.md)
 for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
@@ -270,7 +272,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/5e87aef5a8f56ff51932a55ff1bb5692b9023753/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -279,8 +281,8 @@ not paid-provider or Harness-container qualification.
 
 ## Build and verify an integration
 
-Use the [development commands](../README.md#development) to build the locked
-package and images. Run integration tests with the separately pinned runtime:
+Use the [development commands](../README.md#development) to build the verified
+distribution and images. Run integration tests with a matching Operator:
 
 ```sh
 make test-integration OPERATOR_ROOT=/absolute/path/to/matching-operator PYTHON=.ci-venv/bin/python
@@ -300,8 +302,9 @@ image identities when running a deployed integration through Operator.
 
 ## Context behavior
 
-Matching Operator and Harness builds require shared package 0.6.1 and its exact
-locked digest. Old packages fail compatibility before campaign execution.
+Matching Operator and Harness builds require shared package 0.7.0 and its exact
+locked digest. Mismatched interface versions or byte hashes fail before campaign execution;
+implementation-only Operator changes do not require a Harness identity update.
 Frozen injection surfaces select the same tools in Go and Python; restores keep
 that catalog. Context budget results are validated against native response usage.
 
@@ -343,3 +346,38 @@ ceilings remain fixed for interoperability. Changing operating values within the
 requires no release or contract change. See Operator's authoritative
 [operating-limit contract](https://github.com/intrusiveai/operator_sandbox/blob/candidate-v0.1.4/schemas/OPERATING_LIMITS_CONTRACT.md)
 and [configuration guide](https://github.com/intrusiveai/operator_sandbox/blob/candidate-v0.1.4/docs/HOST_CONFIGURATION.md).
+
+## Evidence pagination and model-budget finalization
+
+Observation reads return `readable_observation` for further reads and `citation`
+for the exact inspected bytes. A partial read includes an executable `continuation`
+with the original readable handle, next offset and bounded maximum length. Follow
+that request unchanged. Continuation is absent at EOF, unavailability, or the end
+of the handle's permitted range. Reading pages does not mark the unread whole-entry
+handle inspected. Assessment references accept inspected citations only; rejection
+feedback offers applicable inspected handles. Conversation compaction preserves
+handle categories while the campaign resource map retains ranges and inspection state.
+
+Task context includes Operator's shared pagination guidance and minimal inline
+finish example, with a submitted objective ID. Use execution handles in `attempts`,
+inspected citation handles in supported assessment entries' `observations`, and
+accepted historical-record handles in `records`. Optional elaboration is separate.
+Malformed entries and wrong categories receive shared field paths and corrections;
+correcting a finish does not re-execute target operations. Finish acceptance closes
+execution and requires exit; Operator confirms cleanup afterward.
+
+Harness asks the model to finalize when remaining tokens or turns approach three
+current request reservations, preserving space for an assessment request and one
+correction where possible. Every model request, including compaction, still needs
+funding. This is best effort; it does not guarantee a valid assessment. If admission
+cannot reserve another request, Harness sends `model_reservation_unavailable` with
+allowance, confirmed consumption, remaining tokens and next-request reservation.
+Earlier recoverable tool errors remain separate history. No assessment is invented:
+the bounded model-free unavailable finish exits normally but remains unsuccessful.
+
+The controlled process suite covers partial-read continuation, rejected unread
+citations, corrected finish without replay, and both 524288-token budget cases
+(493460 consumed / 30828 remaining; 502198 / 22090; reservation 36864). It checks
+Operator inspection, reports and exported events, accepted assessment, exit zero
+and confirmed cleanup. These tests exercise production Harness processes with
+controlled model responses; they are not live-cloud qualification.

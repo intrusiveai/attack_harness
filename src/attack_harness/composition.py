@@ -7,6 +7,7 @@ import time
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value, raw_digest
 from operator_contracts.loop import HarnessLoop
+from operator_contracts.model_tools import tool_guidance
 from operator_contracts.target_context import compact_target_context
 from operator_contracts.validation import decode, ORDINARY_LIMIT
 
@@ -57,6 +58,13 @@ def _portfolio(bundle):
 def build_task(inputs, *, active_scenario=None):
     """Keep complete scenario requirements in task data, never in system authority."""
     context, bundle = inputs.context(), inputs.bundle()
+    shared_guidance = {name: decode(tool_guidance(inputs._protocol, name), ORDINARY_LIMIT)['examples']
+                       for name in ('finish', 'observation_read')}
+    example = shared_guidance['finish']['minimal_inline_example']
+    if bundle['objectives']:
+        example['objectives'][0]['objective_id'] = bundle['objectives'][0]['objective_id']
+    else:
+        example['objectives'] = []
     target_raw, resources = compact_target_context(inputs._protocol,
         _canonical_value(context["target"], ORDINARY_LIMIT))
     for identifier, content in resources.items():
@@ -75,6 +83,7 @@ def build_task(inputs, *, active_scenario=None):
         },
         "target": decode(target_raw, ORDINARY_LIMIT), "scenario_bundle": bundle,
         "portfolio": _portfolio(bundle),
+        "shared_tool_guidance": shared_guidance,
         "reference_handles": inputs.reference_index(),
         "selected_skills": [{
             "skill_id": skill.skill_id, "name": skill.name, "description": skill.description,
@@ -203,7 +212,8 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
     codec=context["model"]["codec_id"]
     tools_raw=protocol.model_tools(codec,sorted(client.operations),context["model"]["tool_selection"]["injection_surfaces"])
     policy_raw=protocol.model_policy_from_context(inputs.context_raw,tools_raw,inputs.prompt_raw)
-    conversation=NativeConversation(protocol,policy_raw,build_task(inputs),remaining=remaining)
+    conversation=NativeConversation(protocol,policy_raw,build_task(inputs),remaining=remaining,
+        model_allowance=admission['limits']['campaign']['model_tokens'])
     scenario_delivery=ScenarioDelivery(inputs,conversation,loop)
     artifacts=ArtifactPublisher(protocol,client)
     observations=ObservationReader(client)

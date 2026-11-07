@@ -59,7 +59,7 @@ func TestCandidateStoppedImageInspection(t *testing.T) {
 	http.DefaultTransport = network
 	t.Cleanup(func() { http.DefaultTransport = previous })
 	prepared, embedded, result, err := imagerelease.Prepare(ctx, client, endpoint, selector,
-		imagerelease.Requirements{OperatorVersion: "0.1.0", Contract: pin, HostPlatform: hostPlatform, RuntimeProfile: "operator-container/v1"}, protocol.Protocol())
+		imagerelease.Requirements{Contract: pin, HostPlatform: hostPlatform, RuntimeProfile: "operator-container/v1"}, protocol.Protocol())
 	if err != nil {
 		t.Fatal(err)
 	}
