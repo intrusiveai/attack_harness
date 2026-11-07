@@ -219,6 +219,32 @@ class AdaptiveTest(unittest.TestCase):
                 conversation.compaction_body()
                 self.assertEqual(conversation._compaction_ledger,[{"kind":"citation","identifier":"observation-2"}, {"kind":"execution","identifier":"returned-1"}, {"kind":"readable_observation","identifier":"observation-1"}])
 
+    def test_compaction_preserves_corrections_across_native_codecs(self):
+        diagnostic = dict(reason="invalid_structure", field_path="/claims/1/uncertainties/0",
+            correction="Reference a declared uncertainty label; put prose in its description.",
+            execution_occurred="no", resubmission_safe=True)
+        value = json.dumps(dict(diagnostic=diagnostic))
+        cases = {
+            "model-codec.json": {"role":"tool", "content":value},
+            "responses-model-codec.json": {"type":"function_call_output", "output":value},
+            "anthropic-model-codec.json": {"role":"user", "content":[{"type":"tool_result", "content":value}]},
+            "bedrock-model-codec.json": {"role":"user", "content":[{"toolResult":{"content":[{"text":value}]}}]},
+            "gemini-model-codec.json": {"role":"user", "parts":[{"functionResponse":{"response":{"output":value}}}]},
+        }
+        for filename, item in cases.items():
+            with self.subTest(filename=filename):
+                case = next(c for c in self.cases(filename) if c["mode"]=="context" and c["valid"])
+                conversation = NativeConversation(self.protocol,
+                    _canonical_value(case["policy"],4<<20), "Inspect target.")
+                conversation.extend(_canonical_value([item],4<<20))
+                body, _, digest, count = conversation.compaction_body()
+                self.assertEqual(conversation._retained_corrections, [diagnostic])
+                self.assertIn(diagnostic["correction"], json.dumps(body))
+                conversation.apply_compaction("The assessment remains unfinished.", digest, count)
+                self.assertIn(diagnostic["correction"], str(conversation.body()))
+                conversation.compaction_body()
+                self.assertEqual(conversation._retained_corrections, [diagnostic])
+
     def test_exhausted_reservation_finishes_without_another_call(self):
         case = next(item for item in self.cases("model-codec.json")
                     if item["name"] == "native text and usage preserved")

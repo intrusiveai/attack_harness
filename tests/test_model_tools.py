@@ -148,7 +148,7 @@ class ModelToolsTest(unittest.TestCase):
 
     def test_finish_structural_errors_preserve_specific_shared_corrections(self):
         for changes, path, correction in (
-            ({'observations': []}, '/observations', 'supported assessment item'),
+            ({'observations': []}, '/observations', 'Allowed fields'),
             ({'uncertainties': [{'kind': 'invented', 'description': 'gap'}]}, '/uncertainties/0/kind', 'evidence-gap'),
             ({'uncertainties': ['gap']}, '/uncertainties/0', 'object'),
         ):
@@ -245,5 +245,43 @@ class ModelToolsTest(unittest.TestCase):
                 else:
                     self.assertEqual(self.protocol.normalize_tool_arguments(case["tool"], raw, case["context"]), case["expected"])
 
+
+
+    def test_host_reference_correction_uses_model_fields_in_every_layer(self):
+        value = dict(instance_path="/record/attempt_receipt_id",
+            message="Invalid reference. Field: /record/attempt_receipt_id.",
+            diagnostic=dict(field_path="/record/attempt_receipt_id",
+                correction="Use the returned execution handle. Field: /record/attempt_receipt_id.",
+                execution_occurred="no", resubmission_safe=True))
+        shown = self.model._remap(value, {"/record/attempt_receipt_id":"/attempt"})
+        self.assertEqual(shown["instance_path"], "/attempt")
+        self.assertEqual(shown["diagnostic"]["field_path"], "/attempt")
+        self.assertNotIn("attempt_receipt_id", json.dumps(shown))
+        self.assertIn("returned execution handle", shown["diagnostic"]["correction"])
+        self.assertEqual(value["instance_path"], "/record/attempt_receipt_id")
+
+    def test_uncertainty_label_repair_preserves_completed_execution(self):
+        attempt=self.call('attempt_execute',dict(origin='scenario',scenario_id='configuration',operation_id='invoke',json={'prompt':'test'}))
+        observation=attempt['observations'][0]['observation']
+        inspected=self.call('observation_read',dict(observation=observation))
+        claim=dict(statement='Limited conclusion.',interpretation='inconclusive',assurance='refund-behavior',confidence='low',observations=[inspected['citation']],uncertainties=['Explanation instead of a label. '*6])
+        draft=dict(finish_reason='no-useful-next-experiment',summary='Limited.',objectives=[],claims=[claim],uncertainties=[dict(label='limited-feedback',kind='unavailable-feedback',description='Limited feedback.')])
+        rejected=self.call('finish',draft)
+        diagnostic=rejected['diagnostic']
+        self.assertEqual(diagnostic['field_path'],'/claims/0/uncertainties/0')
+        self.assertIn('top-level uncertainties',diagnostic['correction'])
+        self.assertIn('128',diagnostic['correction'])
+        self.assertIn('constraint',diagnostic)
+        self.assertEqual(diagnostic['execution_occurred'],'no')
+        self.assertTrue(diagnostic['resubmission_safe'])
+        claim['uncertainties']=['limited-feedback']
+        self.assertEqual(self.call('finish',draft)['status'],'accepted')
+        self.assertEqual(len([e for e in self.host.events if e[0]=='engine.attempt_execute']),1)
+
+    def test_internal_resolution_is_terminal_not_a_model_repair(self):
+        self.model.resources['bad-artifact']=dict(kind='artifact',campaign_id=self.host.campaign_id,value={'purpose':'payload'},available=True,inspected=False,live=True)
+        with self.assertRaises(RuntimeStopped):
+            self.call('attempt_execute',dict(origin='exploratory',operation_id='invoke',artifact='bad-artifact'))
+        self.assertFalse(any(e[0]=='engine.attempt_execute' for e in self.host.events))
 
 if __name__ == "__main__": unittest.main()

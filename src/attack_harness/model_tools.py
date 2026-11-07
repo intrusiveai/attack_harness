@@ -5,7 +5,7 @@ import hashlib
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
 from operator_contracts.tool_normalization import remap_tool_path
-from operator_contracts.validation import ORDINARY_LIMIT
+from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path
 
 from .runtime import RuntimeStopped
 from .tools import HandlerResult, ToolError
@@ -95,9 +95,24 @@ class ModelTools:
     @staticmethod
     def _remap(value, paths):
         result = deepcopy(value)
+        if "instance_path" in result:
+            result["instance_path"] = safe_argument_path(remap_tool_path(paths, result["instance_path"]))
         diagnostic = result.get("diagnostic")
+        old_path = diagnostic.get("field_path", "") if diagnostic else ""
+        new_path = safe_argument_path(remap_tool_path(paths, old_path))
         if diagnostic and "field_path" in diagnostic:
-            diagnostic["field_path"] = remap_tool_path(paths, diagnostic["field_path"])
+            diagnostic["field_path"] = new_path
+        # Change only schema vocabulary and known path mappings, never arguments.
+        for container in (result, diagnostic or {}):
+            for key in ('message', 'correction'):
+                if key not in container:
+                    continue
+                text = container[key]
+                if old_path and new_path:
+                    text = text.replace(old_path, new_path)
+                for canonical, model in (('attempt_receipt_refs','attempts'),('observation_refs','observations'),('record_refs','records'),('uncertainty_refs','uncertainties'),('parent_hypothesis_id','parent'),('execution receipt and entry ID','readable observation handle')):
+                    text = text.replace(canonical, model)
+                container[key] = text
         for error in result.get("errors", []):
             if "instance_path" in error:
                 error["instance_path"] = remap_tool_path(paths, error["instance_path"])
@@ -223,6 +238,7 @@ class ModelTools:
             if artifact: value.update({k: artifact[k] for k in ("size_bytes", "media_type")})
             if not observation and not value["eof"] and available:
                 value["next_offset"] = value["offset"] + value["raw_length"]
+                value['continuation'] = dict(tool='reference_read',arguments=dict(reference=arguments['reference'],offset=value['next_offset'],max_bytes=body['max_bytes']))
             if "source" in value:
                 value["source"] = {k: v for k, v in value["source"].items() if k not in ("path", "digest")}
         elif name == "record_append":

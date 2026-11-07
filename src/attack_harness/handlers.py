@@ -96,10 +96,10 @@ class FixedHandlers:
         except ContractError as error:
             if error.reason == "scenario_context_limit":
                 raise ToolError.from_contract(error) from None
-            raise ToolError("INVALID_REFERENCE", "Unknown reference ID.") from None
+            raise ToolError("invalid_reference", "Unknown reference.", path="/reference", correction="Use a reference from the input reference index or tool-guide:<advertised tool name>; do not invent a reference.") from None
         offset = arguments["offset"]
         if offset > len(content):
-            raise ToolError("INVALID_RANGE", "Reference offset exceeds content size.")
+            raise ToolError("range_exceeded", "Reference offset exceeds content size.", path="/offset", correction=f"Use an offset from 0 through {len(content)} for this reference, or start at 0. An offset equal to size returns EOF.")
         if task is not None:
             self.scenario_delivery.activate(content, task)
         selected = content[offset:offset + arguments.get("max_bytes",4096)]

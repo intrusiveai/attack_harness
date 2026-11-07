@@ -131,5 +131,24 @@ class ToolTest(unittest.TestCase):
         self.assertEqual(loop.snapshot()["mode"], "closed")
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+    def test_no_progress_stopping_keeps_rejection_separate(self):
+        from attack_harness.tools import ToolError
+        class Client:
+            def __init__(self):self.reports=[]
+            def operation_id(self,kind):return kind+'-1'
+            def request(self,operation,body,**kwargs):self.reports.append(body)
+        client=Client(); loop=HarnessLoop(LIMITS)
+        dispatcher=Dispatcher(self.protocol,loop,{},client=client)
+        call=ToolCall('bad-finish','finish',b'{}')
+        dispatcher._report(call,ToolError('unknown_handle','Unknown uncertainty label.',path='/claims/0/uncertainties/0',correction='Declare an uncertainty label and reference it.').value)
+        dispatcher.report_stopping('no-progress-limit',10,10)
+        terminal=client.reports[-1]
+        self.assertEqual(terminal['stopping'],dict(condition='no-progress-limit',observed_count=10,configured_limit=10))
+        self.assertEqual(terminal['diagnostic']['reason'],'no_progress_limit')
+        self.assertEqual(client.reports[-2]['tool_call_id'],'bad-finish')
+        self.assertNotIn('tool_call_id',terminal)
+        self.assertNotIn('field_path',terminal['diagnostic'])
+        self.assertFalse(terminal['diagnostic']['resubmission_safe'])
+
+if __name__ == "__main__": unittest.main()

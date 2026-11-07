@@ -100,7 +100,8 @@ class SimpleCampaignTest(unittest.TestCase):
         self.assertEqual(len(reports), 6)
         self.assertEqual(reports[-1]["stopping"], {"condition": "invalid-call-limit",
             "observed_count": 5, "configured_limit": 5})
-        self.assertEqual(reports[-1]["tool_call_id"], "bad-5")
+        self.assertNotIn("tool_call_id", reports[-1])
+        self.assertEqual(reports[-2]["tool_call_id"], "bad-5")
         self.assertIn("bad-5", str(conversation._request))
         self.assertEqual(host.events[-1][1]["unavailable"]["reason"], "invalid-call-limit")
         self.assertEqual(result["assessment_state"], "unavailable")
