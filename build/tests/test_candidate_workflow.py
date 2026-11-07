@@ -1,5 +1,4 @@
 import copy
-from contextlib import contextmanager
 import io
 import json
 import os
@@ -87,7 +86,7 @@ def make_archive(directory, platform, mutate_files=None):
     report = inspect(archive, platform, Path("build/contract-lock.json"))
     release.write_json(Path(str(prefix) + ".build-report.json"), report)
     release.write_json(Path(str(prefix) + ".inspection-report.json"), {
-        "status": "passed", "native_platform": True, "platform": platform, "oci_config_digest": config["digest"],
+        "contract": pin, "status": "passed", "native_platform": True, "platform": platform, "oci_config_digest": config["digest"],
         "layer_digests": [layer["digest"]], "operator_stopped_image_inspection": "passed",
         "inspection_container_cleanup": "passed", "operator_version": "0.1.0",
         "operator_local_compatibility": "passed", "compatibility_digest": report["compatibility"]["digest"],
@@ -203,33 +202,6 @@ class CandidateWorkflowTest(unittest.TestCase):
         self.github, self.registry = FakeGitHub(), FakeRegistry()
         for platform in release.PLATFORMS:
             make_archive(self.directory, platform)
-
-    @contextmanager
-    def publication_fixture(self, contract_commit, runtime_commit):
-        """Exercise publication with controlled pins and fresh state for each case."""
-        lock_path = Path("build/contract-lock.json")
-        runtime_path = Path("build/operator-runtime-commit.txt")
-        read_bytes, read_text = Path.read_bytes, Path.read_text
-        lock = json.loads(read_bytes(lock_path))
-        lock["source"]["commit"] = contract_commit
-
-        def fixture_bytes(path, *args, **kwargs):
-            if path == lock_path:
-                return json.dumps(lock).encode()
-            return read_bytes(path, *args, **kwargs)
-
-        def fixture_text(path, *args, **kwargs):
-            if path == runtime_path:
-                return runtime_commit + "\n"
-            return read_text(path, *args, **kwargs)
-
-        with tempfile.TemporaryDirectory() as directory, \
-                patch.object(Path, "read_bytes", fixture_bytes), \
-                patch.object(Path, "read_text", fixture_text):
-            root = Path(directory)
-            for platform in release.PLATFORMS:
-                make_archive(root, platform)
-            yield root, FakeGitHub(), FakeRegistry()
 
     def publish(self, run="123.1", source=SOURCE):
         return release.publish(self.github, self.registry, self.directory, BRANCH, source, run, "success")
@@ -485,45 +457,25 @@ class CandidateWorkflowTest(unittest.TestCase):
             self.publish()
         self.assertEqual(self.registry.copies, [])
 
-    def test_selected_runtime_can_match_or_differ_from_contract_source(self):
-        contract_commit = "d" * 40
-        for runtime_commit in (contract_commit, "e" * 40):
-            with self.subTest(runtime_commit=runtime_commit), \
-                    self.publication_fixture(contract_commit, runtime_commit) as (directory, github, registry):
-                release.publish(github, registry, directory, BRANCH, SOURCE, "123.1", "success")
-                self.assertIn(release.IMAGE + ":v1.2.3", registry.images)
-                self.assertEqual(github.dispatches, [
-                    {"workflow": "publish-catalog.yml", "ref": "v1.2.3-candidate.123.1"}])
+    def test_implementation_revision_is_provenance_not_compatibility(self):
+        for platform in release.PLATFORMS:
+            path = self.directory / ("attack-harness-" + platform.replace("/", "-") + ".inspection-report.json")
+            inspection = json.loads(path.read_bytes())
+            release.write_json(path, {**inspection, "operator_commit": "e" * 40})
+        self.publish()
+        self.assertIn(release.IMAGE + ":v1.2.3", self.registry.images)
 
-    def test_unpinned_inspector_never_publishes_even_at_contract_source(self):
-        contract_commit = "d" * 40
-        for runtime_commit in (contract_commit, "e" * 40):
-            invalid_commits = ["f" * 40, "main", ""]
-            if contract_commit != runtime_commit:
-                invalid_commits.append(contract_commit)
-            for platform in release.PLATFORMS:
-                for commit in invalid_commits:
-                    with self.subTest(runtime_commit=runtime_commit, platform=platform, commit=commit), \
-                            self.publication_fixture(contract_commit, runtime_commit) as (directory, github, registry):
-                        path = directory / ("attack-harness-" + platform.replace("/", "-") + ".inspection-report.json")
-                        inspection = json.loads(path.read_bytes())
-                        release.write_json(path, {**inspection, "operator_commit": commit})
-                        with self.assertRaisesRegex(ValueError, "unpinned Operator runtime"):
-                            release.publish(github, registry, directory, BRANCH, SOURCE, "123.1", "success")
-                        self.assertEqual(registry.copies, [])
-                        self.assertEqual(registry.images, {})
-                        self.assertEqual(github.releases, {})
-                        self.assertEqual(github.tags, {})
-                        self.assertEqual(github.dispatches, [])
-
-    def test_invalid_runtime_pin_fails_before_publication(self):
-        for commit in ("", "main", "052781a", "f" * 41):
-            with self.subTest(commit=commit), patch.object(Path, "read_text", return_value=commit):
-                with self.assertRaisesRegex(ValueError, "invalid pinned Operator runtime commit"):
+    def test_inspection_must_use_approved_interface(self):
+        path = self.directory / "attack-harness-linux-amd64.inspection-report.json"
+        inspection = json.loads(path.read_bytes())
+        for contract in ({}, {**inspection["contract"], "package_digest": "sha256:" + "e" * 64},
+                         {**inspection["contract"], "package_version": "0.6.1"}):
+            with self.subTest(contract=contract):
+                release.write_json(path, {**inspection, "contract": contract})
+                with self.assertRaisesRegex(ValueError, "different approved interface"):
                     self.publish()
                 self.assertEqual(self.registry.copies, [])
                 self.assertEqual(self.github.releases, {})
-                self.assertEqual(self.github.dispatches, [])
 
     def test_oci_inspection_uses_actual_embedded_bytes(self):
         def change_record(files, **changes):

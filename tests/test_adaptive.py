@@ -203,7 +203,7 @@ class AdaptiveTest(unittest.TestCase):
         self.assertFalse(conversation.can_fund_model())
 
     def test_returned_identity_ledger_for_each_native_codec(self):
-        value=json.dumps({"execution":"returned-1", "content":json.dumps({"execution":"untrusted-1"})})
+        value=json.dumps({"execution":"returned-1", "readable_observation":"observation-1", "citation":"observation-2", "content":json.dumps({"execution":"untrusted-1"})})
         cases={
             "model-codec.json":{"role":"tool","content":value},
             "responses-model-codec.json":{"type":"function_call_output","output":value},
@@ -217,7 +217,7 @@ class AdaptiveTest(unittest.TestCase):
                 conversation=NativeConversation(self.protocol,_canonical_value(case["policy"],4<<20),"Inspect target.")
                 conversation.extend(_canonical_value([item],4<<20))
                 conversation.compaction_body()
-                self.assertEqual(conversation._compaction_ledger,[{"kind":"execution","identifier":"returned-1"}])
+                self.assertEqual(conversation._compaction_ledger,[{"kind":"citation","identifier":"observation-2"}, {"kind":"execution","identifier":"returned-1"}, {"kind":"readable_observation","identifier":"observation-1"}])
 
     def test_exhausted_reservation_finishes_without_another_call(self):
         case = next(item for item in self.cases("model-codec.json")
@@ -229,6 +229,51 @@ class AdaptiveTest(unittest.TestCase):
         AdaptiveHarness(self.protocol,client,loop,Dispatcher(self.protocol,loop,{}),conversation,finalizer).run()
         self.assertEqual(client.requests,[])
         self.assertEqual(finalizer.reason,"budget-limit")
+
+    def test_model_admission_accounts_consumption_separately_from_reservation(self):
+        from test_simple_campaign import SimpleHost
+        from attack_harness.tools import ToolCall, ToolError
+        case = next(c for c in self.cases('model-codec.json') if c['mode'] == 'context' and c['valid'])
+        policy = deepcopy(case['policy'])
+        policy['max_completion_tokens'] = 4096
+        policy['context_limits'] = dict(maximum_prompt_tokens=32768, maximum_completion_tokens=4096,
+                                        warning_threshold_tokens=26214)
+        for consumed in (493460, 502198):
+            with self.subTest(consumed=consumed):
+                remaining = 524288 - consumed
+                conversation = NativeConversation(self.protocol, _canonical_value(policy, 4 << 20), 'Task.',
+                    remaining=dict(model_tokens=remaining, model_turns=20), model_allowance=524288)
+                self.assertFalse(conversation.can_fund_model())
+                host = SimpleHost(self.protocol, 'direct')
+                dispatcher = Dispatcher(self.protocol, HarnessLoop(LIMITS), {}, client=host)
+                dispatcher._report(ToolCall('recoverable', 'finish', b'{}'),
+                    ToolError('invalid_structure', 'Malformed uncertainty.', path='/uncertainties/0').value)
+                before = deepcopy(dispatcher.last_rejection)
+                dispatcher.report_stopping('budget-limit', model_budget=conversation.model_admission_failure)
+                report = host.events[-1][1]
+                self.assertEqual(report, dict(diagnostic=dict(source='harness-local', stage='termination',
+                    reason='model_reservation_unavailable', message='Cannot reserve another model request.',
+                    execution_occurred='no', resubmission_safe=False), stopping=dict(condition='budget-limit',
+                    budget=dict(kind='model-tokens', total_allowance=524288, consumed=consumed,
+                                remaining=remaining, next_request_reservation=36864))))
+                self.assertEqual(dispatcher.last_rejection, before)
+                self.assertEqual(host.events[0][1], before)
+
+    def test_early_finish_uses_current_reservation_and_survives_task_replacement(self):
+        case = next(c for c in self.cases('model-codec.json') if c['mode'] == 'context' and c['valid'])
+        conversation = NativeConversation(self.protocol, _canonical_value(case['policy'], 4 << 20), 'Task.')
+        reservation = conversation.model_reservation()
+        conversation._remaining = dict(model_tokens=3 * reservation + 1, model_turns=20)
+        conversation.prepare_finalization()
+        self.assertNotIn('Harness budget notice', str(conversation.body()))
+        conversation._remaining['model_tokens'] -= 1
+        conversation.prepare_finalization()
+        self.assertTrue(conversation.can_fund_model())
+        self.assertIn('one bounded correction', str(conversation.body()))
+        conversation.replace_task('Updated complete task.')
+        self.assertIn('Harness budget notice', str(conversation.body()))
+        conversation._remaining['model_tokens'] = reservation - 1
+        self.assertFalse(conversation.can_fund_model())
 
 
 if __name__ == "__main__":

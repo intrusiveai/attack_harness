@@ -5,14 +5,14 @@ container. It reads campaign objectives and scenarios, asks a model to choose
 permitted experiments, inspects feedback, and submits an assessment. Operator
 owns external effects, authorization, durable evidence, and cleanup.
 
-The exact shared package, matching runtime, and model-tool examples are documented
+The exact shared package, compatible runtime, and model-tool examples are documented
 in [the integration guide](docs/INTEGRATION.md). The image layout and confinement
 boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_SPEC.md).
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.5.0** from the image and
-validates its exact digest against [the contract lock](build/contract-lock.json).
+The Harness loads Operator's shared contract package **0.7.0** from the image and
+validates its exact AsyncAPI document-byte hash against [the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
 registry, and release bindings. An incompatible package fails before execution.
@@ -180,7 +180,7 @@ cause.
 ## Verification interfaces
 
 `make test` runs Harness behavior tests against the locked shared schemas.
-`make test-integration` uses the pinned Operator runtime, production Harness
+`make test-integration` uses a compatible Operator runtime, production Harness
 entrypoint, and controlled model/target fixtures over both transports. Local
 publication tests run with `python3 -m unittest discover -s build/tests -v`.
 The [integration guide](docs/INTEGRATION.md#build-and-verify-an-integration) describes

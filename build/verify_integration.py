@@ -1,7 +1,6 @@
-"""Run controlled integration against an exact Operator revision.
+"""Run controlled integration against an implementation of the approved interface.
 
-Use the pinned runtime revision; the host must have identical contracts/schemas
-to the package source. Test-only Go overlays add Harness workflow and
+The host must implement the independently approved interface. Test-only Go overlays add Harness workflow and
 fatal-exit cases through a separate Python adapter. Run cross-component tests here;
 Operator-only unit/service tests belong to Operator CI. Use --run . for the full packages.
 No production fault switches, contract changes, or checkout edits are required.
@@ -20,17 +19,19 @@ def main():
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--run", default="^Test(Python|Harness)",
         help="Go test expression; defaults to cross-component tests (use . for full host packages)")
-    parser.add_argument("--operator-commit", help="Explicit host runtime revision; shared contract must remain identical")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     operator = args.operator_root.resolve()
     lock = json.loads((root / "build/contract-lock.json").read_text())
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=operator, text=True).strip()
-    pinned_runtime = (root / "build/operator-runtime-commit.txt").read_text().strip()
-    if commit != (args.operator_commit or pinned_runtime):
-        raise SystemExit("integration requires the exact selected Operator commit")
-    subprocess.run(["git", "diff", "--exit-code", lock["source"]["commit"], commit,
-        "--", "contracts", "schemas"], cwd=operator, check=True, stdout=subprocess.DEVNULL)
+    # Source revision is provenance, never a compatibility prerequisite.
+    import hashlib
+    document = (operator / "schemas/asyncapi.json").read_bytes()
+    identity = {"package_version": json.loads(document)["info"]["version"],
+                "package_digest": "sha256:" + hashlib.sha256(document).hexdigest()}
+    if identity != lock["package"]:
+        raise SystemExit("integration requires the approved interface version and exact document hash")
+    print("Integration Operator provenance: " + commit, flush=True)
     original = operator / "internal/preparation/harness_simple_campaign_test.go"
     replacement = root / "build/operator_simple_campaign_test.go"
     with tempfile.TemporaryDirectory(prefix="harness-integration-") as directory:
@@ -43,6 +44,10 @@ def main():
         if source.count(old) != 1:
             raise SystemExit("Operator process fixture changed; review the test adapter")
         source = source.replace(old, new)
+        # Honor each controlled case's selected profile instead of the helper's
+        # fixed 10k-token profile. Production admission still validates both.
+        source = source.replace('MaximumPromptTokens: 10000}',
+                                'MaximumPromptTokens: cfg.Model.Settings().MaximumPromptTokens}')
         # The fixture kills on FIFO EOF before Python finishes flushing stderr.
         # Give this deliberate fatal-exit fixture the same bounded exit window.
         marker = "if service.StopAccepted() {"
@@ -51,6 +56,12 @@ def main():
         source = source.replace(marker,
             'if service.StopAccepted() || os.Getenv("HARNESS_TEST_EXIT_MODE") == "runtime-fatal" {')
         helper_copy.write_text(source)
+        origin = operator / 'internal/preparation/python_origin_test.go'
+        origin_copy = Path(directory) / origin.name
+        origin_source = origin.read_text()
+        if origin_source.count('observed["observation"]') != 1:
+            raise SystemExit('Operator origin fixture changed; review inspected citation selection')
+        origin_copy.write_text(origin_source.replace('observed["observation"]', 'observed["citation"]'))
         campaign = operator / "internal/preparation/python_campaign_test.go"
         campaign_copy = Path(directory) / campaign.name
         source = campaign.read_text()
@@ -62,7 +73,10 @@ def main():
             'attempts[0]["execution"] == attempts[1]["execution"]'))
         overlay.write_text(json.dumps({"Replace": {
             str(original): str(replacement), str(helper): str(helper_copy),
+            str(operator / "internal/preparation/harness_evidence_budget_test.go"):
+                str(root / "build/operator_evidence_budget_test.go"),
             str(campaign): str(campaign_copy),
+            str(origin): str(origin_copy),
             str(operator / "internal/preparation/conclusion_diagnostic_process_test.go"):
                 str(root / "build/operator_conclusion_diagnostic_test.go"),
             str(operator / "internal/preparation/harness_exit_process_test.go"):

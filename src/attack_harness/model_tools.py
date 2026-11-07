@@ -67,6 +67,15 @@ class ModelTools:
             elif isinstance(value, list):
                 for item in value: collect(item)
         collect(arguments)
+        # Supply inspected siblings to the shared validator so its correction
+        # can name real, applicable citations without exposing unrelated entries.
+        entries = {(r['value'].get('attempt_receipt_id'), r['value'].get('entry_id'))
+                   for r in selected.values() if r['kind'] == 'observation'}
+        for identity in entries:
+            siblings = [(h, r) for h, r in self.resources.items()
+                        if r['kind'] == 'observation' and r['inspected'] and r['available']
+                        and (r['value'].get('attempt_receipt_id'), r['value'].get('entry_id')) == identity]
+            selected.update(sorted(siblings)[:3])
         return dict(campaign_id=self.campaign_id, call_id=call_id,
                     resources=selected, database_keys=self.database_keys)
 
@@ -131,7 +140,7 @@ class ModelTools:
             if handled.outcome in ("invalid", "preflight-rejected"):
                 result = HandlerResult(self._remap(handled.value, paths), handled.outcome)
             else:
-                result = HandlerResult(self._present(call.name, body, handled.value), handled.outcome)
+                result = HandlerResult(self._present(call.name, body, handled.value, arguments), handled.outcome)
         except ToolError as error:
             result = HandlerResult(self._remap(error.value, paths), error.outcome)
         except ContractError as error:
@@ -153,7 +162,7 @@ class ModelTools:
             value["parent"] = self.register("checkpoint", value["parent"])
         return value
 
-    def _present(self, name, body, result):
+    def _present(self, name, body, result, arguments):
         value = deepcopy(result)
         if name == "attempt_execute":
             receipt = value.pop("receipt_id")
@@ -191,12 +200,28 @@ class ModelTools:
             whole = value["offset"] == 0 and value["eof"]
             if value["raw_length"] and not whole:
                 canonical["range"] = dict(offset=value["offset"], length=value["raw_length"])
-            value[kind] = self.register(kind, canonical, available=available,
-                inspected=available and (whole or bool(value["raw_length"])))
+            if observation:
+                readable = arguments['observation']
+                value['readable_observation'] = readable
+                if available and (whole or value['raw_length']):
+                    value['citation'] = self.register(kind, canonical, available=True, inspected=True)
+                if available and value['raw_length'] and not value['eof']:
+                    extent = self.resources[readable]['value'].get('range')
+                    end = value['artifact']['size_bytes']
+                    if extent is not None:
+                        end = min(end, extent['offset'] + extent['length'])
+                    next_offset = value['offset'] + value['raw_length']
+                    if next_offset < end:
+                        value['continuation'] = dict(tool='observation_read', arguments=dict(
+                            observation=readable, offset=next_offset,
+                            max_bytes=min(body['max_bytes'], end - next_offset)))
+            else:
+                value[kind] = self.register(kind, canonical, available=available,
+                    inspected=available and (whole or bool(value['raw_length'])))
             value.pop("receipt_id", None); value.pop("entry_id", None); value.pop("reference_id", None)
             artifact = value.pop("artifact", None)
             if artifact: value.update({k: artifact[k] for k in ("size_bytes", "media_type")})
-            if not value["eof"] and available:
+            if not observation and not value["eof"] and available:
                 value["next_offset"] = value["offset"] + value["raw_length"]
             if "source" in value:
                 value["source"] = {k: v for k, v in value["source"].items() if k not in ("path", "digest")}

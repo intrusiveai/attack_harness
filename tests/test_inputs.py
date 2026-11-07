@@ -22,10 +22,10 @@ class InputsTest(unittest.TestCase):
         source=Path(os.environ["OPERATOR_CONTRACT_SOURCE"])
         p=Protocol(source)
         files={f.name:f.read_bytes() for f in source.glob("*.schema.json")}
-        files.update({n:(source/n).read_bytes() for n in ("catalog.json","operations.json")})
+        files.update({n:(source/n).read_bytes() for n in ("catalog.json","operations.json","asyncapi.json")})
         profiles={"jcs-v1":"semantics/digests","manifest-paths-v1":"semantics/paths","harness-loop-v1":"semantics/limits"}
         files.update({n:b"Test-only semantic profile." for n in profiles.values()})
-        manifest,cls.pin=p.build_package_manifest("0.0.0",files,profiles)
+        manifest,cls.pin=p.build_package_manifest("0.7.0",files,profiles)
         cls.protocol=p.load_verified_protocol(manifest,files,cls.pin)
         cls.example=json.loads((source/"fixtures/identity-validation.json").read_text())[0]
 

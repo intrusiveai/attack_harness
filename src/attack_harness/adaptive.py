@@ -17,7 +17,8 @@ from .runtime import RuntimeStopped
 class NativeConversation:
     """Mutable native history for exactly one installed model codec."""
 
-    def __init__(self, protocol, policy_raw, task, *, compact_at=1 << 20, remaining=None):
+    def __init__(self, protocol, policy_raw, task, *, compact_at=1 << 20, remaining=None,
+                 model_allowance=None):
         require(type(policy_raw) is bytes and type(task) is str and task)
         require(type(compact_at) is int and compact_at > 0)
         self.protocol = protocol
@@ -38,6 +39,9 @@ class NativeConversation:
         self._last_bytes = 0
         self._remaining = dict(remaining or {})
         self._context_limits = self.policy['context_limits']
+        self._model_allowance = model_allowance
+        self.model_admission_failure = None
+        self._finalizing = False
 
     @property
     def task(self):
@@ -48,7 +52,7 @@ class NativeConversation:
         require(type(task) is str and task)
         field = self._history_field()
         index = 1 if self.codec == "openai-chat-text-tools-v1" else 0
-        self._request[field][index] = self._initial(task + self._summary)[field][index]
+        self._request[field][index] = self._initial(task + self._summary + self._finalization_guidance())[field][index]
         self._task = task
         self.task_generation += 1
 
@@ -131,9 +135,39 @@ class NativeConversation:
         ratio = 1.1*self._budget['input_tokens']/max(1,self._last_bytes) if self._budget else 0.5
         return math.ceil(len(raw)*ratio)
 
+    def model_reservation(self):
+        return self._context_limits['maximum_prompt_tokens'] + self._context_limits['maximum_completion_tokens']
+
     def can_fund_model(self):
-        reserve=self._context_limits['maximum_prompt_tokens']+self._context_limits['maximum_completion_tokens']
-        return self._remaining.get('model_tokens',reserve)>=reserve and self._remaining.get('model_turns',1)>0
+        reserve = self.model_reservation()
+        remaining = self._remaining.get('model_tokens', reserve)
+        self.model_admission_failure = None
+        if remaining < reserve:
+            if self._model_allowance is not None:
+                require(0 <= remaining <= self._model_allowance <= 2**53 - 1)
+                self.model_admission_failure = dict(kind='model-tokens',
+                    total_allowance=self._model_allowance,
+                    consumed=self._model_allowance - remaining, remaining=remaining,
+                    next_request_reservation=reserve)
+            return False
+        return self._remaining.get('model_turns', 1) > 0
+
+    def _finalization_guidance(self):
+        if not self._finalizing:
+            return ''
+        return ('\n\nHarness budget notice: move to finish now using retained evidence. '
+                'Budget is approaching the reserve for an assessment request and one bounded correction. '
+                'Report gaps honestly; optional elaboration is unnecessary. Correct a rejected finish '
+                'without replaying completed target operations. Acceptance does not mean cleanup completed.')
+
+    def prepare_finalization(self):
+        # Start before the two-request reserve is crossed. Admission still uses
+        # the latest host accounting on every request, including compaction.
+        if not self._finalizing and (
+                self._remaining.get('model_tokens', float('inf')) <= 3 * self.model_reservation()
+                or self._remaining.get('model_turns', float('inf')) <= 3):
+            self._finalizing = True
+            self.replace_task(self._task)
 
     def needs_compaction(self):
         if self._segments == 0:
@@ -152,7 +186,7 @@ class NativeConversation:
         history_raw = _canonical_value(history, ORDINARY_LIMIT)
         # Preserve exact returned identities separately from model-written summaries.
         identities={(v['kind'],v['identifier']) for v in getattr(self,'_compaction_ledger',[])}
-        keys={'execution','observation','artifact','record','hypothesis','reference','snapshot','session','injection'}
+        keys={'execution','observation','readable_observation','citation','artifact','record','hypothesis','reference','snapshot','session','injection'}
         def collect(value):
             if isinstance(value,dict):
                 for key,item in value.items():
@@ -224,7 +258,7 @@ class NativeConversation:
         self._compactions.append(record)
         summary_suffix = "\n\nCompacted campaign history:\n" + \
             _canonical_value({**record, "summary": summary, "retained_identities":getattr(self,"_compaction_ledger",[])}, 256 << 10).decode("utf-8")
-        compacted = self._task + summary_suffix
+        compacted = self._task + summary_suffix + self._finalization_guidance()
         require(len(compacted) <= 1 << 20)
         self._summary = summary_suffix
         self._request = self._initial(compacted)
@@ -279,11 +313,20 @@ class AdaptiveHarness:
                 return "invalid-call-limit"
         return "budget-limit" if state["reason"] == "budget-limit" else "local-error"
 
-    def _finish_unavailable(self, reason):
+    def _finish_unavailable(self, reason, *, model_admission=False):
         state = self.loop.snapshot()
         if state["mode"] == "exploring":
             self.loop.stop("budget-limit" if reason == "budget-limit" else "harness-error")
         if self.limits:
+            if model_admission:
+                accounting = self.conversation.model_admission_failure
+                if accounting is not None:
+                    self.dispatcher.report_stopping('budget-limit',
+                        budget=self.finalizer.budget(), now=self.finalizer.clock(), model_budget=accounting)
+                else:
+                    self.dispatcher.report_stopping('model-turn-limit',
+                        budget=self.finalizer.budget(), now=self.finalizer.clock())
+                return self.finalizer.finish_unavailable(reason)
             condition, observed, limit = reason, None, None
             for counter, kind in (
                 ("consecutive_invalid_tool_calls", "invalid-call-limit"),
@@ -298,8 +341,6 @@ class AdaptiveHarness:
             if observed is None and reason == "budget-limit":
                 if state["skipped_calls"] > self.limits["max_tool_calls_per_response"]:
                     condition, observed, limit = "tool-call-limit", state["skipped_calls"], self.limits["max_tool_calls_per_response"]
-                else:
-                    observed, limit = state["read_bytes"], self.limits["max_read_bytes"]
             self.dispatcher.report_stopping(condition, observed, limit,
                 self.finalizer.budget(), self.finalizer.clock())
         return self.finalizer.finish_unavailable(reason)
@@ -307,7 +348,8 @@ class AdaptiveHarness:
     def run(self):
         while self.loop.snapshot()["mode"] == "exploring":
             if not self.conversation.can_fund_model():
-                return self._finish_unavailable("budget-limit")
+                return self._finish_unavailable("budget-limit", model_admission=True)
+            self.conversation.prepare_finalization()
             if self.conversation.needs_compaction():
                 try:
                     self.loop.begin_model(True)

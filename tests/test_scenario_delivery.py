@@ -192,7 +192,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         host = host or ScenarioHost(self.protocol)
         inputs = ScenarioInputs(self.protocol, self.root, bundle or support_bundle(), host, codec_file)
         session = SimpleNamespace(inputs=inputs, client=host, admission={
-            "limits": {"harness": LIMITS}, "remaining_limits": {"campaign_time_ms": 100000, "artifact_bytes": 2 << 20}})
+            "limits": {"harness": LIMITS, "campaign": {"model_tokens": 1000000}}, "remaining_limits": {"campaign_time_ms": 100000, "artifact_bytes": 2 << 20}})
         return compose_campaign(self.protocol, session, clock=Clock()), host, inputs
 
     def test_four_scenarios_observation_followup_and_honest_finish(self):
@@ -207,7 +207,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         host = ScenarioHost(self.protocol)
         inputs = ScenarioInputs(self.protocol, self.root, support_bundle(), host)
         session = SimpleNamespace(inputs=inputs, client=host, admission={
-            "limits": {"harness": LIMITS}, "remaining_limits": {"campaign_time_ms": 100000, "artifact_bytes": 2 << 20}})
+            "limits": {"harness": LIMITS, "campaign": {"model_tokens": 1000000}}, "remaining_limits": {"campaign_time_ms": 100000, "artifact_bytes": 2 << 20}})
         with ExitStack() as stack:
             stack.enter_context(patch.object(entrypoint, "load_runtime_config", return_value={"contract": {}, "skill_loader_digest": "sha256:" + "1" * 64}))
             stack.enter_context(patch.object(entrypoint, "load_contract", return_value=self.protocol))

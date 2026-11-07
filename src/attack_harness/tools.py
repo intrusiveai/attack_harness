@@ -118,11 +118,20 @@ class Dispatcher:
             self.client.request("engine.diagnostic_report", report,
                                 operation_id=self.client.operation_id("diagnostic-report"))
 
-    def report_stopping(self, condition, observed=None, limit=None, budget=None, now=None):
-        report = dict(self.last_rejection or {
+    def report_stopping(self, condition, observed=None, limit=None, budget=None, now=None,
+                        *, model_budget=None):
+        previous = self.last_rejection if condition == 'invalid-call-limit' else None
+        report = dict(previous or {
             "diagnostic": local_error(ContractError("Harness exploration stopped.",
                 reason=condition, correction="Inspect campaign limits and retained diagnostics before starting new work."))["diagnostic"]})
-        if observed is not None and limit is not None:
+        if model_budget is not None:
+            report = {'diagnostic': {
+                'source': 'harness-local', 'stage': 'termination',
+                'reason': 'model_reservation_unavailable',
+                'message': 'Cannot reserve another model request.',
+                'execution_occurred': 'no', 'resubmission_safe': False,
+            }, 'stopping': {'condition': 'budget-limit', 'budget': dict(model_budget)}}
+        elif observed is not None and limit is not None:
             report["stopping"] = {"condition": condition, "observed_count": observed,
                                   "configured_limit": limit}
         elif "stopping" not in report:
