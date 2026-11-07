@@ -148,7 +148,7 @@ jobs:
         working-directory: attack_harness
         run: |
           make verify-source PYTHON=.ci-venv/bin/python
-          make contract-package OPERATOR_ROOT=../operator_sandbox
+          make contract-package OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make verify-contracts OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           # The complete Python suite runs against packaged code in the Docker test stage below.
       - name: Read selected integration runtime
