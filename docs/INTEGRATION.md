@@ -37,12 +37,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/aa2cec69c063136377cd0b807bd1116f8ffb484c/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/407ceeb5a300572ee967ab666891a53e0d89e75d/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -51,7 +51,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -214,7 +214,7 @@ are native objects; Harness uses shared normalization for the host encoding.
 restore use `snapshot`; deletion uses `injection`; reads use `reference` or
 `observation`. Snapshot creation keeps optional `label` and `description`.
 See the exact shared
-[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/MODEL_TOOL_NORMALIZATION.md)
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/MODEL_TOOL_NORMALIZATION.md)
 for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
@@ -272,7 +272,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,

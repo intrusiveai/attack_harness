@@ -173,8 +173,8 @@ identify the repository, environment, tag, and workflow file.
 ## Verify local compatibility before publication
 
 1. Select an Operator checkout supplying shared validators and exact AsyncAPI
-   document version `0.7.0`, SHA-256
-   `b40a8028420d8fd897d32e75c2921668470f9f98c6f7c202793b4c99fe169cc5`.
+   document version `0.7.1`, SHA-256
+   `5f1f545701e68d057592f892c573667391df844008ec385f5cdcfbdb42e63e88`.
    `build/contract-lock.json` approves this interface identity. Package manifests
    independently verify every distributed file; their hash is not compatibility.
    Move older generated `build/context/contracts` aside before rebuilding.
@@ -293,7 +293,7 @@ identify the repository, environment, tag, and workflow file.
    contains that unique candidate version with `tags: ["rc"]`, its unique GHCR
    tag, and the same index digest. Confirm `contract_package_version` equals the
    package version in both platform build reports and embedded compatibility
-   files (`0.7.0` for the current contract). It must remain absent from the stable
+   files (`0.7.1` for the current contract). It must remain absent from the stable
    listing on the [releases website](https://releases.intrusive.ai/).
 
 The rolling image `ghcr.io/intrusiveai/attack_harness:v1.2.3` is convenient for QA
@@ -338,7 +338,7 @@ image digests to identify the published bytes; they are not compatibility record
    The unique candidate entry stays labeled `rc`; the final entry is separate.
 6. Reload the releases website. The version is eligible for its stable listing,
    which displays the first two entries labeled exactly `release`. Confirm its
-   **Shared contract: 0.7.0** indicator matches the promoted package version.
+   **Shared contract: 0.7.1** indicator matches the promoted package version.
    No site build or redeployment is needed. Use a new version for further candidate
    work; promotion freezes `v1.2.3` against later candidate writes.
 
