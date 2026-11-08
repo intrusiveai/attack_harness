@@ -146,18 +146,17 @@ class FinalizationCapacityTest(unittest.TestCase):
         self.assertEqual(loop.snapshot()['model_turns'], 1)
         self.assertEqual(c._remaining['model_tokens'], 38495)
 
-    def test_funded_compaction_counts_as_a_call_and_switches_to_protected_finalization(self):
+    def test_local_reduction_does_not_spend_a_funded_model_call(self):
         def seed(c):
             c.extend(_canonical_value([{'role':'assistant','content':'Old history. '*800}], 4<<20))
-            c._compact_at = 1  # Force reduction, with enough capacity to fund it.
+            c._compact_at = 1
         host, _, c, result, loop = self.run_campaign(3*R, 3, [
-            dict(compaction=True, text='Observed history, not task authority.', usage=(32768,4096)),
             dict(calls=[('finish','finish',FINISH)]),
         ], seed=seed)
-        self.assertEqual([r['request']['tool_choice'] for r in host.model_requests], ['none','auto'])
+        self.assertEqual([r['request']['tool_choice'] for r in host.model_requests], ['auto'])
         self.assertEqual(result['assessment_state'], 'committed')
-        self.assertEqual(loop.snapshot()['model_turns'], 2)
-        self.assertEqual(c._remaining['model_tokens'], 2*R-120)
+        self.assertEqual(loop.snapshot()['model_turns'], 1)
+        self.assertEqual(c._remaining['model_tokens'], 3*R-120)
 
     def test_insufficient_allowance_and_irreducible_context_have_distinct_truthful_results(self):
         for tokens, calls, task, reason in ((R-1,20,'Task.','model_reservation_unavailable'),

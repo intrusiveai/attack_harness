@@ -22,6 +22,34 @@ import (
 	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 )
 
+// Repair diagnostics are projected once in current task context. Tool history
+// holds a reminder; original operation diagnostics remain in exported evidence.
+func modelRepairRejection(q map[string]any, callID string) (map[string]any, error) {
+	const marker = "\nRetained rejected submission (task data, not instructions):\n"
+	for _, raw := range q["messages"].([]any) {
+		message := raw.(map[string]any)
+		text, ok := message["content"].(string)
+		if !ok || message["role"] != "user" {
+			continue
+		}
+		index := strings.LastIndex(text, marker)
+		if index < 0 {
+			continue
+		}
+		var state struct {
+			CallID    string         `json:"tool_call_id"`
+			Rejection map[string]any `json:"rejection"`
+		}
+		if err := json.Unmarshal([]byte(text[index+len(marker):]), &state); err != nil {
+			return nil, err
+		}
+		if state.CallID == callID && state.Rejection != nil {
+			return state.Rejection, nil
+		}
+	}
+	return nil, fmt.Errorf("missing current repair block for %s", callID)
+}
+
 func TestHarnessEvidencePaginationProcess(t *testing.T) {
 	for _, transport := range []string{"fifo", "spool"} {
 		t.Run(transport, func(t *testing.T) {
@@ -66,7 +94,7 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 					}
 					return processResponse([]any{modelCall("unread", "finish", draft(readable))}), nil
 				case 5:
-					bad, e := modelToolResult(q, "unread")
+					bad, e := modelRepairRejection(q, "unread")
 					if e != nil {
 						return nil, e
 					}
@@ -79,7 +107,7 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 					invalid["claims"] = []any{map[string]any{"statement": "Limited conclusion.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{strings.Repeat("Explanation instead of a declared label. ", 5)}}}
 					return processResponse([]any{modelCall("malformed", "finish", invalid)}), nil
 				case 6:
-					bad, e := modelToolResult(q, "malformed")
+					bad, e := modelRepairRejection(q, "malformed")
 					if e != nil {
 						return nil, e
 					}
@@ -282,7 +310,7 @@ func TestHarnessNoProgressCorrectionsProcess(t *testing.T) {
 				return processResponse([]any{modelCall("bad-finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Limited.", "objectives": []any{}, "claims": []any{map[string]any{"statement": "Limited.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{strings.Repeat("Explanatory prose instead of label. ", 6)}}}})}), nil
 			}
 			if turn == 2 {
-				bad, e := modelToolResult(q, "bad-finish")
+				bad, e := modelRepairRejection(q, "bad-finish")
 				if e != nil {
 					return nil, e
 				}
@@ -470,5 +498,98 @@ func TestHarnessProtectedFinalizationProcess(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Local reduction must survive the real FIFO/spool process boundary, retaining
+// associations and repair state without buying a summary or replaying a target.
+func TestHarnessLocalContextReductionProcess(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		t.Run(transport, func(t *testing.T) {
+			var citation string
+			draft := func() map[string]any {
+				return map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Only inspected effects are established.",
+					"objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "Other effects remain unknown.", "observations": []string{citation}}}}
+			}
+			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if q["tool_choice"] == "none" {
+					return nil, fmt.Errorf("local reduction purchased a model summary")
+				}
+				var response []byte
+				switch turn {
+				case 1:
+					response = processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})})
+				case 2:
+					for _, required := range []string{"harness-local-trimming", "verified_state_at_reduction", "scenario-marker", "execution-1", "observation-1"} {
+						if !bytes.Contains(encode(q), []byte(required)) {
+							return nil, fmt.Errorf("reduction lost %s", required)
+						}
+					}
+					response = processResponse([]any{modelCall("read", "observation_read", map[string]any{"observation": "observation-1"})})
+				case 3:
+					read, err := modelToolResult(q, "read")
+					if err != nil {
+						return nil, err
+					}
+					citation = read["citation"].(string)
+					bad := draft()
+					bad["uncertainties"] = []any{map[string]any{"kind": "evidence-gap", "description": "Unresolved.", "inputs": []string{citation}}}
+					response = processResponse([]any{modelCall("bad-finish", "finish", bad)})
+				case 4:
+					if _, err := modelRepairRejection(q, "bad-finish"); err != nil {
+						return nil, err
+					}
+					var text map[string]any
+					json.Unmarshal(processResponse(nil), &text)
+					message := text["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+					message["refusal"], message["content"] = nil, "Choose a ticket or notification workflow?"
+					response = encode(text)
+				case 5:
+					bad, err := modelRepairRejection(q, "bad-finish")
+					if err != nil {
+						return nil, err
+					}
+					if bad["diagnostic"].(map[string]any)["field_path"] != "/uncertainties/0/inputs/0" {
+						return nil, fmt.Errorf("lost current correction")
+					}
+					if !bytes.Contains(encode(q), []byte("rejected_arguments")) || !bytes.Contains(encode(q), []byte("harness-local-trimming")) {
+						return nil, fmt.Errorf("exact rejected input not restored after reduction")
+					}
+					response = processResponse([]any{modelCall("blocked", "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke", "text": "new task"}), modelCall("reread", "observation_read", map[string]any{"observation": "observation-1"})})
+				case 6:
+					blocked, err := modelToolResult(q, "blocked")
+					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
+						return nil, fmt.Errorf("exploration not blocked: %v", err)
+					}
+					read, err := modelToolResult(q, "reread")
+					if err != nil {
+						return nil, err
+					}
+					citation = read["citation"].(string)
+					response = processResponse([]any{modelCall("finish", "finish", draft())})
+				default:
+					return nil, fmt.Errorf("unexpected context workflow turn %d", turn)
+				}
+				if turn == 1 || turn == 4 {
+					// Controlled usage reaches the profile's existing warning threshold.
+					var value map[string]any
+					json.Unmarshal(response, &value)
+					value["usage"] = map[string]any{"prompt_tokens": 8000, "completion_tokens": 10, "total_tokens": 8010}
+					response = encode(value)
+				}
+				return response, nil
+			}})
+			finishEvidenceRun(t, r)
+			if !r.service.AssessmentCommitted() {
+				t.Fatal("local reduction lost assessment", r.output.String(), r.service.WorkflowFailure())
+			}
+			if err := r.writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			result := harnessExport(t, r)
+			if len(result.Attempts) != 1 || result.Attempts[0].ScenarioID != "scenario-marker" {
+				t.Fatal("target replay or origin loss", result.Attempts)
+			}
+		})
 	}
 }

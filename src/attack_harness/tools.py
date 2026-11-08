@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from copy import deepcopy
-import json
 
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
@@ -93,11 +92,12 @@ class AssessmentRepair:
     call: ToolCall
     rejection: dict
 
-    def context(self):
+    def context(self, *, include_arguments=True):
         # Keep exact JSON text, including duplicate keys, as task data. Never
         # parse/rewrite the rejected assessment or promote it to instructions.
         return {"active": True, "tool_call_id": self.call.call_id,
-                "rejected_arguments": self.call.arguments.decode("utf-8", errors="replace"),
+                **({"rejected_arguments": self.call.arguments.decode("utf-8", errors="replace")}
+                   if include_arguments else {"request_in_history": self.call.call_id}),
                 "rejection": self.rejection}
 
     def guidance(self):
@@ -106,7 +106,7 @@ class AssessmentRepair:
                 "Use existing execution and evidence references. Read relevant evidence or tool guidance "
                 "if necessary, then call finish again. Do not start new target actions or ask the user "
                 "to select another task. This is a repair instruction, not a selection from any menu. "
-                "Report unresolved findings honestly. Rejection details: " + json.dumps(self.rejection))
+                "Report unresolved findings honestly.")
 
 
 class Dispatcher:

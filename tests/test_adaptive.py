@@ -123,7 +123,7 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual(finalizer.reason, "local-error")
         self.assertEqual(loop.snapshot()["model_turns"], 2)
 
-    def test_compaction_suppresses_tools_and_retains_summary_provenance(self):
+    def test_local_reduction_retains_provenance_without_a_summary_request(self):
         cases = self.cases("model-codec.json")
         tool_case = next(item for item in cases if item["name"] == "multiple native tools")
         text_case = next(item for item in cases
@@ -144,11 +144,10 @@ class AdaptiveTest(unittest.TestCase):
         AdaptiveHarness(self.protocol, client, loop, dispatcher,
                         conversation, finalizer).run()
         self.assertEqual(len(client.requests), 3)
-        self.assertEqual(client.requests[1]["request"]["tool_choice"], "none")
-        compacted = client.requests[2]["request"]["messages"][1]["content"]
-        self.assertIn('\"omitted_complete_segments\":1', compacted)
-        self.assertIn('\"summary_provenance\":\"model-generated-not-evidence\"',
-                      compacted)
+        self.assertTrue(all(r['request']['tool_choice'] == 'auto' for r in client.requests))
+        trimmed = client.requests[2]['request']['messages'][1]['content']
+        self.assertIn('harness-local-trimming', trimmed)
+        self.assertNotIn('model-generated-not-evidence', trimmed)
         self.assertEqual(loop.snapshot()["model_turns"], 3)
 
     def test_unsafe_compaction_fails_closed_with_context_limit(self):
@@ -168,7 +167,7 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual(result["conclusion_state"], "unavailable")
         self.assertEqual(finalizer.reason, "context-limit")
         self.assertEqual(client.requests, [])
-        self.assertEqual(loop.snapshot()["model_turns"], 1)
+        self.assertEqual(loop.snapshot()["model_turns"], 0)
 
     def test_warning_growth_funding_and_repeated_identity_preservation(self):
         case = next(item for item in self.cases("model-codec.json")
