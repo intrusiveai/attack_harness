@@ -40,7 +40,7 @@ func TestPythonProcessConclusionAndSeparateInspection(t *testing.T) {
 						return nil, fmt.Errorf("unexpected model turn after finish")
 					}
 					if turn == 2 {
-						rejected, err := modelToolResult(request, "finish-1")
+						rejected, err := modelRepairRejection(request, "finish-1")
 						if err != nil {
 							return nil, err
 						}

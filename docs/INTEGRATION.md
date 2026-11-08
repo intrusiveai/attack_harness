@@ -327,7 +327,11 @@ The default selects cross-component `TestPython*`/`TestHarness*` cases; host-onl
 unit/service checks run in Operator CI. For diagnostic runs of the entire host
 packages, invoke `build/verify_integration.py` with `--run .` and the same required
 Operator/Python arguments. Contract packaging and the inspection CLI are reused
-within a test process; campaign state stays isolated.
+within a test process; campaign state stays isolated. Before submitting a candidate
+change, run the complete default suite: a focused `--run` expression does not cover
+all inherited process fixtures. Harness-local Go overlays adapt model-conversation
+expectations (current repair blocks and local history reduction) while retaining
+Operator's execution, diagnostic, cleanup, report, and export checks.
 
 This runs the production Python entrypoint against Operator's Go service over
 FIFO and spool with controlled model responses and local targets. The fixture
@@ -344,7 +348,8 @@ Frozen injection surfaces select the same tools in Go and Python; restores keep
 that catalog. Context budget results are validated against native response usage.
 
 Controlled FIFO/spool process tests cover resource reads, warning-triggered
-compaction, follow-up scenario execution, finish and retained report/export facts.
+local history reduction without an extra model call, follow-up scenario execution,
+finish and retained report/export facts.
 They do not qualify a live provider or native Docker containment. See Operator's
 `docs/MODEL_CONTEXT_VERIFICATION.md` for measured JSON byte reductions. The baseline
 has no exact token preflight. Context/budget-limit finalization remains honest when
