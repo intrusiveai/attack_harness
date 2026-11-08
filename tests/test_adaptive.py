@@ -136,7 +136,10 @@ class AdaptiveTest(unittest.TestCase):
             self.protocol, loop,
             {"snapshot_list": lambda arguments:
              HandlerResult({"status": "ok", "snapshots": []})})
-        client = Client([tool_case["result"], text_case["result"], text_case["result"]])
+        results = deepcopy([tool_case["result"], text_case["result"], text_case["result"]])
+        for result in results:
+            result['context_budget'].update(remaining_model_tokens=1000000, remaining_model_turns=20)
+        client = Client(results)
         finalizer = Finalizer()
         AdaptiveHarness(self.protocol, client, loop, dispatcher,
                         conversation, finalizer).run()
@@ -293,9 +296,11 @@ class AdaptiveTest(unittest.TestCase):
         conversation.prepare_finalization()
         self.assertNotIn('Harness budget notice', str(conversation.body()))
         conversation._remaining['model_tokens'] -= 1
-        conversation.prepare_finalization()
+        self.assertFalse(conversation.prepare_finalization())  # Exactly three reservations allow exploration.
+        conversation._remaining['model_tokens'] -= 1
+        self.assertTrue(conversation.prepare_finalization())
         self.assertTrue(conversation.can_fund_model())
-        self.assertIn('one bounded correction', str(conversation.body()))
+        self.assertIn('exploration has ended', str(conversation.body()))
         conversation.replace_task('Updated complete task.')
         self.assertIn('Harness budget notice', str(conversation.body()))
         conversation._remaining['model_tokens'] = reservation - 1

@@ -124,13 +124,14 @@ class Dispatcher:
         self.last_rejection = None
         self.last_results = []
         self.repair = None
+        self.protected_finalization = False
         self.protocol = protocol
         self.loop = loop
         self._handlers = dict(handlers)
         self._raw_handlers = dict(raw_handlers)
 
     def _check_repair_action(self, call):
-        if self.repair is None or call.name in ("finish", "observation_read", "reference_read"):
+        if (self.repair is None and not self.protected_finalization) or call.name in ("finish", "observation_read", "reference_read"):
             return
         if call.name == "artifact_publish":
             try:
@@ -139,16 +140,31 @@ class Dispatcher:
                 raise ToolError.from_contract(error) from None
             if arguments["purpose"] == "conclusion":
                 return
+        if self.repair is None:
+            raise ToolError("finalization_action_blocked",
+                "Protected finalization is active. This action was not executed.",
+                correction="Submit an assessment using retained evidence; read observations or tool guidance only when necessary.")
         raise ToolError("assessment_repair_active",
             "Assessment repair is active. This action was not executed.",
             correction="Correct the rejected finish submission using retained evidence; read observations or tool guidance if needed.")
+
+    def protect_finalization(self):
+        if self.protected_finalization:
+            return
+        self.protected_finalization = True
+        if self.client is not None:
+            self.client.request("engine.diagnostic_report", {'diagnostic': {
+                'source': 'harness-local', 'stage': 'dispatch', 'reason': 'finalization_capacity_protected',
+                'message': 'Exploration ended to preserve capacity for assessment and correction.',
+                'execution_occurred': 'no', 'resubmission_safe': False,
+            }}, operation_id=self.client.operation_id('protected-finalization'))
 
     def report_unresolved_repair(self, budget, now):
         if self.repair is None or self.client is None:
             return
         diagnostic = deepcopy(self.repair.rejection.get("diagnostic", {}))
         reason = diagnostic.get("reason", self.repair.rejection.get("code", "finish_rejected"))
-        diagnostic.update(source="harness-local", stage="assessment-repair",
+        diagnostic.update(source="harness-local", stage="termination",
             reason="finish_repair_unresolved",
             message=f"Assessment repair ended without an accepted corrected finish. Last rejection: {reason}."[:512],
             execution_occurred="no", resubmission_safe=False)
@@ -190,6 +206,18 @@ class Dispatcher:
                     else 'Consecutive turns without recognized progress reached the configured limit.'),
                 'execution_occurred':'no','resubmission_safe':False,
             },'stopping':{'condition':condition,'observed_count':observed,'configured_limit':limit}}
+        elif condition in ('context-limit', 'model-turn-limit'):
+            report = {'diagnostic': {
+                'source': 'harness-local', 'stage': 'termination',
+                'reason': 'context_limit' if condition == 'context-limit' else 'model_call_limit',
+                'message': 'Mandatory context cannot fit safely.' if condition == 'context-limit' else 'No model calls remain.',
+                'execution_occurred': 'no', 'resubmission_safe': False,
+            }}
+            # The count-form stopping schema requires genuine observed/limit
+            # values. The stable reason identifies context/call exhaustion when
+            # those counts are unavailable; do not invent zero counters.
+            if observed is not None and limit is not None:
+                report['stopping'] = {'condition': condition, 'observed_count': observed, 'configured_limit': limit}
         elif observed is not None and limit is not None:
             report["stopping"] = {"condition": condition, "observed_count": observed,
                                   "configured_limit": limit}

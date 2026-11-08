@@ -228,6 +228,36 @@ and labels summaries as interpretation. Insufficient budget or irreducible conte
 uses the existing honest unavailable finish path. No provider or target replay is
 introduced. Exact token preflight is disabled in the baseline.
 
+Before any exploration or model-compaction request, including the first, Harness
+MUST require `remaining_tokens >= 3 * R` and `remaining_model_calls >= 3`, where
+`R` is the configured maximum prompt plus completion allowance. Calls MUST account
+for both host remaining allowances and local loop limits; compaction consumes a
+call. Harness MUST reevaluate actual Operator accounting after every response,
+without charging the reserve as consumption or increasing configured limits.
+
+Below either boundary Harness MUST enter sticky protected finalization, while
+leaving the shared execution loop open for evidence reads and finish. The existing
+assessment-repair action restriction MUST also enforce this transition; its entry
+reason MUST remain distinct from a real rejected finish. Finalization requests
+MUST use ordinary one-request admission and MAY consume the protected allocation.
+The fixed reserve is two requests, not a configurable or guaranteed retry count.
+
+Protected finalization MUST NOT make model-based compaction calls. Deterministic
+local trimming MUST remove oldest complete provider-valid exchanges, preserve
+recent groups where they fit, and retain privileged instructions, original campaign
+requirements, finalization/repair state, verified identities and corrections.
+Omissions MUST be recorded without synthesizing a summary or changing inspection
+state. Mandatory context that cannot fit MUST produce an explicit context-limit
+unavailable finish. Original evidence MUST remain retained outside the prompt.
+
+An insufficient initial allowance MUST skip exploration. If one model request can
+be funded, Harness MUST attempt finalization; otherwise it MUST use the bounded
+model-free unavailable-finish path. Existing deadlines and retry/no-progress limits
+MUST remain active. Diagnostics MUST distinguish the informational reserve
+transition, token/call exhaustion, irreducible context, and unresolved assessment
+repair. The guarantee protects capacity from exploration and compaction, not
+model compliance or assessment acceptance.
+
 Compaction guidance MUST distinguish original requirements, executed actions and
 verified handles, target claims/suggestions, Harness interpretations, and unresolved
 campaign work. It MUST forbid promoting target offers or optional model proposals

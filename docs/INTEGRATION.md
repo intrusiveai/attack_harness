@@ -401,14 +401,45 @@ Malformed entries and wrong categories receive shared field paths and correction
 correcting a finish does not re-execute target operations. Finish acceptance closes
 execution and requires exit; Operator confirms cleanup afterward.
 
-Harness asks the model to finalize when remaining tokens or turns approach three
-current request reservations, preserving space for an assessment request and one
-correction where possible. Every model request, including compaction, still needs
-funding. This is best effort; it does not guarantee a valid assessment. If admission
-cannot reserve another request, Harness sends `model_reservation_unavailable` with
-allowance, confirmed consumption, remaining tokens and next-request reservation.
-Earlier recoverable tool errors remain separate history. No assessment is invented:
-the bounded model-free unavailable finish exits normally but remains unsuccessful.
+Harness protects capacity for an assessment request and one correction opportunity
+from exploration and model-based compaction. For the current profile, let
+`R = maximum_prompt_tokens + maximum_completion_tokens`. Before the first and every
+subsequent exploration or compaction request, remaining tokens must be at least
+`3 × R` and at least three model calls must remain. Equality permits the request;
+below either boundary, Harness permanently enters protected finalization. With
+`R = 36,864`, the protected token allowance is `73,728`. This is admission policy,
+not another charge against Operator's accounting; both host allowances and local
+model-call limits remain in force, and compaction counts as a call.
+
+Protected finalization uses the same dispatch restriction as assessment repair:
+only finish, retained observation/reference reads, and conclusion-purpose artifact
+publication are allowed. Budget pressure does not invent a rejected assessment.
+A later real rejection retains its request and stronger repair guidance. Finalization
+requests may use the protected capacity whenever the ordinary limits can fund
+one request; they do not have to leave another reserve behind.
+
+Once protected finalization starts, context reduction is local. Harness removes
+older complete native exchanges, retaining recent groups where they fit, original
+requirements, privileged instructions, finalization/repair state, verified handles,
+and unresolved corrections. It records omissions without generating a summary or
+marking unread evidence inspected. Full evidence remains available from Operator.
+If mandatory context cannot fit safely, Harness reports `context_limit` rather
+than making an oversized model request or dropping requirements.
+
+This guarantees that exploration and compaction cannot consume the protected
+allocation. It does not guarantee two valid finish submissions or assessment
+acceptance: necessary reads, prose-only replies, invalid calls, deadlines, and
+other failures can still prevent completion. An initially underfunded campaign
+skips exploration and uses its actual remaining allowance for an honest assessment.
+If no request can be funded, the bounded model-free unavailable finish remains
+unsuccessful even when Harness exits zero.
+
+The matching Operator diagnostics retain `finalization_capacity_protected` as an
+informational transition, separately from `model_call_limit`, `context_limit`, and
+`finish_repair_unresolved`. Actual token exhaustion retains the structured
+`model_reservation_unavailable` allowance, consumption, remaining tokens and
+reservation. Earlier recoverable tool errors remain separate history. No assessment
+is invented and no target action is replayed.
 
 The controlled process suite covers partial-read continuation, rejected unread
 citations, corrected finish without replay, and both 524288-token budget cases

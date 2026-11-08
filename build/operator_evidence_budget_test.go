@@ -412,3 +412,63 @@ func TestHarnessAssessmentRepairProcess(t *testing.T) {
 		})
 	}
 }
+
+func TestHarnessProtectedFinalizationProcess(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		for _, mode := range []string{"honest", "blocked", "corrected"} {
+			t.Run(transport+"/"+mode, func(t *testing.T) {
+				r := newProcessRun(t, processCase{transport: transport, prompt: "default", settings: func(c *preparation.LaunchConfig) {
+					var err error
+					s := c.Model.Settings()
+					s.MaximumPromptTokens, s.MaximumCompletionTokens = 32768, 4096
+					c.Model, err = modelprovider.Parse(encode(s))
+					if err != nil {
+						t.Fatal(err)
+					}
+					c.Limits, err = campaignlimits.ParseHost([]byte(`{"harness":{"max_model_turns":2}}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+				}, reply: func(turn int, q map[string]any) ([]byte, error) {
+					if turn > 2 || q["tool_choice"] == "none" || !bytes.Contains(encode(q), []byte("exploration has ended")) {
+						return nil, fmt.Errorf("reserve not protected on turn %d", turn)
+					}
+					finish := map[string]any{"finish_reason": "budget-limit", "summary": "No objective was established.", "objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "not-tested", "summary": "No target attempt was dispatched."}}}
+					if turn == 1 && mode == "blocked" {
+						return processResponse([]any{modelCall("blocked", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})}), nil
+					}
+					if turn == 1 && mode == "corrected" {
+						finish["observations"] = []string{}
+					}
+					if turn == 2 && mode == "corrected" && !bytes.Contains(encode(q), []byte("Your finish submission was rejected")) {
+						return nil, fmt.Errorf("repair state lost")
+					}
+					return processResponse([]any{modelCall(fmt.Sprint("finish-", turn), "finish", finish)}), nil
+				}})
+				finishEvidenceRun(t, r)
+				if !r.service.AssessmentCommitted() {
+					t.Fatal("finalization not accepted", r.service.WorkflowFailure(), r.output.String(), len(r.provider.requests))
+				}
+				if mode == "honest" && r.service.WorkflowFailure() != nil {
+					t.Fatal("reserve transition became a failure", r.service.WorkflowFailure())
+				}
+				if err := r.writer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				result := harnessExport(t, r)
+				if len(result.Attempts) != 0 {
+					t.Fatal("protected exploration reached target", result.Attempts)
+				}
+				found := false
+				for _, d := range result.WorkflowDiagnostics {
+					if d.Reason == "finalization_capacity_protected" {
+						found = d.Stage == "dispatch" && d.Stopping == "" && strings.Contains(d.Message(), "not an execution failure")
+					}
+				}
+				if !found {
+					t.Fatal("Operator lost informational reserve diagnostic", result.WorkflowDiagnostics)
+				}
+			})
+		}
+	}
+}
