@@ -77,6 +77,10 @@ def main():
                 str(root / "build/operator_evidence_budget_test.go"),
             str(campaign): str(campaign_copy),
             str(origin): str(origin_copy),
+            str(operator / "internal/preparation/python_context_test.go"):
+                str(root / "build/operator_context_test.go"),
+            str(operator / "internal/preparation/python_history_test.go"):
+                str(root / "build/operator_history_test.go"),
             str(operator / "internal/preparation/conclusion_diagnostic_process_test.go"):
                 str(root / "build/operator_conclusion_diagnostic_test.go"),
             str(operator / "internal/preparation/harness_exit_process_test.go"):
