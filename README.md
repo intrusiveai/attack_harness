@@ -61,7 +61,7 @@ embedded image compatibility, supplies campaign inputs, and manages container st
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
 Release **v0.1.4** requires an Operator implementation of shared contract
-**0.7.0** with the exact AsyncAPI document-byte hash approved by this release. The
+**0.7.1** with the exact AsyncAPI document-byte hash approved by this release. The
 [integration guide](docs/INTEGRATION.md) provides the immutable contract identity,
 image selection steps, tool examples, and compatibility checks.
 

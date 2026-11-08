@@ -44,15 +44,15 @@ class ToolResult:
 class ToolError(ContractError):
     """A bounded nonfatal local rejection returned to the model."""
 
-    def __init__(self, code, message, *, outcome="invalid", path="", correction=""):
-        super().__init__(message, reason=code, field_path=path, correction=correction)
+    def __init__(self, code, message, *, outcome="invalid", path="", correction="", constraint=None):
+        super().__init__(message, reason=code, field_path=path, correction=correction, constraint=constraint)
         require(outcome in ("invalid", "preflight-rejected"))
         self.value = local_error(self)
         self.outcome = outcome
 
     @classmethod
     def from_contract(cls, error):
-        result = cls(error.reason, str(error), path=error.field_path, correction=error.correction)
+        result = cls(error.reason, str(error), path=error.field_path, correction=error.correction, constraint=error.constraint)
         return result
 
     @classmethod
@@ -66,17 +66,16 @@ class ToolError(ContractError):
 def local_error(error):
     # Only shared/product-owned diagnostics, never validator repr or input values.
     reason = error.reason if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", error.reason) else "invalid_arguments"
-    correction = error.correction[:512] or "Use the documented tool arguments and exact returned handles."
-    if "/range" in error.field_path and reason == "invalid_structure":
-        correction = "range requires offset and length. Omit range to reference the whole entry."
+    correction = error.correction if 0 < len(error.correction) <= 512 else "Use the documented tool arguments and exact returned handles."
     return {
-        "status": "error", "code": "INVALID_ARGUMENTS", "effect_state": "none",
-        "disposition": "correct-and-resubmit", "message": "Tool arguments were rejected before execution.",
+        "status": "error", "code": "INTERNAL_ERROR" if reason == "invalid_resolution_context" else "INVALID_ARGUMENTS", "effect_state": "none",
+        "disposition": "terminate" if reason == "invalid_resolution_context" else "correct-and-resubmit", "message": "Tool arguments were rejected before execution.",
         "diagnostic": {
-            "source": "harness-local", "stage": "tool-validation", "reason": reason,
+            "source": "harness-local", "stage": "translation" if reason == "invalid_resolution_context" else "arguments", "reason": reason,
             "message": str(error)[:512], "field_path": safe_argument_path(error.field_path),
             "correction": correction,
-            "execution_occurred": "no", "resubmission_safe": True,
+            "execution_occurred": "no", "resubmission_safe": reason != "invalid_resolution_context",
+            **({"constraint": error.constraint} if error.constraint else {}),
         },
     }
 
@@ -120,7 +119,7 @@ class Dispatcher:
 
     def report_stopping(self, condition, observed=None, limit=None, budget=None, now=None,
                         *, model_budget=None):
-        previous = self.last_rejection if condition == 'invalid-call-limit' else None
+        previous = None  # Earlier rejections remain separate retained events, never the stopping cause.
         report = dict(previous or {
             "diagnostic": local_error(ContractError("Harness exploration stopped.",
                 reason=condition, correction="Inspect campaign limits and retained diagnostics before starting new work."))["diagnostic"]})
@@ -131,6 +130,12 @@ class Dispatcher:
                 'message': 'Cannot reserve another model request.',
                 'execution_occurred': 'no', 'resubmission_safe': False,
             }, 'stopping': {'condition': 'budget-limit', 'budget': dict(model_budget)}}
+        elif condition == 'no-progress-limit':
+            report = {'diagnostic': {
+                'source':'harness-local','stage':'termination','reason':'no_progress_limit',
+                'message':'Consecutive turns without recognized progress reached the configured limit.',
+                'execution_occurred':'no','resubmission_safe':False,
+            },'stopping':{'condition':condition,'observed_count':observed,'configured_limit':limit}}
         elif observed is not None and limit is not None:
             report["stopping"] = {"condition": condition, "observed_count": observed,
                                   "configured_limit": limit}
@@ -207,6 +212,9 @@ class Dispatcher:
                     handled = HandlerResult(local_error(error), "invalid")
                 if handled.outcome == "invalid":
                     self._report(call, handled.value)
+                    if handled.value.get('disposition') == 'terminate':
+                        if self.client is not None: self.client.fail('internal-tool-resolution-failed')
+                        raise RuntimeStopped('internal-tool-resolution-failed')
                 result = ToolResult(call.call_id, call.name, _content(handled.value), handled.outcome)
                 self.loop.finish_tool(handled.outcome)
                 results.append(result)

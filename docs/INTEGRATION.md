@@ -7,15 +7,15 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.7.0**, pinned in
+The release consumes Operator shared contract **0.7.1**, pinned in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate SHA-256 of the exact `schemas/asyncapi.json` bytes,
 including formatting and the final newline.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.7.0` |
-| Shared package digest | `sha256:b40a8028420d8fd897d32e75c2921668470f9f98c6f7c202793b4c99fe169cc5` |
+| Shared package version | `0.7.1` |
+| Shared package digest | `sha256:5f1f545701e68d057592f892c573667391df844008ec385f5cdcfbdb42e63e88` |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
 
@@ -37,12 +37,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/aa2cec69c063136377cd0b807bd1116f8ffb484c/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/407ceeb5a300572ee967ab666891a53e0d89e75d/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -51,7 +51,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -214,7 +214,7 @@ are native objects; Harness uses shared normalization for the host encoding.
 restore use `snapshot`; deletion uses `injection`; reads use `reference` or
 `observation`. Snapshot creation keeps optional `label` and `description`.
 See the exact shared
-[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/MODEL_TOOL_NORMALIZATION.md)
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/schemas/MODEL_TOOL_NORMALIZATION.md)
 for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
@@ -272,7 +272,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/407ceeb5a300572ee967ab666891a53e0d89e75d/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -302,7 +302,7 @@ image identities when running a deployed integration through Operator.
 
 ## Context behavior
 
-Matching Operator and Harness builds require shared package 0.7.0 and its exact
+Matching Operator and Harness builds require shared package 0.7.1 and its exact
 locked digest. Mismatched interface versions or byte hashes fail before campaign execution;
 implementation-only Operator changes do not require a Harness identity update.
 Frozen injection surfaces select the same tools in Go and Python; restores keep
@@ -381,3 +381,5 @@ citations, corrected finish without replay, and both 524288-token budget cases
 Operator inspection, reports and exported events, accepted assessment, exit zero
 and confirmed cleanup. These tests exercise production Harness processes with
 controlled model responses; they are not live-cloud qualification.
+
+See [tool corrections](tool-corrections.md) for schema-rule references, correction preservation and no-progress stopping. The approved contract lock is authoritative for the version and exact document-byte hash.

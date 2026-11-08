@@ -185,6 +185,7 @@ class NativeConversation:
             history = history[1:]  # The exact privileged prompt remains in _initial().
         history_raw = _canonical_value(history, ORDINARY_LIMIT)
         # Preserve exact returned identities separately from model-written summaries.
+        corrections=list(getattr(self,"_retained_corrections",[]))
         identities={(v['kind'],v['identifier']) for v in getattr(self,'_compaction_ledger',[])}
         keys={'execution','observation','readable_observation','citation','artifact','record','hypothesis','reference','snapshot','session','injection'}
         def collect(value):
@@ -200,6 +201,11 @@ class NativeConversation:
             if isinstance(content, str):
                 try: content = json.loads(content)
                 except (ValueError, RecursionError): return
+            if isinstance(content,dict) and isinstance(content.get('diagnostic'),dict):
+                d=content['diagnostic']
+                entry={k:d[k] for k in ('reason','field_path','correction','execution_occurred','resubmission_safe') if k in d}
+                if entry not in corrections:corrections.append(entry)
+                del corrections[:-8]
             collect(content)
         for item in history:
             if self.codec == "openai-chat-text-tools-v1" and item.get("role") == "tool":
@@ -215,13 +221,13 @@ class NativeConversation:
         require(len(identities)<=4096)
         ledger=[dict(kind=k,identifier=v) for k,v in sorted(identities)]
         instruction=("Summarize selected campaign history concisely. Preserve task, unresolved work, exact handles, "
-                     "observed outcomes and uncertainty. Omitted history is not evidence; inspect retained evidence "
+                     "observed outcomes, unresolved validation issues and established corrections. Omitted history is not evidence; inspect retained evidence "
                      "using its handles when needed. Summary is interpretation. Selected history follows:\n")
         groups=list(self._groups)
         # Keep whole native assistant/tool groups. Never send an oversized full
         # history with another instruction wrapped around it.
         while True:
-            source=instruction+_canonical_value(dict(task=self._task,identities=ledger,selected_groups=groups,
+            source=instruction+_canonical_value(dict(task=self._task,identities=ledger,validation_corrections=corrections,selected_groups=groups,
                 omitted_complete_groups=len(self._groups)-len(groups)),ORDINARY_LIMIT).decode('utf-8')
             request=self._initial(source)
             if self.codec in ("openai-chat-text-tools-v1",
@@ -238,6 +244,7 @@ class NativeConversation:
             require(bool(groups))
             groups.pop(0)
         self._compaction_ledger=ledger
+        self._retained_corrections=corrections
         body = {key: deepcopy(self.policy[key])
                 for key in ("codec_id", "profile_id", "profile_digest")}
         body["request"] = request
@@ -257,7 +264,7 @@ class NativeConversation:
         }
         self._compactions.append(record)
         summary_suffix = "\n\nCompacted campaign history:\n" + \
-            _canonical_value({**record, "summary": summary, "retained_identities":getattr(self,"_compaction_ledger",[])}, 256 << 10).decode("utf-8")
+            _canonical_value({**record, "summary": summary, "retained_identities":getattr(self,"_compaction_ledger",[]), "validation_corrections":getattr(self,"_retained_corrections",[])}, 256 << 10).decode("utf-8")
         compacted = self._task + summary_suffix + self._finalization_guidance()
         require(len(compacted) <= 1 << 20)
         self._summary = summary_suffix
@@ -311,6 +318,8 @@ class AdaptiveHarness:
         for counter in ("consecutive_invalid_tool_calls", "invalid_tool_calls"):
             if "max_" + counter in self.limits and state[counter] >= self.limits["max_" + counter]:
                 return "invalid-call-limit"
+        if state['no_progress_turns'] >= self.limits.get('max_no_progress_turns', 2**53-1):
+            return 'no-progress-limit'
         return "budget-limit" if state["reason"] == "budget-limit" else "local-error"
 
     def _finish_unavailable(self, reason, *, model_admission=False):
@@ -332,7 +341,7 @@ class AdaptiveHarness:
                 ("consecutive_invalid_tool_calls", "invalid-call-limit"),
                 ("invalid_tool_calls", "invalid-call-limit"),
                 ("tool_calls", "tool-call-limit"), ("model_turns", "model-turn-limit"),
-                ("no_progress_turns", "local-error"), ("read_bytes", "budget-limit"),
+                ("no_progress_turns", "no-progress-limit"), ("read_bytes", "budget-limit"),
             ):
                 maximum = self.limits["max_" + counter]
                 if state[counter] >= maximum:

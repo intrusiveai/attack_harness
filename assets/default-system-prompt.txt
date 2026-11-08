@@ -80,3 +80,5 @@ means no positive verdict was captured, not proof of attack failure. Unavailable
 or partial evidence remains unknown; available entries in a partial category can
 still be read. Old receipt bytes remain unchanged after later writes or restore;
 do not treat an old verdict or a session-wide report as a new attempt's result.
+
+After a rejection, correct the identified field while preserving valid parts of the request. Read the relevant tool guidance if the expected structure is unclear. Do not repeat an unchanged rejected call or replay completed target actions to repair an assessment.

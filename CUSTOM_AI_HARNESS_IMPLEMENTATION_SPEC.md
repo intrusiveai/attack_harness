@@ -11,7 +11,7 @@ boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_S
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.7.0** from the image and
+The Harness loads Operator's shared contract package **0.7.1** from the image and
 validates its exact AsyncAPI document-byte hash against [the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
@@ -218,3 +218,15 @@ Harness MUST use configured upload/read chunks and expose sizing allowances in t
 context. Explicit oversize arguments MUST be rejected with existing actionable
 argument diagnostics before sending. Safety ceilings, receipt integrity, target
 scope and campaign budget checks remain mandatory. See [integration](docs/INTEGRATION.md).
+
+## Tool correction and no-progress handling
+
+The runtime MUST preserve shared correction details, model-facing field paths,
+execution effects and safe-resubmission status. It MUST use declared uncertainty
+labels in claim references and MUST NOT silently discard explanations or invent
+labels. Internal resolution errors are terminal product failures. Guidance MUST
+instruct correction of the identified field without replaying completed target
+actions. Compaction MUST retain bounded recent corrections. `no-progress-limit`
+MUST report consecutive no-progress turns and the configured limit separately from
+preceding rejections; unavailable assessment remains unsuccessful even with exit
+zero. Follow [the integration correction rules](docs/tool-corrections.md).

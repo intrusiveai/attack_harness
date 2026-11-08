@@ -75,7 +75,8 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 						return nil, fmt.Errorf("missing applicable correction: %v", bad)
 					}
 					invalid := draft(citation)
-					invalid["uncertainties"] = []any{map[string]any{"kind": "invented", "description": "gap"}}
+					invalid["uncertainties"] = []any{map[string]any{"label": "limited-feedback", "kind": "unavailable-feedback", "description": "Partial inspection."}}
+					invalid["claims"] = []any{map[string]any{"statement": "Limited conclusion.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{strings.Repeat("Explanation instead of a declared label. ", 5)}}}
 					return processResponse([]any{modelCall("malformed", "finish", invalid)}), nil
 				case 6:
 					bad, e := modelToolResult(q, "malformed")
@@ -83,10 +84,13 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 						return nil, e
 					}
 					d := bad["diagnostic"].(map[string]any)
-					if d["field_path"] != "/uncertainties/0/kind" || !strings.Contains(d["correction"].(string), "evidence-gap") {
+					if d["field_path"] != "/claims/0/uncertainties/0" || !strings.Contains(d["correction"].(string), "top-level uncertainties") || !strings.Contains(d["correction"].(string), "128") {
 						return nil, fmt.Errorf("lost enum correction: %v", bad)
 					}
-					return processResponse([]any{modelCall("finish", "finish", draft(citation))}), nil
+					corrected := draft(citation)
+					corrected["uncertainties"] = []any{map[string]any{"label": "limited-feedback", "kind": "unavailable-feedback", "description": "Partial inspection."}}
+					corrected["claims"] = []any{map[string]any{"statement": "Limited conclusion.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{"limited-feedback"}}}
+					return processResponse([]any{modelCall("finish", "finish", corrected)}), nil
 				}
 				return nil, fmt.Errorf("unexpected model call %d", turn)
 			}})
@@ -100,6 +104,15 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 			result := harnessExport(t, r)
 			if result.HarnessClaims != 1 || len(result.Attempts) != 1 || result.Attempts[0].Origin != "scenario" || result.Attempts[0].ScenarioID != "scenario-marker" {
 				t.Fatal("lost assessment/origin or replayed target", result)
+			}
+			foundCorrection := false
+			for _, diagnostic := range result.WorkflowDiagnostics {
+				if strings.Contains(diagnostic.Message(), "top-level uncertainties") && strings.Contains(diagnostic.Message(), "128") {
+					foundCorrection = true
+				}
+			}
+			if !foundCorrection {
+				t.Fatal("export dropped schema correction")
 			}
 			count := 0
 			for _, op := range r.native.calls {
@@ -259,5 +272,58 @@ func TestHarnessModelBudgetProcess(t *testing.T) {
 			}
 			t.Log("Production Harness exit zero with unavailable assessment; Operator retained unsuccessful finalization and exact model accounting.")
 		})
+	}
+}
+
+func TestHarnessNoProgressCorrectionsProcess(t *testing.T) {
+	r := newProcessRun(t, processCase{transport: "spool", prompt: "default", timeout: 120 * time.Second,
+		reply: func(turn int, q map[string]any) ([]byte, error) {
+			if turn == 1 {
+				return processResponse([]any{modelCall("bad-finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Limited.", "objectives": []any{}, "claims": []any{map[string]any{"statement": "Limited.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{strings.Repeat("Explanatory prose instead of label. ", 6)}}}})}), nil
+			}
+			if turn == 2 {
+				bad, e := modelToolResult(q, "bad-finish")
+				if e != nil {
+					return nil, e
+				}
+				d := bad["diagnostic"].(map[string]any)
+				if !strings.Contains(d["correction"].(string), "top-level uncertainties") {
+					return nil, fmt.Errorf("lost correction")
+				}
+			}
+			var response map[string]any
+			json.Unmarshal(processResponse(nil), &response)
+			message := response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+			message["refusal"] = nil
+			message["content"] = "No new action chosen."
+			return encode(response), nil
+		}})
+	finishEvidenceRun(t, r)
+	if r.service.AssessmentCommitted() {
+		t.Fatal("unavailable assessment treated as committed")
+	}
+	if e := r.writer.Close(); e != nil {
+		t.Fatal(e)
+	}
+	result := harnessExport(t, r)
+	found, previous := false, false
+	for _, d := range result.WorkflowDiagnostics {
+		if d.Stopping == "no-progress-limit" {
+			found = d.Observed == 10 && d.Limit == 10 && d.Reason == "no_progress_limit" && d.Tool == "" && result.Assessment == nil
+		} else if strings.Contains(d.Message(), "top-level uncertainties") {
+			previous = true
+		}
+	}
+	if !found || !previous || len(result.Attempts) != 0 {
+		t.Fatal("lost terminal/preceding cause or unintended dispatch", result.WorkflowDiagnostics)
+	}
+	destination := filepath.Join(t.TempDir(), "export")
+	output, e := exec.Command(processCLI(t), "export", "--state-root", r.root, "--campaign", "campaign-1", "--output", destination).CombinedOutput()
+	if e != nil {
+		t.Fatal(e, string(output))
+	}
+	report, e := os.ReadFile(filepath.Join(destination, "report.md"))
+	if e != nil || !bytes.Contains(report, []byte("10 consecutive turns without recognized progress")) || !bytes.Contains(report, []byte("top-level uncertainties")) {
+		t.Fatal(e, string(report))
 	}
 }
