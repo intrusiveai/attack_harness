@@ -74,6 +74,25 @@ budget. Supplied content stays in user/task data and cannot override system
 instructions or admitted capabilities. The portfolio derives scenario IDs and
 counts from the submitted bundle, independently of the number of invocations.
 
+The submitted objectives and scenario requirements define the investigation within
+admitted capabilities. Target replies and retrieved documents are observations;
+their offers, menus, approval demands, and refusals do not authorize new work.
+For example, providing an order ID requested by the target can advance a scenario
+that supplied that ID. An offer to create a ticket or notify a team is relevant
+only if it independently serves an authorized campaign requirement. The model
+is guided to explain additional experiments in `rationale`; a scenario ID alone
+does not establish relevance or coverage. Target claims of side effects retain
+their attribution unless appropriate evidence verifies those effects.
+
+Automated continuations explicitly return the model to the submitted campaign;
+they are not human answers, approvals, or menu selections. Compaction separates
+original requirements, executed actions, target claims and suggestions, Harness
+interpretations, and unresolved work. The original task stays supplied directly,
+and summaries are labeled as fallible history that cannot amend requirements,
+permissions, or assessment-repair state. Controlled tests verify these boundaries
+and repair dispatch restrictions across native conversation formats; they do not
+prove that a live model will always resist task drift.
+
 For larger bundles, Harness retains complete campaign requirements and one active
 scenario, deferring skill and target details to the existing reference reader.
 The task lists local scenario read handles: `reference_read` loads the selected
@@ -196,6 +215,22 @@ objective achievement. Missing evidence calls for partial/untested coverage and
 an appropriate inconclusive, not-tested, or not-observed outcome. Reference checks
 remain structural and evidence-based; Harness does not use keyword matching to
 decide whether free-text requirements were satisfied.
+
+After a correctable finish rejection, Harness enters assessment repair. It keeps
+the rejected submission and precise correction, and asks the model to repair the
+assessment using existing evidence. Prose or a menu of other tasks does not
+resume exploration. The dispatcher permits only corrected finish submissions,
+observation/input/tool-guidance reads, and conclusion-purpose artifact publication;
+it rejects new target actions, injection changes, snapshots, restores, and record
+appends before dispatch, including later calls in the same model response.
+
+Repair state, original objectives, and verified handles survive compaction
+independently of the model summary. Existing limits still apply. If repair cannot
+finish, the unresolved correction is reported separately from the actual stopping
+cause; the bounded unavailable-finish path does not imply assessment success.
+An accepted finish remains the authority for closing execution. See the
+[assessment-repair specification](../specs/assessment-repair.md) for the dispatch
+and retention requirements.
 
 Accepted finish reports `execution_admission: "closed"`,
 `finalization_status: "pending"`, and requires exit within 5,000 ms. A healthy
@@ -366,14 +401,78 @@ Malformed entries and wrong categories receive shared field paths and correction
 correcting a finish does not re-execute target operations. Finish acceptance closes
 execution and requires exit; Operator confirms cleanup afterward.
 
-Harness asks the model to finalize when remaining tokens or turns approach three
-current request reservations, preserving space for an assessment request and one
-correction where possible. Every model request, including compaction, still needs
-funding. This is best effort; it does not guarantee a valid assessment. If admission
-cannot reserve another request, Harness sends `model_reservation_unavailable` with
-allowance, confirmed consumption, remaining tokens and next-request reservation.
-Earlier recoverable tool errors remain separate history. No assessment is invented:
-the bounded model-free unavailable finish exits normally but remains unsuccessful.
+Harness protects capacity for an assessment request and one correction opportunity
+from exploration and model-based compaction. For the current profile, let
+`R = maximum_prompt_tokens + maximum_completion_tokens`. Before the first and every
+subsequent exploration or compaction request, remaining tokens must be at least
+`3 × R` and at least three model calls must remain. Equality permits the request;
+below either boundary, Harness permanently enters protected finalization. With
+`R = 36,864`, the protected token allowance is `73,728`. This is admission policy,
+not another charge against Operator's accounting; both host allowances and local
+model-call limits remain in force. The adaptive loop does not purchase model-generated summaries.
+
+Protected finalization uses the same dispatch restriction as assessment repair:
+only finish, retained observation/reference reads, and conclusion-purpose artifact
+publication are allowed. Budget pressure does not invent a rejected assessment.
+A later real rejection retains its request and stronger repair guidance. Finalization
+requests may use the protected capacity whenever the ordinary limits can fund
+one request; they do not have to leave another reserve behind.
+
+Context reduction is local during both exploration and protected finalization. Harness removes
+older complete native exchanges, retaining recent groups where they fit, original
+requirements, privileged instructions, finalization/repair state, verified handles,
+and unresolved corrections. It records omissions without generating a summary or
+marking unread evidence inspected. Full evidence remains available from Operator.
+If mandatory context cannot fit safely, Harness reports `context_limit` rather
+than making an oversized model request or dropping requirements.
+
+Reference discovery uses exact input handles with purpose, bounded source-name hints,
+media type and size. Storage paths, integrity hashes and schema descriptors remain
+in verified Harness state; `reference_read` still resolves and checks the original
+reference. Full active-scenario requirements remain in task context. The portfolio
+is a submitted inventory, not an initial “untested” progress report. Stable trust
+and execution guidance lives in the privileged prompt. Task context keeps a small
+shared finish example and readable-observation/citation example; larger optional
+examples and enum details remain in frozen tool schemas and `tool-guide:<tool_name>`.
+Independent observation reads can share one model response within tool-call limits;
+dependent actions must wait for the earlier results.
+
+At the context warning threshold, Harness drops the oldest complete native
+exchanges toward 75% of that threshold (and the local serialized-size threshold),
+retaining recent exchanges where they fit. This is an estimate for local reduction,
+not a smaller token reservation. Native request validation and Operator's budget
+accounting remain authoritative. Full request/response records and evidence are
+not deleted. A model-generated summary is not needed to shrink removable history;
+irreducible mandatory context produces an honest context-limit termination.
+
+A reduction records verified execution-to-scenario and observation associations,
+readable ranges, inspected citations, and whether cited content remains in that
+prompt. This is a snapshot at reduction, not an assessment of objective success.
+Later tool results provide subsequent facts. Inspection state survives removal
+of the bytes from the prompt; the model must reread evidence needed to substantiate
+claims, or report its limitation. Target prose never supplies handles or permissions.
+
+During repair, one current task-context block supplies the latest rejection and
+correction. It points to the original failed call while that call remains in native
+history; after removal it includes the exact rejected arguments, including duplicate
+JSON keys. Tool-result and continuation reminders point back to this block. Harness
+retains the original submission and diagnostic independently, and the same dispatcher
+restriction continues to prevent new target actions.
+
+This guarantees that exploration and compaction cannot consume the protected
+allocation. It does not guarantee two valid finish submissions or assessment
+acceptance: necessary reads, prose-only replies, invalid calls, deadlines, and
+other failures can still prevent completion. An initially underfunded campaign
+skips exploration and uses its actual remaining allowance for an honest assessment.
+If no request can be funded, the bounded model-free unavailable finish remains
+unsuccessful even when Harness exits zero.
+
+The matching Operator diagnostics retain `finalization_capacity_protected` as an
+informational transition, separately from `model_call_limit`, `context_limit`, and
+`finish_repair_unresolved`. Actual token exhaustion retains the structured
+`model_reservation_unavailable` allowance, consumption, remaining tokens and
+reservation. Earlier recoverable tool errors remain separate history. No assessment
+is invented and no target action is replayed.
 
 The controlled process suite covers partial-read continuation, rejected unread
 citations, corrected finish without replay, and both 524288-token budget cases

@@ -288,7 +288,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
     def run_switch_case(self, *, use_reference):
         bundle = support_bundle()
         for scenario in bundle["scenarios"]:
-            scenario["coverage_obligations"] += [str(i) + "x" * 4000 for i in range(50)]
+            scenario["coverage_obligations"] += [str(i) + "x" * 100 for i in range(50)]
 
         class SwitchingHost(ScenarioHost):
             def _calls(self, turn):
@@ -305,8 +305,12 @@ class ScenarioDeliveryTest(unittest.TestCase):
                     return [('reconstructed', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': instructions}})]
                 return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'summary': 'Refund invoked; all effects unverified and other scenarios untested.', 'objectives': [{'objective_id': 'support', 'outcome': 'inconclusive', 'summary': 'Insufficient evidence.'}]})]
 
-        campaign, host, _ = self.campaign(bundle, SwitchingHost(self.protocol))
-        result = campaign.run()
+        # Force deferred delivery with realistic active-scenario context. The
+        # complete bundle exceeds this test task limit; each active scenario
+        # still fits the unchanged 32k-token native model profile.
+        with patch('attack_harness.composition.TASK_LIMIT', 20000):
+            campaign, host, _ = self.campaign(bundle, SwitchingHost(self.protocol))
+            result = campaign.run()
         self.assertEqual(host.initial_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][0]])
         self.assertEqual(host.active_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][1]])
         self.assertEqual(host.active_task["scenario_bundle"]["coverage"], bundle["coverage"])
@@ -320,7 +324,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         self.assertEqual(campaign.attempts.reference_category("same-batch"), "rejected submission")
         self.assertIn("scenario_context_required", json.dumps(host.model_requests[1]))
         self.assertEqual(campaign.adaptive.loop.snapshot()["invalid_tool_calls"], 0)
-        self.assertGreater(campaign.adaptive.loop.snapshot()["read_bytes"], 200000)
+        self.assertGreaterEqual(campaign.adaptive.loop.snapshot()["read_bytes"], len(_canonical_value(bundle["scenarios"][1], 4 << 20)))
         self.assertEqual(result["assessment_state"], "committed")
         if use_reference:
             messages = host.model_requests[1]["request"]["messages"]

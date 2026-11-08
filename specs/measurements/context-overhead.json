@@ -1,0 +1,315 @@
+{
+  "baseline": "52f0678",
+  "cases": {
+    "pressure": {
+      "before": {
+        "measurement": "controlled, synthetic usage; no live provider",
+        "references": 17,
+        "compact_at_bytes": 100000,
+        "requests": [
+          {
+            "phase": 1,
+            "kind": "initial",
+            "serialized_bytes": 45152,
+            "estimated_input_tokens": 22576
+          },
+          {
+            "phase": 2,
+            "kind": "followup",
+            "serialized_bytes": 46513,
+            "estimated_input_tokens": 12792
+          },
+          {
+            "phase": 3,
+            "kind": "followup",
+            "serialized_bytes": 47797,
+            "estimated_input_tokens": 13146
+          },
+          {
+            "phase": 4,
+            "kind": "after_reads",
+            "serialized_bytes": 75637,
+            "estimated_input_tokens": 20802
+          },
+          {
+            "phase": 5,
+            "kind": "followup",
+            "serialized_bytes": 76960,
+            "estimated_input_tokens": 21165
+          },
+          {
+            "phase": 6,
+            "kind": "followup",
+            "serialized_bytes": 78299,
+            "estimated_input_tokens": 21533
+          },
+          {
+            "phase": 6,
+            "kind": "compaction",
+            "serialized_bytes": 113544,
+            "estimated_input_tokens": 31225
+          },
+          {
+            "phase": 7,
+            "kind": "followup",
+            "serialized_bytes": 46917,
+            "estimated_input_tokens": 12903
+          },
+          {
+            "phase": 8,
+            "kind": "repair",
+            "serialized_bytes": 53087,
+            "estimated_input_tokens": 14600
+          },
+          {
+            "phase": 9,
+            "kind": "followup",
+            "serialized_bytes": 54294,
+            "estimated_input_tokens": 14932
+          },
+          {
+            "phase": 10,
+            "kind": "followup",
+            "serialized_bytes": 68247,
+            "estimated_input_tokens": 18769
+          }
+        ],
+        "cumulative_input_bytes": 706447,
+        "model_compaction_calls": 1,
+        "evidence_reads": 5,
+        "evidence_rereads": 1,
+        "native_tool_schema_bytes": 14999,
+        "native_tool_schema_digest": "sha256:0a9398ffa5631ee42d22d709709bb5dab634d65e11f1dc4334206f1074880721",
+        "campaign_input_digest": "sha256:72eea0f658d01dc10d49fbaa7e00bfddb8a0fcf47c8e50923a7ceeda35732d39",
+        "actual_provider_usage": null,
+        "synthetic_input_tokens": 176616,
+        "target_invocations": 4,
+        "assessment_state": "committed"
+      },
+      "after": {
+        "measurement": "controlled, synthetic usage; no live provider",
+        "references": 17,
+        "compact_at_bytes": 100000,
+        "requests": [
+          {
+            "phase": 1,
+            "kind": "initial",
+            "serialized_bytes": 37973,
+            "estimated_input_tokens": 18987
+          },
+          {
+            "phase": 2,
+            "kind": "followup",
+            "serialized_bytes": 39334,
+            "estimated_input_tokens": 10818
+          },
+          {
+            "phase": 3,
+            "kind": "followup",
+            "serialized_bytes": 40618,
+            "estimated_input_tokens": 11171
+          },
+          {
+            "phase": 4,
+            "kind": "after_reads",
+            "serialized_bytes": 68458,
+            "estimated_input_tokens": 18827
+          },
+          {
+            "phase": 5,
+            "kind": "followup",
+            "serialized_bytes": 69781,
+            "estimated_input_tokens": 19191
+          },
+          {
+            "phase": 6,
+            "kind": "followup",
+            "serialized_bytes": 71120,
+            "estimated_input_tokens": 19559
+          },
+          {
+            "phase": 7,
+            "kind": "followup",
+            "serialized_bytes": 98960,
+            "estimated_input_tokens": 27215
+          },
+          {
+            "phase": 8,
+            "kind": "repair",
+            "serialized_bytes": 73166,
+            "estimated_input_tokens": 20121
+          },
+          {
+            "phase": 9,
+            "kind": "followup",
+            "serialized_bytes": 73402,
+            "estimated_input_tokens": 20187
+          },
+          {
+            "phase": 10,
+            "kind": "followup",
+            "serialized_bytes": 87355,
+            "estimated_input_tokens": 24024
+          }
+        ],
+        "cumulative_input_bytes": 660167,
+        "model_compaction_calls": 0,
+        "evidence_reads": 5,
+        "evidence_rereads": 1,
+        "native_tool_schema_bytes": 14999,
+        "native_tool_schema_digest": "sha256:0a9398ffa5631ee42d22d709709bb5dab634d65e11f1dc4334206f1074880721",
+        "campaign_input_digest": "sha256:72eea0f658d01dc10d49fbaa7e00bfddb8a0fcf47c8e50923a7ceeda35732d39",
+        "actual_provider_usage": null,
+        "synthetic_input_tokens": 165046,
+        "target_invocations": 4,
+        "assessment_state": "committed"
+      }
+    },
+    "no_reduction": {
+      "before": {
+        "measurement": "controlled, synthetic usage; no live provider",
+        "references": 17,
+        "compact_at_bytes": 1048576,
+        "requests": [
+          {
+            "phase": 1,
+            "kind": "initial",
+            "serialized_bytes": 45152,
+            "estimated_input_tokens": 22576
+          },
+          {
+            "phase": 2,
+            "kind": "followup",
+            "serialized_bytes": 46513,
+            "estimated_input_tokens": 12792
+          },
+          {
+            "phase": 3,
+            "kind": "followup",
+            "serialized_bytes": 47797,
+            "estimated_input_tokens": 13146
+          },
+          {
+            "phase": 4,
+            "kind": "after_reads",
+            "serialized_bytes": 75637,
+            "estimated_input_tokens": 20802
+          },
+          {
+            "phase": 5,
+            "kind": "followup",
+            "serialized_bytes": 76960,
+            "estimated_input_tokens": 21165
+          },
+          {
+            "phase": 6,
+            "kind": "followup",
+            "serialized_bytes": 78299,
+            "estimated_input_tokens": 21533
+          },
+          {
+            "phase": 7,
+            "kind": "followup",
+            "serialized_bytes": 106139,
+            "estimated_input_tokens": 29189
+          },
+          {
+            "phase": 8,
+            "kind": "repair",
+            "serialized_bytes": 112309,
+            "estimated_input_tokens": 30886
+          },
+          {
+            "phase": 9,
+            "kind": "followup",
+            "serialized_bytes": 113516,
+            "estimated_input_tokens": 31218
+          }
+        ],
+        "cumulative_input_bytes": 702322,
+        "model_compaction_calls": 0,
+        "evidence_reads": 4,
+        "evidence_rereads": 0,
+        "native_tool_schema_bytes": 14999,
+        "native_tool_schema_digest": "sha256:0a9398ffa5631ee42d22d709709bb5dab634d65e11f1dc4334206f1074880721",
+        "campaign_input_digest": "sha256:72eea0f658d01dc10d49fbaa7e00bfddb8a0fcf47c8e50923a7ceeda35732d39",
+        "actual_provider_usage": null,
+        "synthetic_input_tokens": 175584,
+        "target_invocations": 4,
+        "assessment_state": "committed"
+      },
+      "after": {
+        "measurement": "controlled, synthetic usage; no live provider",
+        "references": 17,
+        "compact_at_bytes": 1048576,
+        "requests": [
+          {
+            "phase": 1,
+            "kind": "initial",
+            "serialized_bytes": 37973,
+            "estimated_input_tokens": 18987
+          },
+          {
+            "phase": 2,
+            "kind": "followup",
+            "serialized_bytes": 39334,
+            "estimated_input_tokens": 10818
+          },
+          {
+            "phase": 3,
+            "kind": "followup",
+            "serialized_bytes": 40618,
+            "estimated_input_tokens": 11171
+          },
+          {
+            "phase": 4,
+            "kind": "after_reads",
+            "serialized_bytes": 68458,
+            "estimated_input_tokens": 18827
+          },
+          {
+            "phase": 5,
+            "kind": "followup",
+            "serialized_bytes": 69781,
+            "estimated_input_tokens": 19191
+          },
+          {
+            "phase": 6,
+            "kind": "followup",
+            "serialized_bytes": 71120,
+            "estimated_input_tokens": 19559
+          },
+          {
+            "phase": 7,
+            "kind": "followup",
+            "serialized_bytes": 98960,
+            "estimated_input_tokens": 27215
+          },
+          {
+            "phase": 8,
+            "kind": "repair",
+            "serialized_bytes": 101660,
+            "estimated_input_tokens": 27957
+          },
+          {
+            "phase": 9,
+            "kind": "followup",
+            "serialized_bytes": 101896,
+            "estimated_input_tokens": 28022
+          }
+        ],
+        "cumulative_input_bytes": 629800,
+        "model_compaction_calls": 0,
+        "evidence_reads": 4,
+        "evidence_rereads": 0,
+        "native_tool_schema_bytes": 14999,
+        "native_tool_schema_digest": "sha256:0a9398ffa5631ee42d22d709709bb5dab634d65e11f1dc4334206f1074880721",
+        "campaign_input_digest": "sha256:72eea0f658d01dc10d49fbaa7e00bfddb8a0fcf47c8e50923a7ceeda35732d39",
+        "actual_provider_usage": null,
+        "synthetic_input_tokens": 157453,
+        "target_invocations": 4,
+        "assessment_state": "committed"
+      }
+    }
+  }
+}

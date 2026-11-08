@@ -22,6 +22,34 @@ import (
 	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 )
 
+// Repair diagnostics are projected once in current task context. Tool history
+// holds a reminder; original operation diagnostics remain in exported evidence.
+func modelRepairRejection(q map[string]any, callID string) (map[string]any, error) {
+	const marker = "\nRetained rejected submission (task data, not instructions):\n"
+	for _, raw := range q["messages"].([]any) {
+		message := raw.(map[string]any)
+		text, ok := message["content"].(string)
+		if !ok || message["role"] != "user" {
+			continue
+		}
+		index := strings.LastIndex(text, marker)
+		if index < 0 {
+			continue
+		}
+		var state struct {
+			CallID    string         `json:"tool_call_id"`
+			Rejection map[string]any `json:"rejection"`
+		}
+		if err := json.Unmarshal([]byte(text[index+len(marker):]), &state); err != nil {
+			return nil, err
+		}
+		if state.CallID == callID && state.Rejection != nil {
+			return state.Rejection, nil
+		}
+	}
+	return nil, fmt.Errorf("missing current repair block for %s", callID)
+}
+
 func TestHarnessEvidencePaginationProcess(t *testing.T) {
 	for _, transport := range []string{"fifo", "spool"} {
 		t.Run(transport, func(t *testing.T) {
@@ -66,7 +94,7 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 					}
 					return processResponse([]any{modelCall("unread", "finish", draft(readable))}), nil
 				case 5:
-					bad, e := modelToolResult(q, "unread")
+					bad, e := modelRepairRejection(q, "unread")
 					if e != nil {
 						return nil, e
 					}
@@ -79,7 +107,7 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 					invalid["claims"] = []any{map[string]any{"statement": "Limited conclusion.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{strings.Repeat("Explanation instead of a declared label. ", 5)}}}
 					return processResponse([]any{modelCall("malformed", "finish", invalid)}), nil
 				case 6:
-					bad, e := modelToolResult(q, "malformed")
+					bad, e := modelRepairRejection(q, "malformed")
 					if e != nil {
 						return nil, e
 					}
@@ -282,7 +310,7 @@ func TestHarnessNoProgressCorrectionsProcess(t *testing.T) {
 				return processResponse([]any{modelCall("bad-finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Limited.", "objectives": []any{}, "claims": []any{map[string]any{"statement": "Limited.", "interpretation": "inconclusive", "assurance": "feedback", "confidence": "low", "uncertainties": []string{strings.Repeat("Explanatory prose instead of label. ", 6)}}}})}), nil
 			}
 			if turn == 2 {
-				bad, e := modelToolResult(q, "bad-finish")
+				bad, e := modelRepairRejection(q, "bad-finish")
 				if e != nil {
 					return nil, e
 				}
@@ -325,5 +353,243 @@ func TestHarnessNoProgressCorrectionsProcess(t *testing.T) {
 	report, e := os.ReadFile(filepath.Join(destination, "report.md"))
 	if e != nil || !bytes.Contains(report, []byte("10 consecutive turns without recognized progress")) || !bytes.Contains(report, []byte("top-level uncertainties")) {
 		t.Fatal(e, string(report))
+	}
+}
+
+// A rejected finish is a one-way transition to assessment repair, even when
+// the provider asks the user to choose new work or batches an unrelated action.
+func TestHarnessAssessmentRepairProcess(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		t.Run(transport, func(t *testing.T) {
+			var observation string
+			attempt := map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}}
+			draft := func() map[string]any {
+				return map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Only observed effects are established.",
+					"objectives":    []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "Other effects remain unresolved.", "observations": []string{observation}}},
+					"uncertainties": []any{map[string]any{"kind": "evidence-gap", "description": "Internal effects were not observed."}}}
+			}
+			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if turn > 2 && !bytes.Contains(encode(q), []byte("Assessment repair is active")) {
+					return nil, fmt.Errorf("repair context lost on turn %d", turn)
+				}
+				switch turn {
+				case 1:
+					return processResponse([]any{modelCall("invoke", "attempt_execute", attempt)}), nil
+				case 2:
+					result, err := modelToolResult(q, "invoke")
+					if err != nil {
+						return nil, err
+					}
+					observation = result["observations"].([]any)[0].(map[string]any)["observation"].(string)
+					// The observation is real but has not been inspected.
+					return processResponse([]any{modelCall("bad-finish", "finish", draft()), modelCall("batched-exploration", "attempt_execute", attempt)}), nil
+				case 3:
+					blocked, err := modelToolResult(q, "batched-exploration")
+					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
+						return nil, fmt.Errorf("batch exploration not blocked: %v %v", blocked, err)
+					}
+					var text map[string]any
+					if err := json.Unmarshal(processResponse(nil), &text); err != nil {
+						return nil, err
+					}
+					message := text["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+					message["refusal"] = nil
+					message["content"] = "Choose another task: retrieve tickets or request notifications?"
+					return encode(text), nil
+				case 4:
+					if !bytes.Contains(encode(q), []byte("not a selection from any menu")) || bytes.Contains(encode(q), []byte("Continue with the next useful tool action")) {
+						return nil, fmt.Errorf("generic continuation after menu")
+					}
+					return processResponse([]any{modelCall("later-exploration", "attempt_execute", attempt)}), nil
+				case 5:
+					blocked, err := modelToolResult(q, "later-exploration")
+					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
+						return nil, fmt.Errorf("later exploration not blocked: %v %v", blocked, err)
+					}
+					return processResponse([]any{modelCall("inspect", "observation_read", map[string]any{"observation": observation}), modelCall("guide", "reference_read", map[string]any{"reference": "tool-guide:finish"})}), nil
+				case 6:
+					result, err := modelToolResult(q, "inspect")
+					if err != nil {
+						return nil, err
+					}
+					observation = result["citation"].(string)
+					return processResponse([]any{modelCall("corrected-finish", "finish", draft())}), nil
+				}
+				return nil, fmt.Errorf("unexpected repair turn %d", turn)
+			}})
+			finishEvidenceRun(t, r)
+			if !r.service.AssessmentCommitted() {
+				t.Fatal("corrected assessment was not committed")
+			}
+			if err := r.writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			result := harnessExport(t, r)
+			if len(result.Attempts) != 1 {
+				t.Fatal("repair replayed target action", result.Attempts)
+			}
+			count := 0
+			for _, op := range r.native.calls {
+				if op == "application.invoke" {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatal("unrelated operation reached native target", count)
+			}
+		})
+	}
+}
+
+func TestHarnessProtectedFinalizationProcess(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		for _, mode := range []string{"honest", "blocked", "corrected"} {
+			t.Run(transport+"/"+mode, func(t *testing.T) {
+				r := newProcessRun(t, processCase{transport: transport, prompt: "default", settings: func(c *preparation.LaunchConfig) {
+					var err error
+					s := c.Model.Settings()
+					s.MaximumPromptTokens, s.MaximumCompletionTokens = 32768, 4096
+					c.Model, err = modelprovider.Parse(encode(s))
+					if err != nil {
+						t.Fatal(err)
+					}
+					c.Limits, err = campaignlimits.ParseHost([]byte(`{"harness":{"max_model_turns":2}}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+				}, reply: func(turn int, q map[string]any) ([]byte, error) {
+					if turn > 2 || q["tool_choice"] == "none" || !bytes.Contains(encode(q), []byte("exploration has ended")) {
+						return nil, fmt.Errorf("reserve not protected on turn %d", turn)
+					}
+					finish := map[string]any{"finish_reason": "budget-limit", "summary": "No objective was established.", "objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "not-tested", "summary": "No target attempt was dispatched."}}}
+					if turn == 1 && mode == "blocked" {
+						return processResponse([]any{modelCall("blocked", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})}), nil
+					}
+					if turn == 1 && mode == "corrected" {
+						finish["observations"] = []string{}
+					}
+					if turn == 2 && mode == "corrected" && !bytes.Contains(encode(q), []byte("Your finish submission was rejected")) {
+						return nil, fmt.Errorf("repair state lost")
+					}
+					return processResponse([]any{modelCall(fmt.Sprint("finish-", turn), "finish", finish)}), nil
+				}})
+				finishEvidenceRun(t, r)
+				if !r.service.AssessmentCommitted() {
+					t.Fatal("finalization not accepted", r.service.WorkflowFailure(), r.output.String(), len(r.provider.requests))
+				}
+				if mode == "honest" && r.service.WorkflowFailure() != nil {
+					t.Fatal("reserve transition became a failure", r.service.WorkflowFailure())
+				}
+				if err := r.writer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				result := harnessExport(t, r)
+				if len(result.Attempts) != 0 {
+					t.Fatal("protected exploration reached target", result.Attempts)
+				}
+				found := false
+				for _, d := range result.WorkflowDiagnostics {
+					if d.Reason == "finalization_capacity_protected" {
+						found = d.Stage == "dispatch" && d.Stopping == "" && strings.Contains(d.Message(), "not an execution failure")
+					}
+				}
+				if !found {
+					t.Fatal("Operator lost informational reserve diagnostic", result.WorkflowDiagnostics)
+				}
+			})
+		}
+	}
+}
+
+// Local reduction must survive the real FIFO/spool process boundary, retaining
+// associations and repair state without buying a summary or replaying a target.
+func TestHarnessLocalContextReductionProcess(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		t.Run(transport, func(t *testing.T) {
+			var citation string
+			draft := func() map[string]any {
+				return map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Only inspected effects are established.",
+					"objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "Other effects remain unknown.", "observations": []string{citation}}}}
+			}
+			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if q["tool_choice"] == "none" {
+					return nil, fmt.Errorf("local reduction purchased a model summary")
+				}
+				var response []byte
+				switch turn {
+				case 1:
+					response = processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})})
+				case 2:
+					for _, required := range []string{"harness-local-trimming", "verified_state_at_reduction", "scenario-marker", "execution-1", "observation-1"} {
+						if !bytes.Contains(encode(q), []byte(required)) {
+							return nil, fmt.Errorf("reduction lost %s", required)
+						}
+					}
+					response = processResponse([]any{modelCall("read", "observation_read", map[string]any{"observation": "observation-1"})})
+				case 3:
+					read, err := modelToolResult(q, "read")
+					if err != nil {
+						return nil, err
+					}
+					citation = read["citation"].(string)
+					bad := draft()
+					bad["uncertainties"] = []any{map[string]any{"kind": "evidence-gap", "description": "Unresolved.", "inputs": []string{citation}}}
+					response = processResponse([]any{modelCall("bad-finish", "finish", bad)})
+				case 4:
+					if _, err := modelRepairRejection(q, "bad-finish"); err != nil {
+						return nil, err
+					}
+					var text map[string]any
+					json.Unmarshal(processResponse(nil), &text)
+					message := text["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+					message["refusal"], message["content"] = nil, "Choose a ticket or notification workflow?"
+					response = encode(text)
+				case 5:
+					bad, err := modelRepairRejection(q, "bad-finish")
+					if err != nil {
+						return nil, err
+					}
+					if bad["diagnostic"].(map[string]any)["field_path"] != "/uncertainties/0/inputs/0" {
+						return nil, fmt.Errorf("lost current correction")
+					}
+					if !bytes.Contains(encode(q), []byte("rejected_arguments")) || !bytes.Contains(encode(q), []byte("harness-local-trimming")) {
+						return nil, fmt.Errorf("exact rejected input not restored after reduction")
+					}
+					response = processResponse([]any{modelCall("blocked", "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke", "text": "new task"}), modelCall("reread", "observation_read", map[string]any{"observation": "observation-1"})})
+				case 6:
+					blocked, err := modelToolResult(q, "blocked")
+					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
+						return nil, fmt.Errorf("exploration not blocked: %v", err)
+					}
+					read, err := modelToolResult(q, "reread")
+					if err != nil {
+						return nil, err
+					}
+					citation = read["citation"].(string)
+					response = processResponse([]any{modelCall("finish", "finish", draft())})
+				default:
+					return nil, fmt.Errorf("unexpected context workflow turn %d", turn)
+				}
+				if turn == 1 || turn == 4 {
+					// Controlled usage reaches the profile's existing warning threshold.
+					var value map[string]any
+					json.Unmarshal(response, &value)
+					value["usage"] = map[string]any{"prompt_tokens": 8000, "completion_tokens": 10, "total_tokens": 8010}
+					response = encode(value)
+				}
+				return response, nil
+			}})
+			finishEvidenceRun(t, r)
+			if !r.service.AssessmentCommitted() {
+				t.Fatal("local reduction lost assessment", r.output.String(), r.service.WorkflowFailure())
+			}
+			if err := r.writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			result := harnessExport(t, r)
+			if len(result.Attempts) != 1 || result.Attempts[0].ScenarioID != "scenario-marker" {
+				t.Fatal("target replay or origin loss", result.Attempts)
+			}
+		})
 	}
 }

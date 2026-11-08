@@ -104,6 +104,6 @@ class ConclusionFinalizer:
             self.loop.stop("budget-limit" if reason == "budget-limit" else "harness-error")
         self.budget().charge("finish", 0, self.clock())
         mapped = reason if reason in ("context-limit", "budget-limit") else "harness-error"
-        if self.loop.snapshot()["reason"] == "no-useful-next-experiment":
+        if self.loop.snapshot()["reason"] == "no-useful-next-experiment" and reason not in ("context-limit", "budget-limit"):
             mapped = "no-useful-next-experiment"
         return self.stage({"finish_reason": mapped, "unavailable": {"reason": reason}}).value

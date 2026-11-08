@@ -177,6 +177,34 @@ class ModelTools:
             value["parent"] = self.register("checkpoint", value["parent"])
         return value
 
+    def context_facts(self, present_citations):
+        """Small associations from verified state, never from target prose."""
+        executions, other = [], []
+        observations = [(h, r) for h, r in self.resources.items() if r['kind'] == 'observation']
+        for handle, resource in self.resources.items():
+            if resource['kind'] == 'execution':
+                receipt = resource['value']['attempt_receipt_id']
+                entries = {}
+                for citation, observation in observations:
+                    value = observation['value']
+                    if value['attempt_receipt_id'] != receipt:
+                        continue
+                    entry = entries.setdefault(value['entry_id'], dict(readable=[], inspected=[]))
+                    if observation['available']:
+                        entry['readable'].append(dict(handle=citation, **({'range': value['range']} if 'range' in value else {})))
+                    if observation['inspected']:
+                        entry['inspected'].append(dict(citation=citation, content_in_prompt=citation in present_citations))
+                executions.append(dict(execution=handle, **resource.get('execution_context', {}),
+                                       observations=list(entries.values())))
+            elif resource['kind'] == 'reference' and resource['inspected']:
+                other.append(dict(handle=handle, kind='reference', inspected=True,
+                    available=resource['available'], content_in_prompt=handle in present_citations,
+                    reference=resource['value']['reference_id'],
+                    **({'range': resource['value']['range']} if 'range' in resource['value'] else {})))
+            elif resource['kind'] not in ('observation', 'reference'):
+                other.append(dict(handle=handle, kind=resource['kind'], available=resource['available'], live=resource['live']))
+        return dict(executions=executions, other_handles=other)
+
     def _present(self, name, body, result, arguments):
         value = deepcopy(result)
         if name == "attempt_execute":
@@ -185,6 +213,10 @@ class ModelTools:
             value.pop("api_version", None); value.pop("kind", None)
             value.pop("target_output", None); value.pop("observations", None)
             value["execution"] = self.register("execution", dict(attempt_receipt_id=receipt), available=True)
+            self.resources[value['execution']]['execution_context'] = {
+                **{k: body[k] for k in ('origin', 'scenario_id') if k in body},
+                **{k: result[k] for k in ('status', 'invocation_state', 'target_contact', 'retry_disposition') if k in result},
+            }
             feedback = value.pop("feedback", {})
             value["feedback"] = {k: v for k, v in feedback.items() if k != "entries"}
             value["observations"] = []
