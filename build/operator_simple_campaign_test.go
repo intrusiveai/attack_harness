@@ -192,7 +192,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						var info struct {
 							Diagnostic *campaign.WorkflowDiagnostic `json:"workflow_diagnostic"`
 						}
-						if json.Unmarshal(raw, &info) != nil || info.Diagnostic == nil || info.Diagnostic.Stopping != "invalid-call-limit" || info.Diagnostic.Observed != 5 || info.Diagnostic.Limit != 5 || info.Diagnostic.Reason != "content_choice" {
+						if json.Unmarshal(raw, &info) != nil || info.Diagnostic == nil || info.Diagnostic.Stopping != "invalid-call-limit" || info.Diagnostic.Observed != 5 || info.Diagnostic.Limit != 5 || info.Diagnostic.Reason != "invalid_call_limit" || info.Diagnostic.Stage != "termination" || info.Diagnostic.Tool != "" || info.Diagnostic.CallID != "" || info.Diagnostic.FieldPath != "" {
 							t.Fatal(string(raw))
 						}
 						t.Log("user-visible stopping reason:", info.Diagnostic.Message())
@@ -209,10 +209,30 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						if mode != "exhausted" && report.HarnessClaims != 1 {
 							t.Fatal("missing accepted assessment", report)
 						}
-						if mode == "exhausted" && len(report.WorkflowDiagnostics) < 6 {
-							t.Fatal("missing rejection/stopping history", report.WorkflowDiagnostics)
+						if mode == "exhausted" {
+							if report.HarnessClaims != 0 || len(report.WorkflowDiagnostics) != 6 {
+								t.Fatal("incorrect assessment or rejection history", report)
+							}
+							for _, d := range report.WorkflowDiagnostics[:5] {
+								if d.Reason != "content_choice" || d.Stopping != "" {
+									t.Fatal("rejection conflated with termination", d)
+								}
+							}
+							terminal := report.WorkflowDiagnostics[5]
+							if terminal.Reason != "invalid_call_limit" || terminal.Stopping != "invalid-call-limit" || terminal.Observed != 5 || terminal.Limit != 5 || terminal.Stage != "termination" {
+								t.Fatal("stopping cause lost", terminal)
+							}
 						}
 						if verb == "export" && mode == "exhausted" {
+							markdown, e := os.ReadFile(filepath.Join(destination, "report.md"))
+							if e != nil {
+								t.Fatal(e)
+							}
+							for _, text := range []string{"5 invalid tool calls (configured limit 5)", "No final assessment was committed", "Preceding tool rejection (separate from the stopping cause)"} {
+								if !bytes.Contains(markdown, []byte(text)) {
+									t.Fatalf("report missing %q: %s", text, markdown)
+								}
+							}
 							data, e := os.ReadFile(filepath.Join(destination, "result-manifest.json"))
 							if e != nil || !bytes.Contains(data, []byte("invalid-call-limit")) {
 								t.Fatal("export lost cause", e)

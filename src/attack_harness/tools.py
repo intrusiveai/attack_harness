@@ -130,10 +130,11 @@ class Dispatcher:
                 'message': 'Cannot reserve another model request.',
                 'execution_occurred': 'no', 'resubmission_safe': False,
             }, 'stopping': {'condition': 'budget-limit', 'budget': dict(model_budget)}}
-        elif condition == 'no-progress-limit':
+        elif condition in ('no-progress-limit', 'invalid-call-limit'):
             report = {'diagnostic': {
-                'source':'harness-local','stage':'termination','reason':'no_progress_limit',
-                'message':'Consecutive turns without recognized progress reached the configured limit.',
+                'source':'harness-local','stage':'termination','reason':condition.replace('-', '_'),
+                'message':('Invalid tool calls reached the configured limit.' if condition == 'invalid-call-limit'
+                    else 'Consecutive turns without recognized progress reached the configured limit.'),
                 'execution_occurred':'no','resubmission_safe':False,
             },'stopping':{'condition':condition,'observed_count':observed,'configured_limit':limit}}
         elif observed is not None and limit is not None:
