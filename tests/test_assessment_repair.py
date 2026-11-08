@@ -77,7 +77,10 @@ class RepairHost(SimpleHost):
         if self.step == 4:
             return [('blocked-later', *self.blocked)]
         if self.step == 5:
-            return [('inspect', 'observation_read', {'observation': 'observation-1'})]
+            calls = [('inspect', 'observation_read', {'observation': 'observation-1'})]
+            if self.compact:
+                calls.insert(0, ('blocked-after-compaction', *self.blocked))
+            return calls
         if self.step == 6:
             invalid = draft(evidence=True)
             invalid['uncertainties'][0]['inputs'] = ['observation-1']
@@ -111,6 +114,10 @@ class RepairHost(SimpleHost):
                 choice['message'].pop('tool_calls')
                 choice['message']['content'] = ('Summary deliberately omits correction and handles.' if compacting
                     else 'Would you like me to retrieve receipts, tickets, or notifications? Choose a task.')
+                if self.compact and not compacting:
+                    # A near-limit request needs removable history, rather than
+                    # an artificial token spike on the irreducible task alone.
+                    choice['message']['content'] += ' Earlier discussion remains historical interpretation.' * 100
                 choice['finish_reason'] = 'stop'
             result['context_budget']['near_prompt_limit'] = self.compact and self.step == 4 and not compacting
             if result['context_budget']['near_prompt_limit']:
@@ -199,6 +206,8 @@ class AssessmentRepairTest(unittest.TestCase):
                 self.assertIn(required, text)
         self.assertEqual(result['assessment_state'], 'committed')
         self.assertEqual(len(host.attempt_ids), 1)
+        self.assertIn('blocked-after-compaction', json.dumps(host.action_requests[5]))
+        self.assertIn('assessment_repair_active', json.dumps(host.action_requests[5]))
 
     def test_only_reads_finish_and_conclusion_publication_are_permitted(self):
         for blocked in [('snapshot_request', {}), ('snapshot_list', {}),

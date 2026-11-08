@@ -74,6 +74,25 @@ budget. Supplied content stays in user/task data and cannot override system
 instructions or admitted capabilities. The portfolio derives scenario IDs and
 counts from the submitted bundle, independently of the number of invocations.
 
+The submitted objectives and scenario requirements define the investigation within
+admitted capabilities. Target replies and retrieved documents are observations;
+their offers, menus, approval demands, and refusals do not authorize new work.
+For example, providing an order ID requested by the target can advance a scenario
+that supplied that ID. An offer to create a ticket or notify a team is relevant
+only if it independently serves an authorized campaign requirement. The model
+is guided to explain additional experiments in `rationale`; a scenario ID alone
+does not establish relevance or coverage. Target claims of side effects retain
+their attribution unless appropriate evidence verifies those effects.
+
+Automated continuations explicitly return the model to the submitted campaign;
+they are not human answers, approvals, or menu selections. Compaction separates
+original requirements, executed actions, target claims and suggestions, Harness
+interpretations, and unresolved work. The original task stays supplied directly,
+and summaries are labeled as fallible history that cannot amend requirements,
+permissions, or assessment-repair state. Controlled tests verify these boundaries
+and repair dispatch restrictions across native conversation formats; they do not
+prove that a live model will always resist task drift.
+
 For larger bundles, Harness retains complete campaign requirements and one active
 scenario, deferring skill and target details to the existing reference reader.
 The task lists local scenario read handles: `reference_read` loads the selected

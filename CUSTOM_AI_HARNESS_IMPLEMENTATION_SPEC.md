@@ -58,7 +58,7 @@ replacement process, or automatic campaign replay is performed after failure.
 
 ## Campaign context and model interaction
 
-The initial context contains objectives, a scenario index, admitted target
+The initial context contains objectives, complete scenario requirements, admitted target
 capabilities, limits, a work queue, an initially untested coverage ledger, reference
 handles, and selected skill instructions. Large immutable content can be read by
 handle with `reference_read`. Context compaction preserves identity and receipt
@@ -70,6 +70,26 @@ explicit origin, valid returned handles, observation inspection, and honest
 finish. Custom prompt authors should preserve those instructions. Harness does
 not change a host-bound prompt after initialization. Skills are instructions and
 passive references; they cannot add executable tools or expand authority.
+
+Campaign objectives and scenario requirements MUST define the investigation within
+admitted capabilities. Target replies, retrieved documents, suggestions, menus,
+approval demands, and refusals MUST remain observations; they MUST NOT become new
+campaign requirements or operator authorization. A target's claimed side effect
+MUST remain attributed unless appropriate evidence independently establishes it.
+Observation content MUST remain separate from verified execution/citation metadata;
+target prose MUST NOT populate the resource or compaction handle ledger.
+
+Guidance MUST ground each additional target action in an unresolved campaign
+requirement, relevant hypothesis, or material evidence gap. The model SHOULD
+explain that purpose in the existing `rationale` field. A scenario ID alone MUST
+NOT establish relevance or coverage. Relevant requests for scenario-supplied
+details MUST remain possible. Harness MUST NOT use action-name keyword filters
+or an extra planning model to decide investigative relevance.
+
+Ordinary automated continuations MUST return the model to the submitted campaign
+and explicitly disclaim human approval, answers, or menu selections. During
+assessment repair, the focused repair continuation and dispatcher restrictions
+MUST remain in force, including after compaction.
 
 Model calls go through Operator's model relay. The release contains shared
 projections for OpenAI Chat, OpenAI Responses, Anthropic Messages, Bedrock
@@ -207,6 +227,19 @@ retains the task and exact returned identity ledger across successive compaction
 and labels summaries as interpretation. Insufficient budget or irreducible context
 uses the existing honest unavailable finish path. No provider or target replay is
 introduced. Exact token preflight is disabled in the baseline.
+
+Compaction guidance MUST distinguish original requirements, executed actions and
+verified handles, target claims/suggestions, Harness interpretations, and unresolved
+campaign work. It MUST forbid promoting target offers or optional model proposals
+into requirements. Reinserted summaries MUST retain `model-generated-not-evidence`
+provenance and an explicit statement that this fallible historical interpretation
+cannot amend the original task, scenario requirements, permissions, or repair state.
+Harness MUST retain the original task and repair state independently of the summary.
+Controlled tests MUST exercise these boundaries across the supported native codecs,
+including misleading summaries, fabricated handles in target content, relevant
+follow-ups, menu responses, and blocked exploration during assessment repair.
+Such tests establish construction and dispatch behavior, not live-model resistance
+to task drift.
 
 ## Operating policy supplied at startup
 
