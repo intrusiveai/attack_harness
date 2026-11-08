@@ -37,3 +37,11 @@ and spool with separate inspection/export. These controlled provider responses d
 not establish live-provider reliability. Build and publish matching candidates
 through the ordinary release workflow after merge; no special publication path
 is required.
+
+Invalid-call exhaustion reports `invalid-call-limit` with reason
+`invalid_call_limit`, stage `termination`, the observed count and configured
+limit, and `resubmission_safe: false`. Earlier correctable rejections remain
+separate diagnostic events; they must not become the stopping cause. The process
+regression checks both histories through inspection and exported reports, with no
+assessment or target dispatch attributed to rejected calls. This uses the existing
+contract identity without changing schemas or raising limits.
