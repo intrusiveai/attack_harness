@@ -1,6 +1,8 @@
 """Fixed, serial model-tool dispatch with restore batch boundaries."""
 
 from dataclasses import dataclass
+from copy import deepcopy
+import json
 
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
@@ -84,6 +86,29 @@ def _content(value):
     return _canonical_value(value, ORDINARY_LIMIT).decode("utf-8")
 
 
+@dataclass(frozen=True)
+class AssessmentRepair:
+    """Product-owned correction state, independent of execution closure."""
+
+    call: ToolCall
+    rejection: dict
+
+    def context(self):
+        # Keep exact JSON text, including duplicate keys, as task data. Never
+        # parse/rewrite the rejected assessment or promote it to instructions.
+        return {"active": True, "tool_call_id": self.call.call_id,
+                "rejected_arguments": self.call.arguments.decode("utf-8", errors="replace"),
+                "rejection": self.rejection}
+
+    def guidance(self):
+        return ("Your finish submission was rejected. Assessment repair is active. "
+                "Correct the identified field while preserving valid parts of the assessment. "
+                "Use existing execution and evidence references. Read relevant evidence or tool guidance "
+                "if necessary, then call finish again. Do not start new target actions or ask the user "
+                "to select another task. This is a repair instruction, not a selection from any menu. "
+                "Report unresolved findings honestly. Rejection details: " + json.dumps(self.rejection))
+
+
 class Dispatcher:
     """Dispatch only explicitly installed handlers in declared call order."""
 
@@ -98,10 +123,38 @@ class Dispatcher:
         self.client = client
         self.last_rejection = None
         self.last_results = []
+        self.repair = None
         self.protocol = protocol
         self.loop = loop
         self._handlers = dict(handlers)
         self._raw_handlers = dict(raw_handlers)
+
+    def _check_repair_action(self, call):
+        if self.repair is None or call.name in ("finish", "observation_read", "reference_read"):
+            return
+        if call.name == "artifact_publish":
+            try:
+                arguments = self.protocol.validate_tool_arguments(call.name, call.arguments)
+            except ContractError as error:
+                raise ToolError.from_contract(error) from None
+            if arguments["purpose"] == "conclusion":
+                return
+        raise ToolError("assessment_repair_active",
+            "Assessment repair is active. This action was not executed.",
+            correction="Correct the rejected finish submission using retained evidence; read observations or tool guidance if needed.")
+
+    def report_unresolved_repair(self, budget, now):
+        if self.repair is None or self.client is None:
+            return
+        diagnostic = deepcopy(self.repair.rejection.get("diagnostic", {}))
+        reason = diagnostic.get("reason", self.repair.rejection.get("code", "finish_rejected"))
+        diagnostic.update(source="harness-local", stage="assessment-repair",
+            reason="finish_repair_unresolved",
+            message=f"Assessment repair ended without an accepted corrected finish. Last rejection: {reason}."[:512],
+            execution_occurred="no", resubmission_safe=False)
+        budget.charge("diagnostic", 0, now)
+        self.client.request("engine.diagnostic_report", {"tool_name": "finish", "diagnostic": diagnostic},
+                            operation_id=self.client.operation_id("unresolved-finish"))
 
     def _report(self, call, value):
         diagnostic = value.get("diagnostic", {})
@@ -192,6 +245,7 @@ class Dispatcher:
                     if handler is None and raw_handler is None:
                         raise ToolError("unknown_tool", "Unknown tool name.",
                                         correction="Choose one of the advertised tools.")
+                    self._check_repair_action(call)
                     if raw_handler is not None:
                         handled = raw_handler(call)
                     else:
@@ -211,12 +265,21 @@ class Dispatcher:
                     if isinstance(error, RuntimeStopped) or error.reason != "configured_size_exceeded":
                         raise
                     handled = HandlerResult(local_error(error), "invalid")
+                if call.name == "finish":
+                    if (handled.outcome in ("invalid", "preflight-rejected") and
+                            handled.value.get("disposition") == "correct-and-resubmit"):
+                        self.repair = AssessmentRepair(call, deepcopy(handled.value))
+                    elif handled.outcome == "success" and handled.value.get("status") == "accepted":
+                        self.repair = None
                 if handled.outcome == "invalid":
                     self._report(call, handled.value)
                     if handled.value.get('disposition') == 'terminate':
                         if self.client is not None: self.client.fail('internal-tool-resolution-failed')
                         raise RuntimeStopped('internal-tool-resolution-failed')
-                result = ToolResult(call.call_id, call.name, _content(handled.value), handled.outcome)
+                value = handled.value
+                if self.repair is not None and call.name == "finish":
+                    value = dict(value, repair_guidance=self.repair.guidance())
+                result = ToolResult(call.call_id, call.name, _content(value), handled.outcome)
                 self.loop.finish_tool(handled.outcome)
                 results.append(result)
                 if handled.outcome == "restored":

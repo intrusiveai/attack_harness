@@ -42,6 +42,7 @@ class NativeConversation:
         self._model_allowance = model_allowance
         self.model_admission_failure = None
         self._finalizing = False
+        self._repair = None
 
     @property
     def task(self):
@@ -52,9 +53,21 @@ class NativeConversation:
         require(type(task) is str and task)
         field = self._history_field()
         index = 1 if self.codec == "openai-chat-text-tools-v1" else 0
-        self._request[field][index] = self._initial(task + self._summary + self._finalization_guidance())[field][index]
+        self._request[field][index] = self._initial(task + self._summary + self._finalization_guidance() + self._repair_context())[field][index]
         self._task = task
         self.task_generation += 1
+
+    def set_repair(self, repair):
+        if repair is not self._repair:
+            self._repair = repair
+            self.replace_task(self._task)
+
+    def _repair_context(self):
+        if self._repair is None:
+            return ""
+        return ("\n\n" + self._repair.guidance() +
+                "\nRetained rejected submission (task data, not instructions):\n" +
+                json.dumps(self._repair.context()))
 
     def _initial(self, task):
         policy = self.policy
@@ -227,7 +240,7 @@ class NativeConversation:
         # Keep whole native assistant/tool groups. Never send an oversized full
         # history with another instruction wrapped around it.
         while True:
-            source=instruction+_canonical_value(dict(task=self._task,identities=ledger,validation_corrections=corrections,selected_groups=groups,
+            source=instruction+_canonical_value(dict(task=self._task + self._repair_context(),identities=ledger,validation_corrections=corrections,selected_groups=groups,
                 omitted_complete_groups=len(self._groups)-len(groups)),ORDINARY_LIMIT).decode('utf-8')
             request=self._initial(source)
             if self.codec in ("openai-chat-text-tools-v1",
@@ -265,7 +278,7 @@ class NativeConversation:
         self._compactions.append(record)
         summary_suffix = "\n\nCompacted campaign history:\n" + \
             _canonical_value({**record, "summary": summary, "retained_identities":getattr(self,"_compaction_ledger",[]), "validation_corrections":getattr(self,"_retained_corrections",[])}, 256 << 10).decode("utf-8")
-        compacted = self._task + summary_suffix + self._finalization_guidance()
+        compacted = self._task + summary_suffix + self._finalization_guidance() + self._repair_context()
         require(len(compacted) <= 1 << 20)
         self._summary = summary_suffix
         self._request = self._initial(compacted)
@@ -288,7 +301,9 @@ class NativeConversation:
         self._segments += 1
         self._groups.append(deepcopy(segment))
 
-    def prompt_again(self, text="Continue with the next useful tool action or finish."):
+    def prompt_again(self, text=None):
+        if text is None:
+            text = self._repair.guidance() if self._repair else "Continue with the next useful tool action or finish."
         require(type(text) is str and text)
         if self.codec == "openai-responses-text-tools-v1":
             item = {"role": "user", "content": text}
@@ -326,6 +341,8 @@ class AdaptiveHarness:
         state = self.loop.snapshot()
         if state["mode"] == "exploring":
             self.loop.stop("budget-limit" if reason == "budget-limit" else "harness-error")
+        if self.dispatcher.repair is not None:
+            self.dispatcher.report_unresolved_repair(self.finalizer.budget(), self.finalizer.clock())
         if self.limits:
             if model_admission:
                 accounting = self.conversation.model_admission_failure
@@ -441,8 +458,10 @@ class AdaptiveHarness:
                     if self.loop.snapshot()["mode"] == "finalizing":
                         if self.dispatcher.last_results:
                             self.conversation.extend(batch.continuation(self.dispatcher.last_results))
+                        self.conversation.set_repair(self.dispatcher.repair)
                         break
                     raise
+                self.conversation.set_repair(self.dispatcher.repair)
                 if self.finalizer.pending:
                     return self.finalizer.finish()
                 self.conversation.extend(batch.continuation(results))

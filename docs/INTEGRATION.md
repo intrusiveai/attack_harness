@@ -197,6 +197,22 @@ an appropriate inconclusive, not-tested, or not-observed outcome. Reference chec
 remain structural and evidence-based; Harness does not use keyword matching to
 decide whether free-text requirements were satisfied.
 
+After a correctable finish rejection, Harness enters assessment repair. It keeps
+the rejected submission and precise correction, and asks the model to repair the
+assessment using existing evidence. Prose or a menu of other tasks does not
+resume exploration. The dispatcher permits only corrected finish submissions,
+observation/input/tool-guidance reads, and conclusion-purpose artifact publication;
+it rejects new target actions, injection changes, snapshots, restores, and record
+appends before dispatch, including later calls in the same model response.
+
+Repair state, original objectives, and verified handles survive compaction
+independently of the model summary. Existing limits still apply. If repair cannot
+finish, the unresolved correction is reported separately from the actual stopping
+cause; the bounded unavailable-finish path does not imply assessment success.
+An accepted finish remains the authority for closing execution. See the
+[assessment-repair specification](../specs/assessment-repair.md) for the dispatch
+and retention requirements.
+
 Accepted finish reports `execution_admission: "closed"`,
 `finalization_status: "pending"`, and requires exit within 5,000 ms. A healthy
 Harness exits with code 0, including for an honest unsuccessful assessment.

@@ -327,3 +327,88 @@ func TestHarnessNoProgressCorrectionsProcess(t *testing.T) {
 		t.Fatal(e, string(report))
 	}
 }
+
+// A rejected finish is a one-way transition to assessment repair, even when
+// the provider asks the user to choose new work or batches an unrelated action.
+func TestHarnessAssessmentRepairProcess(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		t.Run(transport, func(t *testing.T) {
+			var observation string
+			attempt := map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}}
+			draft := func() map[string]any {
+				return map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Only observed effects are established.",
+					"objectives":    []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "Other effects remain unresolved.", "observations": []string{observation}}},
+					"uncertainties": []any{map[string]any{"kind": "evidence-gap", "description": "Internal effects were not observed."}}}
+			}
+			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if turn > 2 && !bytes.Contains(encode(q), []byte("Assessment repair is active")) {
+					return nil, fmt.Errorf("repair context lost on turn %d", turn)
+				}
+				switch turn {
+				case 1:
+					return processResponse([]any{modelCall("invoke", "attempt_execute", attempt)}), nil
+				case 2:
+					result, err := modelToolResult(q, "invoke")
+					if err != nil {
+						return nil, err
+					}
+					observation = result["observations"].([]any)[0].(map[string]any)["observation"].(string)
+					// The observation is real but has not been inspected.
+					return processResponse([]any{modelCall("bad-finish", "finish", draft()), modelCall("batched-exploration", "attempt_execute", attempt)}), nil
+				case 3:
+					blocked, err := modelToolResult(q, "batched-exploration")
+					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
+						return nil, fmt.Errorf("batch exploration not blocked: %v %v", blocked, err)
+					}
+					var text map[string]any
+					if err := json.Unmarshal(processResponse(nil), &text); err != nil {
+						return nil, err
+					}
+					message := text["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+					message["refusal"] = nil
+					message["content"] = "Choose another task: retrieve tickets or request notifications?"
+					return encode(text), nil
+				case 4:
+					if !bytes.Contains(encode(q), []byte("not a selection from any menu")) || bytes.Contains(encode(q), []byte("Continue with the next useful tool action")) {
+						return nil, fmt.Errorf("generic continuation after menu")
+					}
+					return processResponse([]any{modelCall("later-exploration", "attempt_execute", attempt)}), nil
+				case 5:
+					blocked, err := modelToolResult(q, "later-exploration")
+					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
+						return nil, fmt.Errorf("later exploration not blocked: %v %v", blocked, err)
+					}
+					return processResponse([]any{modelCall("inspect", "observation_read", map[string]any{"observation": observation}), modelCall("guide", "reference_read", map[string]any{"reference": "tool-guide:finish"})}), nil
+				case 6:
+					result, err := modelToolResult(q, "inspect")
+					if err != nil {
+						return nil, err
+					}
+					observation = result["citation"].(string)
+					return processResponse([]any{modelCall("corrected-finish", "finish", draft())}), nil
+				}
+				return nil, fmt.Errorf("unexpected repair turn %d", turn)
+			}})
+			finishEvidenceRun(t, r)
+			if !r.service.AssessmentCommitted() {
+				t.Fatal("corrected assessment was not committed")
+			}
+			if err := r.writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			result := harnessExport(t, r)
+			if len(result.Attempts) != 1 {
+				t.Fatal("repair replayed target action", result.Attempts)
+			}
+			count := 0
+			for _, op := range r.native.calls {
+				if op == "application.invoke" {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatal("unrelated operation reached native target", count)
+			}
+		})
+	}
+}
