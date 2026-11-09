@@ -7,15 +7,15 @@ There is no standalone Harness service or user-facing command-line interface.
 
 ## Locked contract and runtime
 
-The release consumes Operator shared contract **0.8.0**, pinned in
+The release consumes the Operator shared contract identified in
 [`build/contract-lock.json`](../build/contract-lock.json). A matching version string
 alone is insufficient: both products validate SHA-256 of the exact `schemas/asyncapi.json` bytes,
 including formatting and the final newline.
 
 | Identity | Locked value |
 | --- | --- |
-| Shared package version | `0.8.0` |
-| Shared package digest | `sha256:699d04987bd431ca13da1823d6e506c5a1ac6015acc9d90b713e679fa116bff1` |
+| Shared package version | `package.package_version` in [the contract lock](../build/contract-lock.json) |
+| Shared package digest | `package.package_digest` in [the contract lock](../build/contract-lock.json) |
 | Runtime profile | `operator-container/v1` |
 | Image platforms | `linux/amd64`, `linux/arm64` |
 
@@ -341,8 +341,8 @@ image identities when running a deployed integration through Operator.
 
 ## Context behavior
 
-Matching Operator and Harness builds require shared package 0.8.0 and its exact
-locked digest. Mismatched interface versions or byte hashes fail before campaign execution;
+Matching Operator and Harness builds require the version and exact document hash
+identified in [the contract lock](../build/contract-lock.json). Mismatched interface versions or byte hashes fail before campaign execution;
 implementation-only Operator changes do not require a Harness identity update.
 Frozen injection surfaces select the same tools in Go and Python; restores keep
 that catalog. Context budget results are validated against native response usage.

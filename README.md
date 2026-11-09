@@ -60,8 +60,8 @@ selects it in Operator's `engine.image` configuration. Operator verifies the ima
 embedded image compatibility, supplies campaign inputs, and manages container startup
 and shutdown. There is no separate user-facing harness CLI to configure or run.
 
-Release **v0.1.4** requires an Operator implementation of shared contract
-**0.8.0** with the exact AsyncAPI document-byte hash approved by this release. The
+Release **v0.1.4** requires an Operator implementation matching the contract version
+and exact AsyncAPI document-byte hash in [the contract lock](build/contract-lock.json). The
 [integration guide](docs/INTEGRATION.md) provides the immutable contract identity,
 image selection steps, tool examples, and compatibility checks.
 

@@ -1,7 +1,7 @@
 # Model conversation relay
 
-Attack Harness requires Operator interface 0.8.0 with the exact document hash in
-`build/contract-lock.json`. Both components validate that identity before execution.
+Attack Harness requires the Operator interface version and exact document hash
+identified in [the contract lock](../build/contract-lock.json). Both components validate that identity before execution.
 
 Harness sends `engine.model_generate` with `purpose` (`generation` or `compaction`)
 and a provider-native `conversation` array. It does not send a model, endpoint,

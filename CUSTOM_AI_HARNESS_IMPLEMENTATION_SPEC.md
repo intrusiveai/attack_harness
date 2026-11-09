@@ -11,8 +11,9 @@ boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_S
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.8.0** from the image and
-validates its exact AsyncAPI document-byte hash against [the contract lock](build/contract-lock.json).
+The Harness loads Operator's shared contract package from the image and validates
+its version and exact AsyncAPI document-byte hash against
+[the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
 registry, and release bindings. An incompatible package fails before execution.
