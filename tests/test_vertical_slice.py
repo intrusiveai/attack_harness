@@ -82,9 +82,6 @@ class ScriptedHost:
     @staticmethod
     def _model_result(turn,calls):
         return {
-            "codec_id":"openai-chat-text-tools-v1",
-            "profile_id":"vertical-slice-profile",
-            "profile_digest":"sha256:"+"9"*64,
             "receipt_id":f"model-receipt-{turn}",
             "context_budget":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"requested_completion_tokens":4096,"reserved_tokens":36864,"remaining_prompt_tokens":32668,"near_prompt_limit":False,"remaining_model_tokens":1000000-turn*120,"remaining_model_turns":100-turn},
             "response":{

@@ -1,3 +1,4 @@
+from relay_fixture import relay_cases
 from copy import deepcopy
 import json
 import os
@@ -67,7 +68,7 @@ class AdaptiveTest(unittest.TestCase):
         cls.protocol = Protocol(cls.root)
 
     def cases(self, filename):
-        return json.loads((self.root / "fixtures" / filename).read_text())
+        return relay_cases(json.loads((self.root / "fixtures" / filename).read_text()))
 
     def test_all_installed_codecs_build_bound_initial_requests(self):
         files = ["model-codec.json", "responses-model-codec.json",
@@ -81,19 +82,11 @@ class AdaptiveTest(unittest.TestCase):
                 conversation = NativeConversation(self.protocol, policy_raw,
                                                   "Inspect the admitted target.")
                 _, request_raw = conversation.body()
-                self.protocol.validate_model_request(policy_raw, request_raw)
+                self.protocol.validate_model_request(request_raw)
                 compact_body, compact_raw, _, _ = conversation.compaction_body()
-                self.protocol.validate_model_request(policy_raw, compact_raw)
-                if conversation.codec == "bedrock-converse-text-tools-v1":
-                    self.assertNotIn("toolConfig", compact_body["request"])
-                elif conversation.codec == "gemini-text-tools-v1":
-                    self.assertEqual(compact_body["request"]["toolConfig"]
-                                     ["functionCallingConfig"]["mode"], "NONE")
-                elif conversation.codec == "anthropic-messages-text-tools-v1":
-                    self.assertEqual(compact_body["request"]["tool_choice"],
-                                     {"type":"none"})
-                else:
-                    self.assertEqual(compact_body["request"]["tool_choice"], "none")
+                self.protocol.validate_model_request(compact_raw)
+                self.assertEqual(compact_body["purpose"], "compaction")
+                self.assertEqual(set(compact_body), {"purpose", "conversation"})
 
     def test_tool_continuation_is_native_and_text_exhaustion_finalizes(self):
         cases = self.cases("model-codec.json")
@@ -117,7 +110,7 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual(result["conclusion_state"], "unavailable")
         self.assertEqual(len(observed), 2)
         self.assertEqual(len(client.requests), 2)
-        messages = client.requests[1]["request"]["messages"]
+        messages = client.requests[1]["conversation"]
         self.assertEqual(messages[-3]["role"], "assistant")
         self.assertEqual([item["role"] for item in messages[-2:]], ["tool", "tool"])
         self.assertEqual(finalizer.reason, "local-error")
@@ -130,7 +123,7 @@ class AdaptiveTest(unittest.TestCase):
                          if item["name"] == "native text and usage preserved")
         policy_raw = _canonical_value(tool_case["policy"], 4 << 20)
         conversation = NativeConversation(self.protocol, policy_raw,
-                                          "Inspect the target.", compact_at=1000)
+                                          "Inspect the target.", compact_at=300)
         loop = HarnessLoop(dict(LIMITS, max_no_progress_turns=3))
         dispatcher = Dispatcher(
             self.protocol, loop,
@@ -144,8 +137,8 @@ class AdaptiveTest(unittest.TestCase):
         AdaptiveHarness(self.protocol, client, loop, dispatcher,
                         conversation, finalizer).run()
         self.assertEqual(len(client.requests), 3)
-        self.assertTrue(all(r['request']['tool_choice'] == 'auto' for r in client.requests))
-        trimmed = client.requests[2]['request']['messages'][1]['content']
+        self.assertTrue(all(r['purpose'] == 'generation' for r in client.requests))
+        trimmed = client.requests[2]['conversation'][0]['content']
         self.assertIn('harness-local-trimming', trimmed)
         self.assertNotIn('model-generated-not-evidence', trimmed)
         self.assertEqual(loop.snapshot()["model_turns"], 3)

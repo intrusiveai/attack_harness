@@ -28,8 +28,11 @@ func TestPythonProcessLargeHistoryCompaction(t *testing.T) {
 				case 1:
 					// Cross the production 1 MiB threshold with a complete native
 					// exchange. Reduction must not purchase another model call.
-					count := (1 << 20) - len(encode(q)) + 8192
-					if count <= 512<<10 || count >= 1<<20 {
+					// The transport carries history only; fixed host prompt/tools are
+					// added later and must not trigger this wire-size fixture.
+					relay := map[string]any{"purpose": "generation", "conversation": q["messages"].([]any)[1:]}
+					count := (1 << 20) - len(encode(relay)) + 8192
+					if count <= 512<<10 || count >= (1<<20)+8192 {
 						return nil, fmt.Errorf("unexpected initial request size")
 					}
 					return processText(strings.Repeat("x", count)), nil

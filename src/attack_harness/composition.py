@@ -206,10 +206,12 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
     context=inputs.context();remaining=admission["remaining_limits"]
     loop=HarnessLoop(admission["limits"]["harness"])
     codec=context["model"]["codec_id"]
-    tools_raw=protocol.model_tools(codec,sorted(client.operations),context["model"]["tool_selection"]["injection_surfaces"])
-    policy_raw=protocol.model_policy_from_context(inputs.context_raw,tools_raw,inputs.prompt_raw)
+    policy_raw=_canonical_value(context["model"], ORDINARY_LIMIT)
     conversation=NativeConversation(protocol,policy_raw,build_task(inputs),remaining=remaining,
-        model_allowance=admission['limits']['campaign']['model_tokens'])
+        model_allowance=admission['limits']['campaign']['model_tokens'],
+        fixed_context_bytes=len(inputs.prompt_raw) + len(protocol.model_tools(codec,
+            context['operations'],
+            context['model']['tool_selection']['injection_surfaces'])))
     scenario_delivery=ScenarioDelivery(inputs,conversation,loop)
     artifacts=ArtifactPublisher(protocol,client)
     observations=ObservationReader(client)

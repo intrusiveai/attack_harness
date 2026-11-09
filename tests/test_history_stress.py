@@ -1,3 +1,4 @@
+from relay_fixture import relay_cases
 """Bounded stress histories across every supported native model codec."""
 import json
 import os
@@ -17,7 +18,7 @@ class HistoryStressTest(unittest.TestCase):
                          "anthropic-model-codec.json", "bedrock-model-codec.json",
                          "gemini-model-codec.json"):
             with self.subTest(codec=filename):
-                cases = json.loads((root / "fixtures" / filename).read_text())
+                cases = relay_cases(json.loads((root / "fixtures" / filename).read_text()))
                 case = next(c for c in cases if c["mode"] == "context" and c["valid"])
                 policy = _canonical_value(case["policy"], 4 << 20)
                 conversation = NativeConversation(protocol, policy,
@@ -38,19 +39,10 @@ class HistoryStressTest(unittest.TestCase):
                     body, raw, digest, omitted = conversation.compaction_body()
                     self.assertEqual(omitted, 200)
                     history = conversation._request[conversation._history_field()]
-                    if conversation.codec == "openai-chat-text-tools-v1":
-                        history = history[1:]
                     self.assertEqual(digest, raw_digest(_canonical_value(history, 4 << 20)))
-                    protocol.validate_model_request(policy, raw)
-                    request = body["request"]
-                    if conversation.codec == "bedrock-converse-text-tools-v1":
-                        self.assertNotIn("toolConfig", request)
-                    elif conversation.codec == "gemini-text-tools-v1":
-                        self.assertEqual(request["toolConfig"]["functionCallingConfig"]["mode"], "NONE")
-                    elif conversation.codec == "anthropic-messages-text-tools-v1":
-                        self.assertEqual(request["tool_choice"], {"type":"none"})
-                    else:
-                        self.assertEqual(request["tool_choice"], "none")
+                    protocol.validate_model_request(raw)
+                    self.assertEqual(body["purpose"], "compaction")
+                    self.assertEqual(set(body), {"purpose", "conversation"})
                     conversation.apply_compaction("Prior observations remain uncertain.", digest, omitted)
                     _, after = conversation.body()
                     self.assertLess(len(after), 64 << 10)

@@ -72,13 +72,15 @@ resource digests, runtime configuration, and generated catalog against those inp
 ## Embedded compatibility and digest bindings
 
 `/opt/operator/engine/share/compatibility.json` is a bounded closed JSON object.
-For AMD64 its values are:
+For AMD64 its template is shown below. Builds MUST fill the two placeholders
+from `package.package_version` and `package.package_digest` in
+[the contract lock](build/contract-lock.json):
 
 ```json
 {
   "api_version": "operator.dev/harness-compatibility/v1alpha2",
-  "contract_package_version": "0.7.1",
-  "contract_package_digest": "sha256:5f1f545701e68d057592f892c573667391df844008ec385f5cdcfbdb42e63e88",
+  "contract_package_version": "<package.package_version>",
+  "contract_package_digest": "<package.package_digest>",
   "runtime_profile": "operator-container/v1",
   "platform": "linux/amd64"
 }

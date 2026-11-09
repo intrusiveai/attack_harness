@@ -1,7 +1,7 @@
 # Correcting model tool calls
 
 Use the shared Operator validators and model guidance for the approved contract.
-Contract 0.7.1 adds installed-schema constraint references and the
+The current contract includes installed-schema constraint references and the
 `no-progress-limit` stopping condition. `build/contract-lock.json` pins the exact
 version/document hash; implementation source revisions do not determine runtime
 compatibility.

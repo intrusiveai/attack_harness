@@ -49,9 +49,28 @@ class ContextOverheadTest(unittest.TestCase):
         self.assertEqual(metrics['target_invocations'], 4)
         self.assertEqual(metrics['model_compaction_calls'], 0)
         # The fixture rereads only if the bytes needed for its claim were removed.
-        self.assertEqual(metrics['evidence_rereads'], 1)
-        self.assertEqual(metrics['evidence_reads'], 5)
+        self.assertEqual(metrics['evidence_rereads'], int(metrics['evidence_reread_required']))
+        self.assertEqual(metrics['evidence_reads'], 4 + metrics['evidence_rereads'])
         self.assertIsNone(metrics['actual_provider_usage'])
+
+    def test_estimate_includes_fixed_prompt_and_tools_without_resending_them(self):
+        from types import SimpleNamespace
+        from test_vertical_slice import LIMITS, Clock
+        from attack_harness.composition import compose_campaign
+        host=MeasuredHost(self.protocol)
+        inputs=MeasuredInputs(self.protocol,self.root,host)
+        session=SimpleNamespace(inputs=inputs,client=host,admission={
+            'limits':{'harness':LIMITS,'campaign':{'model_tokens':1000000}},
+            'remaining_limits':{'campaign_time_ms':100000,'artifact_bytes':2<<20,
+                                'model_tokens':1000000,'model_turns':30}})
+        c=compose_campaign(self.protocol,session,clock=Clock()).adaptive.conversation
+        body,raw=c.body()
+        self.assertEqual(set(body), {'purpose','conversation'})
+        self.assertGreater(c._fixed_context_bytes, len(inputs.prompt_raw))
+        self.assertGreater(c._estimated_tokens(raw), len(raw)*0.5)
+        c.observe_budget(dict(context_budget=dict(input_tokens=10000,
+            remaining_model_tokens=900000,remaining_model_turns=29)), raw)
+        self.assertEqual(c._estimated_tokens(raw), 11000)
 
     def test_local_reduction_keeps_verified_associations_and_range_state_in_every_codec(self):
         fixture = boundary.InstructionBoundaryTest()
@@ -136,7 +155,7 @@ class ContextOverheadTest(unittest.TestCase):
                 _, request_raw=c.body()
                 self.assertEqual(a.dispatcher.repair.call.arguments,raw)
                 self.assertIn(raw.decode(), c._repair.context()['rejected_arguments'])
-                task=c._request[c._history_field()][1 if c.codec=='openai-chat-text-tools-v1' else 0]
+                task=c._request[c._history_field()][0]
                 text=json.dumps(task)
                 self.assertIn('rejected_arguments', text)
                 self.assertEqual(request_raw.decode().count('field_path'), 1)  # One diagnostic object, not repeated history copies.
