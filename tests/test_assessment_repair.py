@@ -100,7 +100,7 @@ class RepairHost(SimpleHost):
             self.events.append((operation, deepcopy(body), operation_id))
             self.model_requests.append(deepcopy(body))
             self.model_turn += 1
-            compacting = body['request'].get('tool_choice') == 'none'
+            compacting = body['purpose'] == 'compaction'
             if compacting:
                 self.compaction_requests.append(deepcopy(body))
                 calls = None
@@ -186,7 +186,7 @@ class AssessmentRepairTest(unittest.TestCase):
                         self.assertIn('Original objective-marker', text)
                         self.assertNotIn('Continue with the next useful tool action', text)
                         self.assertTrue('rejected_arguments' in text or 'request_in_history' in text)
-                    prompt_after_menu = host.action_requests[3]['request']['messages'][-1]['content']
+                    prompt_after_menu = host.action_requests[3]['conversation'][-1]['content']
                     self.assertIn('not a human answer or menu selection', prompt_after_menu)
                     self.assertIn('/objectives/0/summary' if host_rejection else '/objectives/0/attempts', json.dumps(host.action_requests[3]))
                     self.assertIn('assessment_repair_active', json.dumps(host.action_requests[4]))

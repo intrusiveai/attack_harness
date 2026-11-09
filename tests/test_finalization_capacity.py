@@ -40,8 +40,8 @@ class BudgetHost(SimpleHost):
         if operation != 'engine.model_generate':
             return result
         step = self.steps[self.model_turn - 1]
-        expected = 'none' if step.get('compaction') else 'auto'
-        if body['request']['tool_choice'] != expected:
+        expected = 'compaction' if step.get('compaction') else 'generation'
+        if body['purpose'] != expected:
             raise AssertionError('Unexpected model-based compaction/admission')
         prompt, completion = step.get('usage', (100, 20))
         self.tokens -= prompt + completion
@@ -153,7 +153,7 @@ class FinalizationCapacityTest(unittest.TestCase):
         host, _, c, result, loop = self.run_campaign(3*R, 3, [
             dict(calls=[('finish','finish',FINISH)]),
         ], seed=seed)
-        self.assertEqual([r['request']['tool_choice'] for r in host.model_requests], ['auto'])
+        self.assertEqual([r['purpose'] for r in host.model_requests], ['generation'])
         self.assertEqual(result['assessment_state'], 'committed')
         self.assertEqual(loop.snapshot()['model_turns'], 1)
         self.assertEqual(c._remaining['model_tokens'], 3*R-120)

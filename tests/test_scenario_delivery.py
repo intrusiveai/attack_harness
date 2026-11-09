@@ -75,13 +75,7 @@ class ScenarioInputs(Inputs):
         host.context_limits = c["model"]["context_limits"]
         c["operations"] = sorted(host.operations)
         c["operation_timeouts_ms"] = {op: 30000 for op in c["operations"]}
-        c["model"]["profile_id"] = "vertical-slice-profile"
-        c["model"]["profile_digest"] = "sha256:" + "9" * 64
         c["model"]["model_id"] = "fixture-model"
-        if "response_models" in c["model"]["codec_settings"]:
-            c["model"]["codec_settings"]["response_models"] = ["fixture-model-2026"]
-        tools = protocol.model_tools(c["model"]["codec_id"], sorted(host.operations),c["model"]["tool_selection"]["injection_surfaces"])
-        c["model"]["codec_settings"]["tools_digest"] = raw_digest(_canonical_value(json.loads(tools), 4 << 20))
         self.prompt_raw = Path("assets/default-system-prompt.txt").read_bytes()
         descriptor = {"size_bytes": len(self.prompt_raw), "digest": raw_digest(self.prompt_raw)}
         c["prompt"]["provenance"].update(base=descriptor, effective=descriptor)
@@ -118,10 +112,10 @@ class ScenarioHost(ScriptedHost):
         self.finish_accepted = False
 
     def task_from_request(self, request):
-        messages = request["request"]["messages"]
+        messages = request["conversation"]
         if self.codec == "bedrock-converse-text-tools-v1":
             return json.loads(messages[0]["content"][0]["text"])
-        return json.loads(messages[1]["content"])
+        return json.loads(messages[0]["content"])
 
     def _task(self):
         return self.task_from_request(self.model_requests[-1])
@@ -136,8 +130,7 @@ class ScenarioHost(ScriptedHost):
             near_prompt_limit=100 >= limits["warning_threshold_tokens"])
         if self.codec != "bedrock-converse-text-tools-v1":
             return result
-        return {"codec_id": self.codec, "profile_id": "vertical-slice-profile",
-            "profile_digest": "sha256:" + "9" * 64, "receipt_id": f"model-receipt-{turn}",
+        return {"receipt_id": f"model-receipt-{turn}",
             "context_budget": result["context_budget"],
             "response": {"output": {"message": {"role": "assistant", "content": [
                 {"toolUse": {"toolUseId": identifier, "name": name, "input": arguments}}
@@ -157,7 +150,7 @@ class ScenarioHost(ScriptedHost):
         if turn == 3:
             return invoke('refund', scenarios['refund']['guidance']['composition'][0])
         if turn == 5:
-            feedback = self.model_requests[-1]['request']['messages'][-1]
+            feedback = self.model_requests[-1]['conversation'][-1]
             content = feedback['content'][0]['toolResult']['content'][0]['text'] if self.codec == 'bedrock-converse-text-tools-v1' else feedback['content']
             output = json.loads(json.loads(content)['content'])
             if output['status'] != 'needs_details':
@@ -251,7 +244,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 self.assertEqual(json.loads(c.task)["scenario_bundle"], inputs.bundle())
                 task = json.loads(c.task)
                 # Supplied instructions stay in user/task data, never the privileged prompt.
-                self.assertNotIn(inputs.bundle()["coverage"]["completion_guidance"], c.policy["prompt"])
+                self.assertNotIn(inputs.bundle()["coverage"]["completion_guidance"], inputs.prompt_raw.decode())
                 self.assertIn("17.25 USD", json.dumps(body))
                 c._compaction_ledger = [{"kind":"receipt_id", "identifier":"retained-attempt-1"}]
                 c._budget = {"near_prompt_limit": False, "input_tokens":100}
@@ -327,7 +320,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         self.assertGreaterEqual(campaign.adaptive.loop.snapshot()["read_bytes"], len(_canonical_value(bundle["scenarios"][1], 4 << 20)))
         self.assertEqual(result["assessment_state"], "committed")
         if use_reference:
-            messages = host.model_requests[1]["request"]["messages"]
+            messages = host.model_requests[1]["conversation"]
             read = next(json.loads(m["content"]) for m in messages if m.get("tool_call_id") == "select")
             self.assertEqual(read["raw_length"], 1)
             self.assertFalse(read["eof"])
@@ -349,7 +342,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         campaign, host, _ = self.campaign(bundle, TooLargeHost(self.protocol))
         result = campaign.run()
         self.assertEqual(host.attempt_ids, [])
-        diagnostic = json.loads(host.model_requests[1]["request"]["messages"][-1]["content"])["diagnostic"]
+        diagnostic = json.loads(host.model_requests[1]["conversation"][-1]["content"])["diagnostic"]
         self.assertEqual(diagnostic["reason"], "scenario_context_limit")
         self.assertEqual(diagnostic["execution_occurred"], "no")
         self.assertTrue(diagnostic["resubmission_safe"])

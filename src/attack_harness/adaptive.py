@@ -18,13 +18,14 @@ class NativeConversation:
     """Mutable native history for exactly one installed model codec."""
 
     def __init__(self, protocol, policy_raw, task, *, compact_at=1 << 20, remaining=None,
-                 model_allowance=None):
+                 model_allowance=None, fixed_context_bytes=0):
         require(type(policy_raw) is bytes and type(task) is str and task)
         require(type(compact_at) is int and compact_at > 0)
         self.protocol = protocol
         self.policy_raw = policy_raw
-        self.policy = protocol._catalog.validate(
-            "urn:operator:schema:model-codec-policy:v1alpha1", policy_raw)
+        self.policy = decode(policy_raw, ORDINARY_LIMIT)
+        from operator_contracts.model import check_context_limits
+        check_context_limits(self.policy["context_limits"])
         self.codec = self.policy["codec_id"]
         self._task = task
         self.task_generation = 0
@@ -39,6 +40,8 @@ class NativeConversation:
         self._last_bytes = 0
         self._remaining = dict(remaining or {})
         self._context_limits = self.policy['context_limits']
+        require(type(fixed_context_bytes) is int and fixed_context_bytes >= 0)
+        self._fixed_context_bytes = fixed_context_bytes
         self._model_allowance = model_allowance
         self.model_admission_failure = None
         self._finalizing = False
@@ -52,7 +55,7 @@ class NativeConversation:
         """Replace task data without dropping native tool history or compaction provenance."""
         require(type(task) is str and task)
         field = self._history_field()
-        index = 1 if self.codec == "openai-chat-text-tools-v1" else 0
+        index = 0
         self._request[field][index] = self._initial(task + self._summary + self._finalization_guidance() + self._repair_context())[field][index]
         self._task = task
         self.task_generation += 1
@@ -122,71 +125,18 @@ class NativeConversation:
         return citations
 
     def _initial(self, task):
-        policy = self.policy
-        codec = self.codec
-        if codec == "openai-chat-text-tools-v1":
-            return {
-                "model": policy["request_model"],
-                "messages": [
-                    {"role": policy["instruction_role"], "content": policy["prompt"]},
-                    {"role": "user", "content": task},
-                ],
-                "max_completion_tokens": policy["max_completion_tokens"],
-                "stream": False, "store": False, "n": 1,
-                "parallel_tool_calls": True, "tools": policy["tools"],
-                "tool_choice": "auto",
-            }
-        if codec == "openai-responses-text-tools-v1":
-            return {
-                "model": policy["request_model"], "instructions": policy["prompt"],
-                "input": [{"role": "user", "content": task}],
-                "max_output_tokens": policy["max_output_tokens"],
-                "stream": False, "store": False, "parallel_tool_calls": True,
-                "include": ["reasoning.encrypted_content"], "truncation": "disabled",
-                "reasoning": policy["reasoning"], "tools": policy["tools"],
-                "tool_choice": "auto", "text": {"format": {"type": "text"}},
-            }
-        if codec == "anthropic-messages-text-tools-v1":
-            return {
-                "model": policy["request_model"], "system": policy["prompt"],
-                "messages": [{"role": "user", "content": task}],
-                "max_tokens": policy["max_tokens"], "stream": False,
-                "thinking": policy["thinking"], "tools": policy["tools"],
-                "tool_choice": {"type": "auto"},
-            }
-        if codec == "bedrock-converse-text-tools-v1":
-            request = {
-                "system": [{"text": policy["prompt"]}],
-                "messages": [{"role": "user", "content": [{"text": task}]}],
-                "inferenceConfig": {"maxTokens": policy["max_tokens"]},
-            }
-            if policy["tools"]:
-                request["toolConfig"] = {
-                    "tools": policy["tools"], "toolChoice": {"auto": {}},
-                }
-            return request
-        if codec == "gemini-text-tools-v1":
-            request = {
-                "systemInstruction": {"parts": [{"text": policy["prompt"]}]},
-                "contents": [{"role": "user", "parts": [{"text": task}]}],
-                "generationConfig": {
-                    "maxOutputTokens": policy["max_output_tokens"],
-                    "candidateCount": 1,
-                    "thinkingConfig": policy["thinking_config"],
-                },
-                "tools": policy["tools"],
-            }
-            if policy["tools"]:
-                request["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
-            return request
-        raise ContractError("unsupported model codec")
+        if self.codec == "gemini-text-tools-v1":
+            return {"contents": [{"role": "user", "parts": [{"text": task}]}]}
+        if self.codec == "bedrock-converse-text-tools-v1":
+            return {"messages": [{"role": "user", "content": [{"text": task}]}]}
+        if self.codec in ("openai-chat-text-tools-v1", "anthropic-messages-text-tools-v1", "openai-responses-text-tools-v1"):
+            return {self._history_field(): [{"role": "user", "content": task}]}
+        raise ContractError("unsupported model conversation format")
 
     def body(self):
-        body = {key: deepcopy(self.policy[key])
-                for key in ("codec_id", "profile_id", "profile_digest")}
-        body["request"] = deepcopy(self._request)
+        body = {"purpose": "generation", "conversation": deepcopy(self._request[self._history_field()])}
         raw = _canonical_value(body, ORDINARY_LIMIT)
-        self.protocol.validate_model_request(self.policy_raw, raw)
+        self.protocol.validate_model_request(raw)
         return body, raw
 
     def observe_budget(self, result, request_raw):
@@ -197,8 +147,8 @@ class NativeConversation:
 
     def _estimated_tokens(self, raw):
         # A conservative local heuristic, never provider usage or exact admission.
-        ratio = 1.1*self._budget['input_tokens']/max(1,self._last_bytes) if self._budget else 0.5
-        return math.ceil(len(raw)*ratio)
+        ratio = 1.1*self._budget['input_tokens']/max(1,self._last_bytes + self._fixed_context_bytes) if self._budget else 0.5
+        return math.ceil((len(raw) + self._fixed_context_bytes)*ratio)
 
     def model_reservation(self):
         return self._context_limits['maximum_prompt_tokens'] + self._context_limits['maximum_completion_tokens']
@@ -330,8 +280,6 @@ class NativeConversation:
         """Build a tool-suppressed request over complete native history."""
         require(not self._finalizing)
         history = self._request[self._history_field()]
-        if self.codec == "openai-chat-text-tools-v1":
-            history = history[1:]
         history_raw = _canonical_value(history, ORDINARY_LIMIT)
         ledger, corrections = self._retain_history_facts()
         instruction=("Summarize selected campaign history concisely, distinguishing original campaign requirements, "
@@ -352,26 +300,15 @@ class NativeConversation:
             source=instruction+_canonical_value(dict(task=self._task + self._repair_context(),identities=ledger,validation_corrections=corrections,selected_groups=groups,
                 omitted_complete_groups=len(self._groups)-len(groups)),ORDINARY_LIMIT).decode('utf-8')
             request=self._initial(source)
-            if self.codec in ("openai-chat-text-tools-v1",
-                              "openai-responses-text-tools-v1"):
-                request["tool_choice"] = "none"
-            elif self.codec == "anthropic-messages-text-tools-v1":
-                request["tool_choice"] = {"type": "none"}
-            elif self.codec == "bedrock-converse-text-tools-v1":
-                request.pop("toolConfig", None)
-            elif self.codec == "gemini-text-tools-v1":
-                request["toolConfig"]["functionCallingConfig"]["mode"] = "NONE"
             candidate=_canonical_value(request,ORDINARY_LIMIT)
             if len(candidate)<1<<20 and self._estimated_tokens(candidate)<self._context_limits['warning_threshold_tokens']:break
             require(bool(groups))
             groups.pop(0)
         self._compaction_ledger=ledger
         self._retained_corrections=corrections
-        body = {key: deepcopy(self.policy[key])
-                for key in ("codec_id", "profile_id", "profile_digest")}
-        body["request"] = request
+        body = {"purpose": "compaction", "conversation": request[self._history_field()]}
         raw = _canonical_value(body, ORDINARY_LIMIT)
-        self.protocol.validate_model_request(self.policy_raw, raw)
+        self.protocol.validate_model_request(raw)
         return body, raw, raw_digest(history_raw), self._segments
 
     def apply_compaction(self, summary, source_digest, omitted_segments):

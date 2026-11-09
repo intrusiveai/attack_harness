@@ -35,7 +35,6 @@ class MeasuredInputs(ScenarioInputs):
         host.context_limits = dict(maximum_prompt_tokens=65536, maximum_completion_tokens=4096,
                                    warning_threshold_tokens=52428)
         self._context['model']['context_limits'] = host.context_limits
-        self._context['model']['codec_settings']['max_completion_tokens'] = 4096
         self.context_raw = _canonical_value(self._context, 4 << 20)
         protocol.validate_engine_context(self.context_raw)
 
@@ -67,7 +66,7 @@ class MeasuredHost(ScenarioHost):
     def _calls(self, turn):
         request = self.model_requests[-1]
         raw = _canonical_value(request, 4<<20)
-        compacting = request['request'].get('tool_choice') == 'none'
+        compacting = request['purpose'] == 'compaction'
         if not compacting:
             self.phase += 1
         label = 'compaction' if compacting else {1:'initial',4:'after_reads',8:'repair'}.get(self.phase,'followup')
@@ -92,7 +91,7 @@ class MeasuredHost(ScenarioHost):
                 uncertainties=[dict(kind='evidence-gap',description='Internal effects remain unknown.',inputs=['observation-1'])]))]
         if self.phase==8:
             return []  # Deliberate prose after rejection.
-        if self.phase==9 and not any('output-1' in message.get('content','') for message in request['request']['messages'] if message.get('role')=='tool'):
+        if self.phase==9 and not any('output-1' in message.get('content','') for message in request['conversation'] if message.get('role')=='tool'):
             self.did_reread=True
             return [('reread','observation_read',{'observation':'observation-1','max_bytes':16000})]
         return [('finish','finish',dict(finish_reason='no-useful-next-experiment',summary='Four supplied scenarios invoked; security outcomes remain inconclusive.',
@@ -137,8 +136,9 @@ def measure(protocol, root, compact_at=100000):
     return dict(measurement='controlled, synthetic usage; no live provider',references=len(inputs.reference_index()),
         compact_at_bytes=compact_at,requests=host.metrics,cumulative_input_bytes=sum(m['serialized_bytes'] for m in host.metrics),
         model_compaction_calls=host.compactions,evidence_reads=len(host.reads),evidence_rereads=len(host.reads)-len(set(host.reads)),
-        native_tool_schema_bytes=len(_canonical_value(c.policy['tools'],4<<20)),
-        native_tool_schema_digest=raw_digest(_canonical_value(c.policy['tools'],4<<20)),
+        evidence_reread_required=host.did_reread,
+        native_tool_schema_bytes=len(protocol.model_tools(c.codec,sorted(host.operations),inputs.context()['model']['tool_selection']['injection_surfaces'])),
+        native_tool_schema_digest=raw_digest(protocol.model_tools(c.codec,sorted(host.operations),inputs.context()['model']['tool_selection']['injection_surfaces'])),
         campaign_input_digest=raw_digest(_canonical_value(dict(bundle=inputs.bundle(),references=inputs.reference_index(),target=inputs.context()['target'],model=inputs.context()['model']),4<<20)),
         actual_provider_usage=None,synthetic_input_tokens=sum(math.ceil(m['serialized_bytes']/4) for m in host.metrics),
         target_invocations=len(host.attempt_ids),assessment_state=result['assessment_state'])

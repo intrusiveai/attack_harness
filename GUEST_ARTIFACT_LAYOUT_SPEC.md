@@ -77,8 +77,8 @@ For AMD64 its values are:
 ```json
 {
   "api_version": "operator.dev/harness-compatibility/v1alpha2",
-  "contract_package_version": "0.7.1",
-  "contract_package_digest": "sha256:5f1f545701e68d057592f892c573667391df844008ec385f5cdcfbdb42e63e88",
+  "contract_package_version": "0.8.0",
+  "contract_package_digest": "sha256:699d04987bd431ca13da1823d6e506c5a1ac6015acc9d90b713e679fa116bff1",
   "runtime_profile": "operator-container/v1",
   "platform": "linux/amd64"
 }

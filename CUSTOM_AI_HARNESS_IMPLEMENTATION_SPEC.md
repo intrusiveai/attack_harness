@@ -11,7 +11,7 @@ boundary are documented in [the container specification](GUEST_ARTIFACT_LAYOUT_S
 
 ## Contract ownership
 
-The Harness loads Operator's shared contract package **0.7.1** from the image and
+The Harness loads Operator's shared contract package **0.8.0** from the image and
 validates its exact AsyncAPI document-byte hash against [the contract lock](build/contract-lock.json).
 The package supplies schemas, semantic validators, operation definitions,
 provider tool projections, and fixtures. Startup also checks the host's package,
@@ -293,3 +293,14 @@ actions. Compaction MUST retain bounded recent corrections. `no-progress-limit`
 MUST report consecutive no-progress turns and the configured limit separately from
 preceding rejections; unavailable assessment remains unsuccessful even with exit
 zero. Follow [the integration correction rules](docs/tool-corrections.md).
+
+## Model relay ownership
+
+Harness MUST use the [compact model relay](docs/MODEL_RELAY.md). It MUST send only
+purpose and conversation, consume host context accounting, and interpret native
+provider responses in its own adapters. It MUST preserve opaque continuation
+content and independently validate requested Operator tools. Provider-native API
+schemas, settings, model aliases and metadata MUST NOT become shared-contract
+acceptance gates. Operator owns provider request configuration; Harness MUST NOT
+reconstruct or transmit it. Compaction MUST use purpose `compaction` and no
+hard-coded provider tool settings.
