@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 6fd3b3e982460bf08c6a2fe7e4764c45470b9627
+          ref: f5553e6aa0f45f3f73bbd0537e49240ec421ce5f
           path: operator_sandbox
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: 6fd3b3e982460bf08c6a2fe7e4764c45470b9627
+          ref: f5553e6aa0f45f3f73bbd0537e49240ec421ce5f
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python
@@ -147,6 +147,7 @@ jobs:
       - name: Verify source and shared contract identity
         working-directory: attack_harness
         run: |
+          make verify-selected-contract OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make verify-source PYTHON=.ci-venv/bin/python
           make contract-package OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python
           make verify-contracts OPERATOR_ROOT=../operator_sandbox PYTHON=.ci-venv/bin/python

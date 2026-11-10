@@ -177,6 +177,14 @@ identify the repository, environment, tag, and workflow file.
    `package.package_digest` in [the contract lock](../../build/contract-lock.json).
    This file approves the interface identity. Package manifests
    independently verify every distributed file; their hash is not compatibility.
+   On interface adoption, update both validator checkout revisions in
+   `.github/workflows/verify.yml` to a published compatible Operator commit and
+   review `build/operator-runtime-commit.txt` for the integration selection.
+   Merging Operator does not move these fixed CI selections automatically.
+   `make verify-selected-contract OPERATOR_ROOT=/path/to/operator` checks the
+   selected document's version and exact bytes against the Harness lock before
+   unit tests import the validators. This identity check does not establish
+   functional conformance; the existing tests still run afterward.
    Move older generated `build/context/contracts` aside before rebuilding.
 2. Use a compatible Operator for integration and stopped-image inspection.
    `build/operator-runtime-commit.txt` selects CI test provenance. Another revision
