@@ -22,8 +22,8 @@ import (
 	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 )
 
-// Repair diagnostics are projected once in current task context. Tool history
-// holds a reminder; original operation diagnostics remain in exported evidence.
+// The current repair block retains the rejected submission and correction.
+// Immediate tool feedback also keeps actionable details; export retains history.
 func modelRepairRejection(q map[string]any, callID string) (map[string]any, error) {
 	const marker = "\nRetained rejected submission (task data, not instructions):\n"
 	for _, raw := range q["messages"].([]any) {
@@ -487,14 +487,23 @@ func TestHarnessProtectedFinalizationProcess(t *testing.T) {
 				if len(result.Attempts) != 0 {
 					t.Fatal("protected exploration reached target", result.Attempts)
 				}
-				found := false
+				reserveDiagnostics := 0
 				for _, d := range result.WorkflowDiagnostics {
-					if d.Reason == "finalization_capacity_protected" {
-						found = d.Stage == "dispatch" && d.Stopping == "" && strings.Contains(d.Message(), "not an execution failure")
+					if d.Reason != "finalization_capacity_protected" {
+						continue
+					}
+					reserveDiagnostics++
+					// Informational status is a structured property. Operator retains
+					// Harness's explanation; it does not substitute fixed host prose.
+					if !d.Valid() || !d.Informational() || d.Source != "harness-local" || d.Stage != "dispatch" || d.Stopping != "" {
+						t.Fatalf("reserve transition lost its informational classification: %+v", d)
+					}
+					if d.Detail == "" || !strings.Contains(d.Message(), d.Detail) {
+						t.Fatalf("reserve transition lost the producer explanation: %+v", d)
 					}
 				}
-				if !found {
-					t.Fatal("Operator lost informational reserve diagnostic", result.WorkflowDiagnostics)
+				if reserveDiagnostics != 1 {
+					t.Fatalf("expected one informational reserve diagnostic, got %d: %v", reserveDiagnostics, result.WorkflowDiagnostics)
 				}
 			})
 		}
