@@ -305,3 +305,19 @@ schemas, settings, model aliases and metadata MUST NOT become shared-contract
 acceptance gates. Operator owns provider request configuration; Harness MUST NOT
 reconstruct or transmit it. Compaction MUST use purpose `compaction` and no
 hard-coded provider tool settings.
+
+
+### Unsupported fields and immediate corrections
+
+Harness MUST preserve the shared contract's bounded `unsupported_fields`, `facts`,
+constraint reference and correction when wrapping a local rejection. Unsupported
+names are data; the shared schema supplies supported field purposes and required
+flags. Harness MUST NOT guess replacements or expose submitted values. Omitted
+names and oversized corrections MUST identify the omission.
+
+A rejected finish MUST retain its field-specific correction in the immediate tool
+response. The separate assessment repair block preserves the submitted arguments
+and recovery state; it MUST NOT replace that response with only a reminder. Local
+history reduction MUST preserve unresolved corrections. Correcting an assessment
+MUST NOT replay target actions. The current required interface version and exact
+bytes hash are recorded in `build/contract-lock.json`.

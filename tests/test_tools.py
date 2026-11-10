@@ -9,7 +9,7 @@ from operator_contracts.loop import HarnessLoop, LoopStopped
 from operator_contracts.schema_ids import MODEL_TOOL_NOT_EXECUTED_RESULT_SCHEMA
 from operator_contracts.validation import ORDINARY_LIMIT
 
-from attack_harness.tools import Dispatcher, HandlerResult, ToolCall
+from attack_harness.tools import Dispatcher, HandlerResult, ToolCall, local_error
 
 
 LIMITS = {
@@ -70,6 +70,14 @@ class ToolTest(unittest.TestCase):
         self.assertEqual(loop.snapshot()["invalid_tool_calls"], 2)
         self.assertTrue(all(json.loads(result.content)["effect_state"] == "none"
                             for result in results))
+
+    def test_long_message_keeps_correction_and_records_omission(self):
+        error = ContractError("x" * 513, reason="invalid_structure",
+                              field_path="/claims/0", correction="Use supported schema fields.")
+        diagnostic = local_error(error)["diagnostic"]
+        self.assertEqual(diagnostic["correction"], "Use supported schema fields.")
+        self.assertIn(dict(field="message", reason="oversized"), diagnostic["omissions"])
+        self.assertLessEqual(len(diagnostic["message"].encode()), 512)
 
     def test_restore_skips_remaining_calls_without_decoding_or_handlers(self):
         invoked = []

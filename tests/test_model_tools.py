@@ -148,7 +148,7 @@ class ModelToolsTest(unittest.TestCase):
 
     def test_finish_structural_errors_preserve_specific_shared_corrections(self):
         for changes, path, correction in (
-            ({'observations': []}, '/observations', 'Allowed fields'),
+            ({'observations': []}, '', 'Unsupported fields'),
             ({'uncertainties': [{'kind': 'invented', 'description': 'gap'}]}, '/uncertainties/0/kind', 'evidence-gap'),
             ({'uncertainties': ['gap']}, '/uncertainties/0', 'object'),
         ):
@@ -159,6 +159,20 @@ class ModelToolsTest(unittest.TestCase):
                 self.assertEqual(result['diagnostic']['execution_occurred'], 'no')
                 self.assertTrue(result['diagnostic']['resubmission_safe'])
         self.assertFalse(any(op == 'engine.finish' for op, _, _ in self.host.events))
+
+    def test_unsupported_claim_names_and_purposes_survive_immediate_response(self):
+        claim=dict(statement='A limited observation.',interpretation='inconclusive',confidence='low',assurance='direct-observation',references=['invented'])
+        rejected=self.call('finish',dict(finish_reason='budget-limit',summary='Not tested.',objectives=[],claims=[claim]))
+        d=rejected['diagnostic']
+        self.assertEqual(d['field_path'],'/claims/0')
+        self.assertEqual(d['unsupported_fields']['names'],['references'])
+        self.assertIn('Inspected observation citation handles',d['correction'])
+        self.assertIn('Required.',d['correction'])
+        self.assertFalse(any(op=='engine.finish' for op,_,_ in self.host.events))
+        claim['observations']=claim.pop('references')
+        rejected=self.call('finish',dict(finish_reason='budget-limit',summary='Not tested.',objectives=[],claims=[claim]))
+        self.assertEqual(rejected['diagnostic']['reason'],'unknown_handle')
+        self.assertFalse(any(op=='engine.finish' for op,_,_ in self.host.events))
 
     def test_wrong_kind_unread_and_partial_evidence_are_correctable(self):
         result = self.execute(); whole = result["observations"][0]["observation"]
