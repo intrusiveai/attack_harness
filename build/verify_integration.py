@@ -19,18 +19,27 @@ def main():
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--run", default="^Test(Python|Harness)",
         help="Go test expression; defaults to cross-component tests (use . for full host packages)")
+    parser.add_argument("--check-contract-only", action="store_true",
+                        help="check selected Operator interface identity without running integration")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     operator = args.operator_root.resolve()
     lock = json.loads((root / "build/contract-lock.json").read_text())
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=operator, text=True).strip()
     # Source revision is provenance, never a compatibility prerequisite.
     import hashlib
     document = (operator / "schemas/asyncapi.json").read_bytes()
     identity = {"package_version": json.loads(document)["info"]["version"],
                 "package_digest": "sha256:" + hashlib.sha256(document).hexdigest()}
     if identity != lock["package"]:
-        raise SystemExit("integration requires the approved interface version and exact document hash")
+        raise SystemExit(
+            "Selected Operator interface does not match the Harness contract lock.\n"
+            + "Expected: " + json.dumps(lock["package"], sort_keys=True) + "\n"
+            + "Observed: " + json.dumps(identity, sort_keys=True) + "\n"
+            + "Select Operator validators implementing the approved version and exact document hash before running tests.")
+    if args.check_contract_only:
+        print("Selected Operator interface verified: " + json.dumps(identity, sort_keys=True))
+        return
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=operator, text=True).strip()
     print("Integration Operator provenance: " + commit, flush=True)
     original = operator / "internal/preparation/harness_simple_campaign_test.go"
     replacement = root / "build/operator_simple_campaign_test.go"

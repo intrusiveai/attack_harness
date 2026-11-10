@@ -158,7 +158,8 @@ class ContextOverheadTest(unittest.TestCase):
                 task=c._request[c._history_field()][0]
                 text=json.dumps(task)
                 self.assertIn('rejected_arguments', text)
-                self.assertEqual(request_raw.decode().count('field_path'), 1)  # One diagnostic object, not repeated history copies.
+                self.assertLessEqual(request_raw.decode().count('field_path'), 2)  # Repair state plus the immediate actionable rejection.
+                self.assertIn('Supply each JSON key once', request_raw.decode())
                 self.assertIn('/summary', text)
                 a.loop.begin_model()
                 blocked=a.dispatcher.dispatch([ToolCall('blocked','attempt_execute',b'{"origin":"exploratory","operation_id":"invoke","text":"new"}')])[0]

@@ -127,7 +127,8 @@ class FinalizationCapacityTest(unittest.TestCase):
         self.assertEqual(len(host.model_requests), 2)
         self.assertEqual(len(host.attempt_ids), 0)
         self.assertIn('Your finish submission was rejected', json.dumps(host.model_requests[1]))
-        self.assertIn('/observations', json.dumps(host.model_requests[1]))
+        self.assertIn('Unsupported fields', json.dumps(host.model_requests[1]))
+        self.assertIn('unsupported_fields', json.dumps(host.model_requests[1]))
         self.assertIsNone(dispatcher.repair)
         self.assertEqual(c._remaining['model_tokens'], R-120)
 

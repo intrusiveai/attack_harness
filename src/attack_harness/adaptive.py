@@ -353,8 +353,11 @@ class NativeConversation:
             except (TypeError, ValueError):
                 continue
             if self._repair is not None and isinstance(value, dict) and 'repair_guidance' in value:
-                container[key] = json.dumps(dict(status='error', disposition=value.get('disposition'),
-                    reminder='Finish rejected. Use the current assessment repair block in task context.'))
+                # Keep the precise correction beside the rejected call. Only the
+                # duplicate repair block is removed; it remains in task context.
+                value.pop('repair_guidance', None)
+                container[key] = json.dumps(value)
+
         field = self._history_field()
         self._request[field].extend(segment)
         self._segments += 1

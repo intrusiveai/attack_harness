@@ -25,7 +25,7 @@ class InputsTest(unittest.TestCase):
         files.update({n:(source/n).read_bytes() for n in ("catalog.json","operations.json","asyncapi.json")})
         profiles={"jcs-v1":"semantics/digests","manifest-paths-v1":"semantics/paths","harness-loop-v1":"semantics/limits"}
         files.update({n:b"Test-only semantic profile." for n in profiles.values()})
-        manifest,cls.pin=p.build_package_manifest("0.8.0",files,profiles)
+        manifest,cls.pin=p.build_package_manifest("0.9.0",files,profiles)
         cls.protocol=p.load_verified_protocol(manifest,files,cls.pin)
         cls.example=json.loads((source/"fixtures/identity-validation.json").read_text())[0]
 

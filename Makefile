@@ -6,8 +6,8 @@ PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
 CONTRACT_VERSION := $(shell $(PYTHON) -c 'import json; print(json.load(open("build/contract-lock.json"))["package"]["package_version"])')
 
-.PHONY: test test-pr test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
-test:
+.PHONY: verify-selected-contract test test-pr test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
+test: verify-selected-contract
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" OPERATOR_CONTRACT_SOURCE="$(abspath $(OPERATOR_ROOT))/schemas" $(PYTHON) -m unittest discover -s tests -v
 
 # Candidate image builds run the complete suite against packaged code; PRs use
@@ -18,6 +18,10 @@ test-pr: verify-source test
 
 test-integration:
 	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --python "$(PYTHON)"
+
+# Reject mismatched validator checkouts before importing their implementation.
+verify-selected-contract:
+	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --python "$(PYTHON)" --check-contract-only
 
 verify-source:
 	$(PYTHON) build/source_lock.py --root . --lock build/source-lock.json

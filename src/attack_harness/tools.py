@@ -45,15 +45,15 @@ class ToolResult:
 class ToolError(ContractError):
     """A bounded nonfatal local rejection returned to the model."""
 
-    def __init__(self, code, message, *, outcome="invalid", path="", correction="", constraint=None):
-        super().__init__(message, reason=code, field_path=path, correction=correction, constraint=constraint)
+    def __init__(self, code, message, *, outcome="invalid", path="", correction="", constraint=None, unsupported_fields=None, facts=None):
+        super().__init__(message, reason=code, field_path=path, correction=correction, constraint=constraint, unsupported_fields=unsupported_fields, facts=facts)
         require(outcome in ("invalid", "preflight-rejected"))
         self.value = local_error(self)
         self.outcome = outcome
 
     @classmethod
     def from_contract(cls, error):
-        result = cls(error.reason, str(error), path=error.field_path, correction=error.correction, constraint=error.constraint)
+        result = cls(error.reason, str(error), path=error.field_path, correction=error.correction, constraint=error.constraint, unsupported_fields=error.unsupported_fields, facts=error.facts)
         return result
 
     @classmethod
@@ -67,16 +67,29 @@ class ToolError(ContractError):
 def local_error(error):
     # Only shared/product-owned diagnostics, never validator repr or input values.
     reason = error.reason if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", error.reason) else "invalid_arguments"
-    correction = error.correction if 0 < len(error.correction) <= 512 else "Use the documented tool arguments and exact returned handles."
+    correction = error.correction
+    omissions = []
+    message = str(error)
+    if len(message.encode("utf-8")) > 512:
+        message = "Detailed validation message exceeded its bound; follow the correction."
+        omissions.append(dict(field="message", reason="oversized"))
+    if len(correction.encode('utf-8')) > 4096:
+        correction = "Correction omitted because it exceeds 4096 bytes. Read the indicated tool guidance before resubmitting."
+        omissions.append(dict(field='correction', reason='oversized'))
+    if not correction:
+        correction = "No correction was supplied. Read the indicated tool guidance before resubmitting."
     return {
         "status": "error", "code": "INTERNAL_ERROR" if reason == "invalid_resolution_context" else "INVALID_ARGUMENTS", "effect_state": "none",
         "disposition": "terminate" if reason == "invalid_resolution_context" else "correct-and-resubmit", "message": "Tool arguments were rejected before execution.",
         "diagnostic": {
             "source": "harness-local", "stage": "translation" if reason == "invalid_resolution_context" else "arguments", "reason": reason,
-            "message": str(error)[:512], "field_path": safe_argument_path(error.field_path),
+            "message": message, "field_path": safe_argument_path(error.field_path),
             "correction": correction,
             "execution_occurred": "no", "resubmission_safe": reason != "invalid_resolution_context",
             **({"constraint": error.constraint} if error.constraint else {}),
+            **({"unsupported_fields": error.unsupported_fields} if error.unsupported_fields else {}),
+            **({"facts": error.facts} if error.facts else {}),
+            **({"omissions": omissions} if omissions else {}),
         },
     }
 
