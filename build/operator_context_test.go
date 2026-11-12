@@ -30,7 +30,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					if err := json.Unmarshal([]byte(q["messages"].([]any)[1].(map[string]any)["content"].(string)), &task); err != nil {
 						return nil, err
 					}
-					operation := task["target"].(map[string]any)["capabilities"].(map[string]any)["operations"].([]any)[0].(map[string]any)
+					operation := task["target"].(map[string]any)["resources"].([]any)[0].(map[string]any)
 					detail := modelCall("detail", "reference_read", map[string]any{"reference": operation["details_reference"], "offset": 0})
 					var response map[string]any
 					_ = json.Unmarshal(processResponse([]any{detail, modelCall("first", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"baseline"}`), ""))}), &response)
@@ -39,7 +39,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					return encode(response), nil
 				case 2:
 					detail, err := modelToolResult(q, "detail")
-					if err != nil || detail["encoding"] != "utf8" || detail["raw_length"] == nil {
+					if err != nil || (detail["encoding"] != "utf8" && detail["encoding"] != "json") || detail["raw_length"] == nil {
 						return nil, fmt.Errorf("resource detail read failed")
 					}
 					attempt, err := modelToolResult(q, "first")

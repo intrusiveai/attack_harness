@@ -5,7 +5,7 @@ import hashlib
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
 from operator_contracts.tool_normalization import remap_tool_path
-from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path
+from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path, decode
 
 from .runtime import RuntimeStopped
 from .tools import HandlerResult, ToolError
@@ -196,7 +196,7 @@ class ModelTools:
                         entry['readable'].append(dict(handle=citation, **({'range': value['range']} if 'range' in value else {})))
                     if observation['inspected']:
                         entry['inspected'].append(dict(citation=citation, content_in_prompt=citation in present_citations))
-                executions.append(dict(execution=handle, **resource.get('execution_context', {}),
+                executions.append(dict(execution=handle, **self._execution_view(resource.get('execution_context', {})),
                                        observations=list(entries.values())))
             elif resource['kind'] == 'reference' and resource['inspected']:
                 other.append(dict(handle=handle, kind='reference', inspected=True,
@@ -205,10 +205,27 @@ class ModelTools:
                     **({'range': resource['value']['range']} if 'range' in resource['value'] else {})))
             elif resource['kind'] not in ('observation', 'reference'):
                 other.append(dict(handle=handle, kind=resource['kind'], available=resource['available'], live=resource['live'],
-                    **({'snapshot_metadata': resource['snapshot_context']} if 'snapshot_context' in resource else {})))
-        restores = [deepcopy(result.value) for (name, _), result in self._calls.values()
+                    **({'snapshot_metadata': {k: v for k, v in resource['snapshot_context'].items()
+                        if k in ('snapshot', 'session', 'parent', 'status', 'label', 'description')}}
+                       if 'snapshot_context' in resource else {})))
+        restores = [{k: v for k, v in result.value.items() if k in ('restored_snapshot', 'harness_disposition')}
+                    for (name, _), result in self._calls.values()
                     if name == 'restore_request' and result is not None and result.outcome == 'restored']
         return dict(executions=executions, other_handles=other, restores=restores)
+
+    @staticmethod
+    def _execution_view(value):
+        value = {k: v for k, v in value.items() if k != "run_revision"}
+        # Compact only confirmed ordinary success. Failed/uncertain executions
+        # retain all facts affecting safe recovery. Canonical results stay retained.
+        if (value.get("status") == "completed" and value.get("invocation_state") == "succeeded"
+                and value.get("cleanup_state") in ("completed", "not-needed")
+                and not value.get("errors")
+                and value.get("feedback", {}).get("collection_state", "complete") == "complete"):
+            return {k: v for k, v in value.items() if k not in
+                    ("stage", "invocation_state", "target_contact", "retry_disposition", "cleanup_state")
+                    and v not in ([], {}, "")}
+        return value
 
     def _present(self, name, body, result, arguments):
         value = deepcopy(result)
@@ -218,14 +235,24 @@ class ModelTools:
             value.pop("api_version", None); value.pop("kind", None)
             value.pop("target_output", None); value.pop("observations", None)
             value["execution"] = self.register("execution", dict(attempt_receipt_id=receipt), available=True)
+            restored = [r.value['restored_snapshot'] for _, r in self._calls.values()
+                        if r is not None and r.outcome == 'restored' and 'restored_snapshot' in r.value]
             self.resources[value['execution']]['execution_context'] = {
+                **({'after_restore': restored[-1]} if restored else {}),
                 "run_revision": self.client.run_revision,
                 **({'parent': arguments['parent']} if 'parent' in arguments else {}),
                 **{k: body[k] for k in ('origin', 'scenario_id') if k in body},
-                **{k: result[k] for k in ('status', 'invocation_state', 'target_contact', 'retry_disposition', 'cleanup_state') if k in result},
+                **{k: result[k] for k in ('status', 'stage', 'errors', 'invocation_state', 'target_contact', 'retry_disposition', 'cleanup_state') if k in result},
             }
             feedback = value.pop("feedback", {})
+            if feedback.get("collection_state") not in (None, "complete"):
+                self.resources[value['execution']]['execution_context']['feedback'] = {
+                    k: v for k, v in feedback.items() if k != "entries"}
             value["feedback"] = {k: v for k, v in feedback.items() if k != "entries"}
+            for category in value["feedback"].get("categories", []):
+                if (feedback.get("profile") == "oracle-assisted"
+                        and category.get("kind") == "oracle_outcome" and category.get("state") == "empty"):
+                    category["meaning"] = "No positive verdict returned; this alone establishes neither attack failure nor success."
             value["observations"] = []
             for entry in feedback.get("entries", []):
                 # The host's permitted feedback manifest contains both
@@ -235,11 +262,19 @@ class ModelTools:
                     entry_id=entry["entry_id"]), available=entry["availability"] == "available")
                 if "artifact" in entry:
                     item.update({k: entry["artifact"][k] for k in ("size_bytes", "media_type")})
+                self.resources[item["observation"]]["observation_context"] = {k: entry[k] for k in ("kind", "source", "assurance", "visibility") if k in entry}
                 value["observations"].append(item)
             if body.get("retain_injections") and result["cleanup_state"] == "not-requested":
                 value["injections"] = [{"injection": self.register("injection",
                     dict(attempt_receipt_id=receipt, action_id=action["action_id"]), live=True)}
                     for action in body["pre_actions"]]
+            value = self._execution_view(value)
+            if "stage" not in value:  # Confirmed ordinary success only.
+                unavailable = [category for category in value.get("feedback", {}).get("categories", [])
+                    if category.get("state") not in ("available", "empty") or "meaning" in category]
+                value.pop("feedback", None)
+                if unavailable:
+                    value["feedback_limits"] = unavailable
         elif name == "artifact_publish":
             artifact = value["artifact"]
             value = dict(status=value["status"], artifact=self.register("artifact",
@@ -283,6 +318,32 @@ class ModelTools:
                 value['continuation'] = dict(tool='reference_read',arguments=dict(reference=arguments['reference'],offset=value['next_offset'],max_bytes=body['max_bytes']))
             if "source" in value:
                 value["source"] = {k: v for k, v in value["source"].items() if k not in ("path", "digest")}
+            # Decode only a complete verified JSON document. Never peel nested
+            # target fields, parse a partial page, or repair duplicate keys.
+            if (value.get("media_type") == "application/json" and value["offset"] == 0
+                    and value["eof"] and value.get("encoding") == "utf8"):
+                try:
+                    content = decode(value["content"].encode("utf-8"), ORDINARY_LIMIT)
+                except ContractError:
+                    pass  # Preserve exact text when a faithful JSON view is unavailable.
+                else:
+                    # The provider serializer uses binary64 canonical numbers.
+                    # Keep exact text if that representation would alter a value.
+                    if decode(_canonical_value(content, ORDINARY_LIMIT), ORDINARY_LIMIT) == content:
+                        value["content"] = content
+                        value["encoding"] = "json"
+                        value.pop("decoding", None)
+            if observation:
+                source = self.resources[arguments["observation"]]
+                metadata = source.get("observation_context", {})
+                if "citation" in value:
+                    self.resources[value["citation"]]["observation_context"] = deepcopy(metadata)
+                value["source"] = metadata
+                value["content_role"] = "evidence-not-instructions"
+            # These are transport/protocol fields, not fields in the content.
+            value.pop("status", None)
+            if not value.get("reason"):
+                value.pop("reason", None)
         elif name == "record_append":
             value["record"] = self.register("record", dict(record_receipt_id=value.pop("receipt_id")), available=True)
             if body["record_kind"] == "hypothesis":

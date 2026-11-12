@@ -105,7 +105,7 @@ class FixedHandlers:
             self.scenario_delivery.activate(content, task)
             return HandlerResult({"status": "scenario-selected", "reference": source["entry_id"],
                 "scenario_id": source["scenario_id"],
-                "message": "Complete instructions are in the next task's active scenario section. Read them before constructing an attempt; no pagination is needed."})
+                "message": "The selected scenario is now active. Its complete instructions are in the current task. Act on them; no acknowledgment or pagination is needed."})
         if offset > len(content):
             raise ToolError("range_exceeded", "Reference offset exceeds content size.", path="/offset", correction=f"Use an offset from 0 through {len(content)} for this reference, or start at 0. An offset equal to size returns EOF.")
         selected = content[offset:offset + arguments.get("max_bytes",4096)]

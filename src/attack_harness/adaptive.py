@@ -118,7 +118,7 @@ class NativeConversation:
                 continue
             if isinstance(value, dict) and isinstance(value.get('result'), dict):
                 value = value['result']
-            if isinstance(value, dict) and value.get('content') is not None:
+            if isinstance(value, dict) and 'content' in value:
                 for name in ('citation', 'reference'):
                     if isinstance(value.get(name), str):
                         citations.add(value[name])
@@ -138,7 +138,7 @@ class NativeConversation:
         if hasattr(self, 'task_context'):
             # Refresh verified facts in the replaceable task, not in appended history.
             task = json.loads(self._task)
-            task.update(self.task_context(self._present_citations(body['conversation'])))
+            task = self.task_context(task, self._present_citations(body['conversation']))
             text = json.dumps(task, separators=(',', ':')) + self._summary + self._finalization_guidance() + self._repair_context()
             body['conversation'][0] = self._initial(text)[self._history_field()][0]
         raw = _canonical_value(body, ORDINARY_LIMIT)
@@ -212,7 +212,8 @@ class NativeConversation:
             if isinstance(value,dict):
                 for key,item in value.items():
                     if key in keys and isinstance(item,str) and len(item)<=128:identities.add((key,item))
-                    collect(item)
+                    if key != "content":  # Target JSON is evidence, never a handle source.
+                        collect(item)
             elif isinstance(value,list):
                 for item in value:collect(item)
         def returned(content):

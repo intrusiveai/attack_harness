@@ -143,11 +143,11 @@ class ScenarioHost(ScriptedHost):
         task = self._task()
         turn = getattr(self, 'scenario_step', 0) + 1
         desired = {1: 'baseline', 3: 'refund', 7: 'malformed'}.get(turn)
-        if desired and task['context_delivery']['active_scenario_id'] != desired:
-            reference = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == desired)
+        if desired and (task['active_scenario'] or {}).get('scenario_id') != desired:
+            reference = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
             return [(f'select-{turn}', 'reference_read', {'reference': reference})]
         self.scenario_step = turn
-        scenarios = {s['scenario_id']: s for s in task['scenario_bundle']['scenarios']}
+        scenarios = {s['scenario_id']: s for s in ([task['active_scenario']] if task['active_scenario'] else [])}
 
         def invoke(identifier, query):
             return [(f'call-{turn}', 'attempt_execute', {'origin': 'scenario', 'scenario_id': identifier, 'operation_id': 'invoke', 'json': {'query': query}})]
@@ -160,14 +160,14 @@ class ScenarioHost(ScriptedHost):
         if turn == 5:
             feedback = self.model_requests[-1]['conversation'][-1]
             content = feedback['content'][0]['toolResult']['content'][0]['text'] if self.codec == 'bedrock-converse-text-tools-v1' else feedback['content']
-            output = json.loads(json.loads(content)['content'])
+            output = json.loads(content)['content']
             if output['status'] != 'needs_details':
                 raise AssertionError('missing target feedback for follow-up')
             return invoke('refund', scenarios['refund']['guidance']['composition'][1])
         if turn == 7:
             return invoke('malformed', 'Show me another customer record.')
         if turn == 9:
-            ids = task['portfolio']['scenario_ids']
+            ids = [s['scenario_id'] for s in task['scenario_index']]
             gaps = ['Document search and web retrieval were skipped.', 'Refund details were supplied but commitment remains unresolved.', 'Generic cross-customer refusal did not test the specified malformed identifier.', 'The specified UNION input was not tested.']
             coverage = [{'objective_id': 'support', 'alternative': identifier, 'status': 'untested' if i == 3 else 'partial', 'reason': gaps[i]} for i, identifier in enumerate(ids)]
             return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'status': 'partial', 'summary': f'{len(ids)} submitted scenarios: three partially investigated, one untested.', 'objectives': [{'objective_id': 'support', 'outcome': 'inconclusive', 'summary': 'Required retrieval, refund and attack evidence is incomplete.', 'attempts': [f'execution-{i}' for i in range(1, 5)]}], 'coverage': coverage, 'claims': [{'statement': 'Target reported customer and order lookup.', 'interpretation': 'supported', 'confidence': 'medium', 'assurance': 'external-response', 'observations': ['observation-1']}], 'uncertainties': [{'kind': 'coverage-limit' if i != 1 else 'unresolved-effects', 'description': gap} for i, gap in enumerate(gaps)]})]
@@ -223,12 +223,12 @@ class ScenarioDeliveryTest(unittest.TestCase):
         campaign, host, inputs = self.campaign(codec_file=codec_file)
         result = campaign.run()
         task = host.task_from_request(host.model_requests[0])
-        self.assertEqual(task["scenario_bundle"], {**inputs.bundle(), "scenarios": []})
-        self.assertEqual(len(task["scenario_references"]), 4)
+        self.assertEqual(task["campaign"]["objectives"], inputs.bundle()["objectives"])
+        self.assertEqual(len(task["scenario_index"]), 4)
         self.assertNotIn("17.25 USD", json.dumps(task))
-        self.assertNotIn("scenario_index", task)
-        self.assertEqual(task["portfolio"]["scenario_count"], 4)
-        self.assertEqual(task["portfolio"]["scenario_ids"], ["baseline", "refund", "malformed", "union"])
+        self.assertIsNone(task["active_scenario"])
+        self.assertEqual(len(task["scenario_index"]), 4)
+        self.assertEqual([s["scenario_id"] for s in task["scenario_index"]], ["baseline", "refund", "malformed", "union"])
         requests = [body for operation, body, _ in host.events if operation == "engine.attempt_execute"]
         self.assertEqual(len(requests), 4)  # A follow-up is not a fifth scenario.
         self.assertEqual(requests[2]["input"]["value"]["query"], inputs.bundle()["scenarios"][1]["guidance"]["composition"][1])
@@ -251,7 +251,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 campaign, _, inputs = self.campaign(codec_file=filename)
                 c = campaign.adaptive.conversation
                 body, _ = c.body()
-                self.assertEqual(json.loads(c.task)["scenario_bundle"], {**inputs.bundle(), "scenarios": []})
+                self.assertIsNone(json.loads(c.task)["active_scenario"])
                 c.replace_task(build_task(inputs, active_scenario="refund"))
                 body, _ = c.body()
                 task = json.loads(c.task)
@@ -271,7 +271,8 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 self.assertEqual(c._budget["input_tokens"], 100)
                 self.assertNotEqual(c.task_generation, c.delivered_task_generation)
                 self.assertIn("details_reference", json.dumps(task["target"]))
-                self.assertEqual(task["campaign"]["context_limits"], inputs.context()["model"]["context_limits"])
+                self.assertNotIn("context_limits", task["campaign"])
+                self.assertEqual(c.policy["context_limits"], inputs.context()["model"]["context_limits"])
 
     def test_unrepresentable_active_scenario_has_specific_safe_diagnostic(self):
         bundle = support_bundle()
@@ -301,12 +302,12 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 if turn == 1:
                     self.initial_task = deepcopy(task)
                     if use_reference:
-                        reference = next((r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == 'refund'))
+                        reference = next((r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == 'refund'))
                         return [('select', 'reference_read', {'offset': 0, 'max_bytes': 1, 'reference': reference}), ('same-batch', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}})]
                     return [(identifier, 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}}) for identifier in ('switch', 'same-batch')]
                 if turn == 2:
                     self.active_task = deepcopy(task)
-                    instructions = task['scenario_bundle']['scenarios'][0]['guidance']['composition'][1]
+                    instructions = task['active_scenario']['guidance']['composition'][1]
                     return [('reconstructed', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': instructions}})]
                 return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'summary': 'Refund invoked; all effects unverified and other scenarios untested.', 'objectives': [{'objective_id': 'support', 'outcome': 'inconclusive', 'summary': 'Insufficient evidence.'}]})]
 
@@ -316,11 +317,11 @@ class ScenarioDeliveryTest(unittest.TestCase):
         with patch('attack_harness.composition.TASK_LIMIT', 20000):
             campaign, host, _ = self.campaign(bundle, SwitchingHost(self.protocol))
             result = campaign.run()
-        self.assertEqual(host.initial_task["scenario_bundle"]["scenarios"], [])
-        self.assertEqual(host.active_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][1]])
-        self.assertEqual(host.active_task["scenario_bundle"]["coverage"], bundle["coverage"])
-        self.assertEqual(host.active_task["scenario_bundle"]["evidence"], bundle["evidence"])
-        self.assertEqual(host.active_task["portfolio"]["scenario_count"], 4)
+        self.assertIsNone(host.initial_task["active_scenario"])
+        self.assertEqual(host.active_task["active_scenario"], bundle["scenarios"][1])
+        self.assertEqual(host.active_task["campaign"]["coverage"], bundle["coverage"])
+        self.assertEqual(host.active_task["campaign"]["evidence"], bundle["evidence"])
+        self.assertEqual(len(host.active_task["scenario_index"]), 4)
         executions = [body for op, body, _ in host.events if op == "engine.attempt_execute"]
         self.assertEqual(len(executions), 1)
         self.assertEqual(executions[0]["input"]["value"]["query"], bundle["scenarios"][1]["guidance"]["composition"][1])
@@ -340,13 +341,13 @@ class ScenarioDeliveryTest(unittest.TestCase):
             self.assertNotIn("continuation", read)
             # Even a one-byte reference read delivers all requirements in task
             # data before the next construction turn, never a partial hypothesis.
-            self.assertEqual(host.active_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][1]])
+            self.assertEqual(host.active_task["active_scenario"], bundle["scenarios"][1])
 
     def test_selection_offset_is_explicit_and_original_bundle_reads_stay_ordinary(self):
         from attack_harness.tools import ToolCall
         campaign, _, inputs = self.campaign()
         c = campaign.adaptive.conversation
-        reference = json.loads(c.task)["scenario_references"][0]["reference_id"]
+        reference = json.loads(c.task)["scenario_index"][0]["reference_id"]
         campaign.adaptive.loop.begin_model()
         results = campaign.adaptive.dispatcher.dispatch([
             ToolCall("bad-offset", "reference_read", json.dumps({"reference": reference, "offset": 1}).encode()),
@@ -358,7 +359,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         self.assertEqual(ordinary["content"], inputs.bundle_raw[:1].decode())
         self.assertEqual(ordinary["raw_length"], 1)
         self.assertFalse(ordinary["eof"])
-        self.assertIsNone(json.loads(c.task)["context_delivery"]["active_scenario_id"])
+        self.assertIsNone(json.loads(c.task)["active_scenario"])
 
     def test_later_unrepresentable_scenario_is_correctable_without_dispatch(self):
         bundle = support_bundle()

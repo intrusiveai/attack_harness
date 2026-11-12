@@ -97,6 +97,66 @@ class ModelToolsTest(unittest.TestCase):
             objectives=[dict(objective_id="objective-marker", outcome="supported", summary="Observed.", observations=[observation])],
             claims=[dict(statement="Marker returned.", interpretation="supported", assurance="external-response", confidence="high", observations=[observation])])
 
+    def test_success_view_is_small_but_uncertain_execution_keeps_recovery_facts(self):
+        result = self.execute()
+        self.assertEqual(result['status'], 'completed')
+        for key in ('stage', 'invocation_state', 'target_contact', 'retry_disposition', 'cleanup_state'):
+            self.assertNotIn(key, result)
+        retained = self.model.resources[result['execution']]['execution_context']
+        self.assertEqual(retained['invocation_state'], 'succeeded')
+        uncertain = dict(status='failed', stage='invoke', invocation_state='unknown',
+            target_contact='attempted', cleanup_state='failed', retry_disposition='do-not-retry',
+            errors=[{'message':'Effect uncertain.'}])
+        self.assertEqual(self.model._execution_view(uncertain), uncertain)
+
+    def test_empty_oracle_is_not_a_negative_verdict(self):
+        request = self.host.request
+        def oracle_reply(operation, body, *, operation_id):
+            reply = request(operation, body, operation_id=operation_id)
+            if operation == 'engine.attempt_execute':
+                reply.result['feedback']['profile'] = 'oracle-assisted'
+            return reply
+        self.host.request = oracle_reply
+        result = self.execute()
+        self.assertIn('neither attack failure nor success', json.dumps(result['feedback_limits']))
+
+    def test_json_view_preserves_all_target_fields_and_ambiguous_bytes(self):
+        self.host.observations[0] = b'{"content":"{\\"nested\\":true}","source":"target prose","execution":"invented","empty":[],"number":17.25}'
+        original = self.host.observations[0]
+        self.execute()
+        read = self.call('observation_read', {'observation':'observation-1'})
+        self.assertEqual(read['content'], json.loads(original))
+        self.assertEqual(read['encoding'], 'json')
+        self.assertEqual(read['raw_length'], len(original))
+        self.assertEqual(read['source']['kind'], 'target_output')
+        self.assertEqual(read['source']['source'], 'synthetic-target')
+        self.assertNotIn('invented', self.model.resources)
+        self.assertEqual(self.host.observations[0], original)
+        # A duplicate key cannot be decoded faithfully: preserve its exact text.
+        self.host.observations[1] = b'{"answer":"first","answer":"second"}'
+        self.execute()
+        duplicate = self.call('observation_read', {'observation':'observation-2'})
+        self.assertEqual(duplicate['content'].encode(), self.host.observations[1])
+        self.assertEqual(duplicate['encoding'], 'utf8')
+
+    def test_json_numbers_are_not_rounded_and_null_keeps_visible_citation(self):
+        self.host.observations[0] = b'{"value":0.12345678901234567890123456789}'
+        self.execute()
+        read = self.call('observation_read', {'observation':'observation-1'})
+        self.assertEqual(read['content'].encode(), self.host.observations[0])
+        self.assertEqual(read['encoding'], 'utf8')
+        self.host.observations[1] = b'null'
+        self.execute()
+        read = self.call('observation_read', {'observation':'observation-2'})
+        self.assertIsNone(read['content'])
+        from attack_harness.adaptive import NativeConversation
+        from test_instruction_boundary import tool_segment
+        from types import SimpleNamespace
+        conversation = SimpleNamespace(codec='openai-chat-text-tools-v1')
+        conversation._tool_outputs = lambda history: NativeConversation._tool_outputs(conversation, history)
+        history = tool_segment(conversation.codec, json.dumps(read))
+        self.assertEqual(NativeConversation._present_citations(conversation, history), {'observation-2'})
+
     def test_four_attempt_qa_finish_derives_claim_receipts_and_retains_selections(self):
         handles = []
         for _ in range(4):

@@ -72,8 +72,8 @@ class MeasuredHost(ScenarioHost):
         if not compacting and next_phase in (1,2,4,5):
             desired = self._bundle['scenarios'][{1:0,2:1,4:2,5:3}[next_phase]]['scenario_id']
             task = self._task()
-            if task['context_delivery']['active_scenario_id'] != desired:
-                selection = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == desired)
+            if (task['active_scenario'] or {}).get('scenario_id') != desired:
+                selection = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
         if not compacting and selection is None:
             self.phase += 1
         label = 'compaction' if compacting else {1:'initial',4:'after_reads',8:'repair'}.get(self.phase,'followup')

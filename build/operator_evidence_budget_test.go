@@ -65,8 +65,8 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 				}
 				switch turn {
 				case 1:
-					if !bytes.Contains(encode(q), []byte("minimal_inline_example")) || !bytes.Contains(encode(q), []byte("readable_observation")) {
-						return nil, fmt.Errorf("shared guidance missing")
+					if bytes.Contains(encode(q), []byte("minimal_inline_example")) || !bytes.Contains(encode(q), []byte("tool-guide:observation_read")) {
+						return nil, fmt.Errorf("detailed examples must be deferred to readable guidance")
 					}
 					return processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})}), nil
 				case 2:
@@ -211,10 +211,10 @@ func TestHarnessModelBudgetProcess(t *testing.T) {
 						if e := json.Unmarshal([]byte(q["messages"].([]any)[1].(map[string]any)["content"].(string)), &task); e != nil {
 							return nil, e
 						}
-						for _, v := range task["reference_handles"].([]any) {
+						for _, v := range task["campaign"].(map[string]any)["references"].([]any) {
 							entry := v.(map[string]any)
-							if entry["role"] == "reference" {
-								reference = entry["entry_id"].(string)
+							if entry["reference"] != nil {
+								reference = entry["reference"].(string)
 								break
 							}
 						}

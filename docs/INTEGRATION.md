@@ -72,9 +72,10 @@ Harness starts with campaign-wide objectives, constraints, bundle completion
 guidance, evidence limitations, and a compact index of every scenario. The index
 contains IDs, short descriptions, priority, required status, objective associations,
 and exact selection handles; it is not a replacement for scenario instructions.
-Campaign sequencing requirements remain visible independently of priority. Supplied content stays in user/task data and cannot override system
-instructions or admitted capabilities. The portfolio derives scenario IDs and
-counts from the submitted bundle, independently of the number of invocations.
+Campaign sequencing requirements remain visible independently of priority. Supplied
+content stays in user/task data and cannot override system instructions or admitted
+capabilities. The scenario index derives its IDs from the submitted bundle,
+independently of the number of invocations.
 
 The submitted objectives and scenario requirements define the investigation within
 admitted capabilities. Target replies and retrieved documents are observations;
@@ -95,8 +96,9 @@ permissions, or assessment-repair state. Controlled tests verify these boundarie
 and repair dispatch restrictions across native conversation formats; they do not
 prove that a live model will always resist task drift.
 
-For every bundle size, `reference_read` with a `scenario_references` handle and
-offset zero loads the complete scenario into the next task message. The tool
+For every bundle size, `reference_read` with a `scenario_index` reference handle and
+offset zero activates the complete scenario. The request delivering its confirmation
+already contains those instructions in `active_scenario`; no acknowledgment is required. The tool
 returns a short selection confirmation, not a second copy or a paginated chunk;
 `max_bytes` does not truncate scenario instructions. Switching replaces the active
 section. The original verified bundle is unchanged and remains readable through
@@ -381,8 +383,9 @@ before execution. Snapshot restore preserves the frozen policy.
 
 Operator's installation settings control direct-input bytes, assessment bytes,
 whole-artifact bytes, upload-part bytes, observation-read bytes and snapshot page
-length. Harness includes those limits in model task context and validates requests
-against the shared implementation before sending them. Artifact publication and
+length. Harness retains those limits internally and validates requests against the
+shared implementation before sending them. The ordinary task omits startup limit
+maps; applicable rejection and finalization notices explain current constraints. Artifact publication and
 full observation reads select their chunks from the supplied limits. Local invalid
 calls remain correctable and do not dispatch target execution. The host independently
 checks every received request and retains the original integrity and budget checks.
@@ -413,8 +416,9 @@ handle inspected. Assessment references accept inspected citations only; rejecti
 feedback offers applicable inspected handles. Conversation compaction preserves
 handle categories while the campaign resource map retains ranges and inspection state.
 
-Task context includes Operator's shared pagination guidance and minimal inline
-finish example, with a submitted objective ID. Use execution handles in `attempts`,
+The shared tool guides provide pagination and minimal inline finish examples;
+replace illustrative identities with submitted objective IDs and returned handles.
+Use execution handles in `attempts`,
 inspected citation handles in supported assessment entries' `observations`, and
 accepted historical-record handles in `records`. Optional elaboration is separate.
 Malformed entries and wrong categories receive shared field paths and corrections;
@@ -446,16 +450,34 @@ marking unread evidence inspected. Full evidence remains available from Operator
 If mandatory context cannot fit safely, Harness reports `context_limit` rather
 than making an oversized model request or dropping requirements.
 
-Reference discovery uses exact input handles with purpose, bounded source-name hints,
-media type and size. Storage paths, integrity hashes and schema descriptors remain
-in verified Harness state; `reference_read` still resolves and checks the original
-reference. Full active-scenario requirements remain in task context. The portfolio
-is a submitted inventory, not an initial “untested” progress report. Stable trust
-and execution guidance lives in the privileged prompt. Task context keeps a small
-shared finish example and readable-observation/citation example; larger optional
-examples and enum details remain in frozen tool schemas and `tool-guide:<tool_name>`.
-Independent observation reads can share one model response within tool-call limits;
-dependent actions must wait for the earlier results.
+The task contains campaign requirements, one `scenario_index`, one complete
+`active_scenario`, applicable operation input shapes, and compact `evidence` records.
+The index links scenario handles with instruction-delivery and execution facts.
+Evidence records retain inspection ranges, content visibility, snapshot parentage,
+and restore associations; they do not assign objective outcomes. No startup budget,
+internal operation inventory, capability digest, producer metadata, or general
+reference inventory is repeated in the task. All remain in verified runtime/audit
+state. Target schemas are preserved intact, including their real input field names.
+
+Supporting campaign documents retain usable references. Advanced target resources
+have detail handles beside their service/namespace; capabilities needed later stay
+discoverable. The prompt and complete bundle are not advertised as routine reading.
+`reference_read` also accepts `tool-guide:<tool_name>` for detailed arguments and
+examples. These references use the existing verified lookup, not new aliases.
+Stable purpose and trust rules live in the short privileged prompt; complete
+scenario requirements remain task data. Independent reads can share a model response;
+dependent actions wait for the earlier results.
+
+Successful invocation feedback presents execution and observation handles plus
+relevant evidence limitations. Failed or uncertain outcomes retain stage, effect,
+and retry distinctions. An empty oracle category means no positive verdict was
+returned, not proof of either attack success or failure. Complete JSON observations
+are displayed as JSON values with source/assurance metadata. Their original bytes,
+byte counts, citations and readable ranges remain unchanged. Partial, binary, or
+ambiguous JSON (including duplicate keys) remains text/base64; nested target fields
+are never removed or interpreted as Harness handles. All original evidence remains
+available for rereading. The shared native tool declarations and validation remain
+authoritative, independent of this presentation.
 
 At the context warning threshold, Harness drops the oldest complete native
 exchanges toward 75% of that threshold (and the local serialized-size threshold),
@@ -467,8 +489,8 @@ irreducible mandatory context produces an honest context-limit termination.
 
 A reduction records verified execution-to-scenario and observation associations,
 readable ranges, inspected citations, and whether cited content remains in that
-prompt. This is a snapshot at reduction, not an assessment of objective success.
-Later tool results provide subsequent facts. Inspection state survives removal
+prompt. These facts refresh from verified state on each request; they are not an assessment
+of objective success. Inspection state survives removal
 of the bytes from the prompt; the model must reread evidence needed to substantiate
 claims, or report its limitation. Target prose never supplies handles or permissions.
 

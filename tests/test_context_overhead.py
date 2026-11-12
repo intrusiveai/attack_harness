@@ -25,23 +25,19 @@ class ContextOverheadTest(unittest.TestCase):
         inputs = MeasuredInputs(self.protocol, self.root, MeasuredHost(self.protocol))
         originals = deepcopy(inputs.reference_index())
         task = json.loads(build_task(inputs))
-        projected = task['reference_handles']
-        self.assertEqual([r['entry_id'] for r in projected], [r['entry_id'] for r in originals])
+        projected = task['campaign']['references']
+        self.assertEqual([r['reference'] for r in projected], [f'reference-{i}' for i in range(5)])
         self.assertLess(len(json.dumps(projected)), len(json.dumps(originals)))
         for entry in projected:
-            self.assertFalse({'digest','schema_id','root_kind','path'} & entry.keys())
-            self.assertTrue(entry.get('name') or entry['entry_id'].startswith('tool-guide:'))
-            canonical, raw = inputs.entry(entry['entry_id'])
-            self.assertEqual(canonical['entry_id'], entry['entry_id'])
-            self.assertEqual(len(raw), entry['size_bytes'])
+            self.assertEqual(set(entry), {'reference','description'})
+            canonical, raw = inputs.entry(entry['reference'])
+            self.assertEqual(canonical['entry_id'], entry['reference'])
         self.assertEqual(inputs.reference_index(), originals)
-        self.assertEqual(task['scenario_bundle'], {**inputs.bundle(), 'scenarios': []})
-        self.assertEqual(task['portfolio'], dict(scenario_count=4,
-            scenario_ids=[s['scenario_id'] for s in inputs.bundle()['scenarios']]))
-        example = task['shared_tool_guidance']['finish']['minimal_inline_example']
-        self.assertEqual(example['objectives'][0]['objective_id'], 'support')
-        self.assertIn('readable_observation', json.dumps(task['shared_tool_guidance']))
-        self.assertNotIn('optional_uncertainty_example', json.dumps(task['shared_tool_guidance']))
+        self.assertIsNone(task['active_scenario'])
+        self.assertEqual(len(task['scenario_index']), 4)
+        self.assertNotIn('shared_tool_guidance', task)
+        # Advanced examples remain available through the original guide mechanism.
+        self.assertIn(b'minimal_inline_example', inputs.entry('tool-guide:finish')[1])
 
     def test_controlled_sequence_commits_without_replay_or_model_summary(self):
         metrics = measure(self.protocol, self.root)
@@ -126,7 +122,7 @@ class ContextOverheadTest(unittest.TestCase):
                 self.assertEqual(campaign.handlers.model_tools.resources, snapshot)
                 self.assertFalse(c._present_citations(c._request[c._history_field()]))
                 task = host.task_from_request(body)
-                self.assertFalse(task['execution_records']['executions'][0]['observations'][0]['inspected'][0]['content_in_prompt'])
+                self.assertFalse(task['evidence']['executions'][0]['observations'][0]['inspected'][0]['content_in_prompt'])
                 self.assertFalse(any(op=='engine.model_generate' for op,_,_ in host.events))
                 # Inspection was preserved, but a whole unread observation is still invalid.
                 a.loop.begin_model()
