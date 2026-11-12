@@ -35,7 +35,7 @@ class ContextOverheadTest(unittest.TestCase):
             self.assertEqual(canonical['entry_id'], entry['entry_id'])
             self.assertEqual(len(raw), entry['size_bytes'])
         self.assertEqual(inputs.reference_index(), originals)
-        self.assertEqual(task['scenario_bundle'], inputs.bundle())
+        self.assertEqual(task['scenario_bundle'], {**inputs.bundle(), 'scenarios': []})
         self.assertEqual(task['portfolio'], dict(scenario_count=4,
             scenario_ids=[s['scenario_id'] for s in inputs.bundle()['scenarios']]))
         example = task['shared_tool_guidance']['finish']['minimal_inline_example']
@@ -90,6 +90,7 @@ class ContextOverheadTest(unittest.TestCase):
                                       eof=body['offset'] + len(chunk) == len(raw))
                     return reply
                 host.request = sliced_request
+                c.replace_task(build_task(inputs, active_scenario='baseline'))
                 original_task, policy = c.task, deepcopy(c.policy)
                 c.delivered_task_generation = c.task_generation
                 a.loop.begin_model()
@@ -124,7 +125,8 @@ class ContextOverheadTest(unittest.TestCase):
                 self.assertEqual(c._remaining, budget); self.assertEqual(a.loop.snapshot(), loop)
                 self.assertEqual(campaign.handlers.model_tools.resources, snapshot)
                 self.assertFalse(c._present_citations(c._request[c._history_field()]))
-                self.assertIn('"content_in_prompt": false', c._summary)
+                task = host.task_from_request(body)
+                self.assertFalse(task['execution_records']['executions'][0]['observations'][0]['inspected'][0]['content_in_prompt'])
                 self.assertFalse(any(op=='engine.model_generate' for op,_,_ in host.events))
                 # Inspection was preserved, but a whole unread observation is still invalid.
                 a.loop.begin_model()

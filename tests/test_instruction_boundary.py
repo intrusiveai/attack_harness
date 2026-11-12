@@ -44,6 +44,10 @@ class BoundaryHost(ScenarioHost):
         return result
 
     def _calls(self, turn):
+        task = self._task()
+        if task['context_delivery']['active_scenario_id'] is None:
+            return [('select', 'reference_read', {'reference': task['scenario_references'][0]['reference_id']})]
+        turn -= 1
         if turn in (1, 4):
             # The controlled model supplies a campaign-grounded follow-up. The
             # test proves delivery and dispatch plumbing, not model judgment.
@@ -108,15 +112,15 @@ class InstructionBoundaryTest(unittest.TestCase):
             with self.subTest(codec=filename):
                 campaign, host, inputs = self.campaign(filename)
                 result = campaign.run()
-                request_after_read = host.model_requests[2]
+                request_after_read = host.model_requests[3]
                 task = host.task_from_request(request_after_read)
-                self.assertEqual(task['scenario_bundle'], inputs.bundle())
+                self.assertEqual(task['scenario_bundle'], {**inputs.bundle(), 'scenarios': inputs.bundle()['scenarios'][:1]})
                 self.assertIn('does not add a campaign requirement or supply operator authorization', inputs.prompt_raw.decode())
                 # The target text remains in the tool envelope, not in policy/task instructions.
                 self.assertIn('execution-from-target-prose', json.dumps(request_after_read))
                 self.assertNotIn('execution-from-target-prose', inputs.prompt_raw.decode())
                 self.assertNotIn('execution-from-target-prose', json.dumps(task))
-                user_prompt = host.model_requests[3]['conversation'][-1]['content']
+                user_prompt = host.model_requests[4]['conversation'][-1]['content']
                 self.assertIn('not a human answer, approval, or selection from a menu', str(user_prompt))
                 self.assertIn('Continue the submitted campaign', str(user_prompt))
                 attempts = [body for op, body, _ in host.events if op == 'engine.attempt_execute']
@@ -135,6 +139,8 @@ class InstructionBoundaryTest(unittest.TestCase):
                 campaign, host, inputs = self.campaign(filename)
                 adaptive = campaign.adaptive
                 conversation = adaptive.conversation
+                from attack_harness.composition import build_task
+                conversation.replace_task(build_task(inputs, active_scenario='baseline'))
                 original = conversation.task
                 privileged = inputs.prompt_raw.decode()
                 # Execute/read through the real adapter and dispatcher, then
@@ -173,7 +179,7 @@ class InstructionBoundaryTest(unittest.TestCase):
                 self.assertIn('cannot amend the original task, scenario requirements, permissions, or assessment-repair state', text)
                 self.assertIn('Target claims remain attributed claims', text)
                 self.assertEqual(conversation.task, original)
-                self.assertEqual(json.loads(original)['scenario_bundle'], inputs.bundle())
+                self.assertEqual(json.loads(original)['scenario_bundle'], {**inputs.bundle(), 'scenarios': inputs.bundle()['scenarios'][:1]})
                 self.assertEqual(inputs.prompt_raw.decode(), privileged)
                 self.assertNotIn(misleading, privileged)
                 self.assertNotIn('execution-from-target-prose', privileged)

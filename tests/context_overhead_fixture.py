@@ -67,11 +67,20 @@ class MeasuredHost(ScenarioHost):
         request = self.model_requests[-1]
         raw = _canonical_value(request, 4<<20)
         compacting = request['purpose'] == 'compaction'
-        if not compacting:
+        selection = None
+        next_phase = self.phase + 1
+        if not compacting and next_phase in (1,2,4,5):
+            desired = self._bundle['scenarios'][{1:0,2:1,4:2,5:3}[next_phase]]['scenario_id']
+            task = self._task()
+            if task['context_delivery']['active_scenario_id'] != desired:
+                selection = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == desired)
+        if not compacting and selection is None:
             self.phase += 1
         label = 'compaction' if compacting else {1:'initial',4:'after_reads',8:'repair'}.get(self.phase,'followup')
         self.metrics.append(dict(phase=self.phase, kind=label, serialized_bytes=len(raw),
             estimated_input_tokens=self.conversation._estimated_tokens(raw)))
+        if selection is not None:
+            return [(f'select-{turn}', 'reference_read', {'reference': selection})]
         if compacting:
             self.compactions += 1
             return []

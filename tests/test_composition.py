@@ -35,19 +35,19 @@ class Inputs:
 
 
 class CompositionTest(unittest.TestCase):
-    def test_oversized_initial_material_keeps_complete_active_scenario_and_all_ids(self):
+    def test_oversized_initial_material_keeps_campaign_requirements_and_all_ids(self):
         raw=build_task(Inputs())
         self.assertLessEqual(len(raw.encode()),TASK_LIMIT)
         task=json.loads(raw)
         self.assertNotIn("scenario_index",task)
-        self.assertEqual(task["scenario_bundle"]["scenarios"],[Inputs().bundle()["scenarios"][0]])
+        self.assertEqual(task["scenario_bundle"]["scenarios"],[])
         self.assertEqual(task["scenario_bundle"]["objectives"],Inputs().bundle()["objectives"])
         self.assertEqual(task["portfolio"]["scenario_count"],100)
         self.assertEqual(task["context_delivery"]["mode"],"active-scenario")
         self.assertEqual(len(task["reference_handles"]),100)
         self.assertEqual(task["portfolio"]["scenario_ids"], [f"scenario-{index}" for index in range(100)])
         self.assertNotIn("untested", json.dumps(task["portfolio"]))
-        self.assertTrue(task["selected_skills"][0]["instructions_deferred"])
+        self.assertEqual(task["selected_skills"][0]["instructions"], Skill.instructions)
         self.assertTrue(task["target"]["details_deferred"])
 
 

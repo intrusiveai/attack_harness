@@ -183,6 +183,8 @@ class FinalizationCapacityTest(unittest.TestCase):
             with self.subTest(codec=filename):
                 campaign, host, inputs = fixture.campaign(filename)
                 a = campaign.adaptive; c = a.conversation
+                from attack_harness.composition import build_task
+                c.replace_task(build_task(inputs, active_scenario='baseline'))
                 original, privileged = c.task, deepcopy(c.policy)
                 c.delivered_task_generation=c.task_generation
                 a.loop.begin_model()

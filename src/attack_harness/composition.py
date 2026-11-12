@@ -27,6 +27,8 @@ TASK_CONTEXT_MESSAGE = "Required campaign context exceeds the task context limit
 
 def _scenario_references(bundle):
     return [{"scenario_id": scenario["scenario_id"],
+             "description": scenario.get("hypothesis", "")[:256],
+             **{k: scenario[k] for k in ("required", "priority", "objective_refs") if k in scenario},
              "reference_id": "scenario-" + raw_digest(_canonical_value(
                  {"bundle_id": bundle.get("bundle_id", ""), "scenario_id": scenario["scenario_id"]}, 1024))[7:]}
             for scenario in bundle["scenarios"]]
@@ -82,7 +84,10 @@ def build_task(inputs, *, active_scenario=None):
             "operation_timeouts_ms": context["operation_timeouts_ms"],
             "omissions": context["omissions"], "context_limits": context["model"]["context_limits"],
         },
-        "target": decode(target_raw, ORDINARY_LIMIT), "scenario_bundle": bundle,
+        "target": decode(target_raw, ORDINARY_LIMIT),
+        "scenario_bundle": {**bundle, "scenarios": [s for s in bundle["scenarios"]
+                                                     if s["scenario_id"] == active_scenario]},
+        "scenario_references": _scenario_references(bundle),
         "portfolio": _portfolio(bundle),
         "shared_tool_guidance": shared_guidance,
         "reference_handles": _reference_index(inputs),
@@ -90,7 +95,19 @@ def build_task(inputs, *, active_scenario=None):
             "skill_id": skill.skill_id, "name": skill.name, "description": skill.description,
             "instructions": skill.instructions,
         } for skill in inputs.skills],
-        "context_delivery": {"mode": "complete-bundle"},
+        "context_delivery": {
+            "mode": "active-scenario", "active_scenario_id": active_scenario,
+            "bundle_reference_id": context["scenario_bundle"]["entry_id"],
+            "guidance": (
+                "Index descriptions are selection aids, not requirements. reference_read on a scenario handle "
+                "(offset 0) replaces the active section on the next turn; its result is a confirmation, "
+                "not paginated text. Read full instructions before constructing an attempt. "
+                "The bundle reference is the original source, not another required read. "
+                "Other references retain ordinary paginated reading. Follow campaign sequencing guidance; "
+                "priority alone does not define dependencies. At finish, revisit individual requirements "
+                "and observations as needed; instructions delivered and completed executions are not objective success."
+            ),
+        },
         "guidance": (
             "The portfolio is the submitted scenario inventory, not current progress. "
             "Use reference_read with reference_handles, details_reference, or tool-guide:<tool_name> "
@@ -100,44 +117,20 @@ def build_task(inputs, *, active_scenario=None):
     try:
         return _canonical_value(document, TASK_LIMIT).decode("utf-8")
     except ContractError:
-        # Defer optional material before narrowing scenario delivery. Never shorten
-        # objective requirements, scenario objects, completion guidance, or limitations.
+        # Defer optional skill text, never campaign or active-scenario requirements.
         document["selected_skills"] = [{
             "skill_id": skill.skill_id, "name": skill.name, "description": skill.description,
             "instructions_deferred": True,
         } for skill in inputs.skills]
-        # The target is already compact; keep ordinary input contracts and exact
-        # detail handles even when complete scenario delivery needs narrowing.
-        # Compact discovery hints remain present even when content is deferred.
     try:
         return _canonical_value(document, TASK_LIMIT).decode("utf-8")
     except ContractError:
-        if bundle["scenarios"]:
-            selected = (bundle["scenarios"][0] if active_scenario is None else
-                        next(s for s in bundle["scenarios"] if s["scenario_id"] == active_scenario))
-            document["scenario_bundle"] = {**bundle, "scenarios": [selected]}
-            document["scenario_references"] = _scenario_references(bundle)
-            document["context_delivery"] = {
-                "mode": "active-scenario", "active_scenario_id": selected["scenario_id"],
-                "guidance": (
-                    "Only the active scenario's full requirements are loaded. Use reference_read "
-                    "with a scenario_references handle before constructing another scenario's attempt; "
-                    "Harness then loads its complete requirements into the next task message. "
-                    "Do not execute another scenario using its ID alone. A call selecting an unloaded scenario "
-                    "is withheld locally while its complete instructions are loaded; inspect the "
-                    "new task data and reconstruct the call on the next model turn. No target "
-                    "invocation occurs during that context switch. Unvisited scenarios remain untested."
-                ),
-            }
-        try:
-            return _canonical_value(document, TASK_LIMIT).decode("utf-8")
-        except ContractError:
-            raise ContractError(
-                SCENARIO_CONTEXT_MESSAGE if bundle["scenarios"] else TASK_CONTEXT_MESSAGE,
-                reason="scenario_context_limit" if bundle["scenarios"] else "task_context_limit",
-                field_path="/scenario_bundle/scenarios" if bundle["scenarios"] else "/scenario_bundle",
-                correction="Reduce the submitted campaign context; do not omit active scenario requirements.",
-            ) from None
+        raise ContractError(
+            SCENARIO_CONTEXT_MESSAGE if active_scenario is not None else TASK_CONTEXT_MESSAGE,
+            reason="scenario_context_limit" if active_scenario is not None else "task_context_limit",
+            field_path="/scenario_bundle/scenarios" if active_scenario is not None else "/scenario_bundle",
+            correction="Reduce the submitted campaign context; do not omit active scenario requirements.",
+        ) from None
 
 
 class ScenarioDelivery:
@@ -145,11 +138,22 @@ class ScenarioDelivery:
 
     def __init__(self, inputs, conversation, loop):
         self.inputs, self.conversation, self.loop = inputs, conversation, loop
+        self.delivered = set()
+        conversation.on_task_delivered = self.mark_delivered
         bundle = inputs.bundle()
         self.references = {entry["reference_id"]: scenario for entry, scenario in
                            zip(_scenario_references(bundle), bundle["scenarios"])}
         if self.references.keys() & {entry["entry_id"] for entry in inputs.reference_index()}:
             raise ContractError("Scenario reference collides with an input reference.")
+
+    def mark_delivered(self):
+        self.delivered.update(s["scenario_id"] for s in
+                              json.loads(self.conversation.task)["scenario_bundle"]["scenarios"])
+
+    def context_facts(self):
+        return {"instructions_delivered": sorted(self.delivered),
+                "instructions_not_yet_delivered": [s["scenario_id"] for s in self.references.values()
+                                                  if s["scenario_id"] not in self.delivered]}
 
     def reference(self, identifier):
         """A local read view of verified bundle data, not a new host artifact or receipt."""
@@ -229,5 +233,9 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
         scenario_delivery=scenario_delivery)
     dispatcher=Dispatcher(protocol,loop,handlers.handlers(),raw_handlers=handlers.raw_handlers(), client=client)
     conversation.resource_context = handlers.model_tools.context_facts
+    conversation.task_context = lambda citations: {
+        "scenario_delivery_state": scenario_delivery.context_facts(),
+        "execution_records": handlers.model_tools.context_facts(citations),
+    }
     adaptive=AdaptiveHarness(protocol,client,loop,dispatcher,conversation,finalizer,limits=admission["limits"]["harness"])
     return Campaign(adaptive,handlers,attempts,finalizer)
