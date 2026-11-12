@@ -21,6 +21,9 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 		t.Run(transport, func(t *testing.T) {
 			var first string
 			reply := func(turn int, q map[string]any) ([]byte, error) {
+				if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil {
+					return response, err
+				}
 				switch turn {
 				case 1:
 					var task map[string]any
@@ -79,7 +82,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 			}
 			run := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: reply, timeout: 90 * time.Second})
 			run.finish(t)
-			if len(run.provider.requests) != 4 {
+			if len(run.provider.requests) != 5 {
 				t.Fatal("unexpected model calls", len(run.provider.requests))
 			}
 			if err := run.writer.Close(); err != nil {
@@ -90,7 +93,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 				t.Fatal(err)
 			}
 			report := reportResult(t, run.root, receipt)
-			if len(report.Attempts) != 2 || len(report.ModelContexts) != 4 || len(report.ModelRequests) != 4 || !report.ModelContexts[1].Budget.NearPromptLimit || report.ModelContexts[1].Budget.InputTokens != 8200 {
+			if len(report.Attempts) != 2 || len(report.ModelContexts) != 5 || len(report.ModelRequests) != 5 || !report.ModelContexts[2].Budget.NearPromptLimit || report.ModelContexts[2].Budget.InputTokens != 8200 {
 				t.Fatal("missing correlated context evidence", report.ModelContexts)
 			}
 			if report.Attempts[0].ScenarioID != "scenario-marker" || report.Attempts[1].ReceiptID == report.Attempts[0].ReceiptID {

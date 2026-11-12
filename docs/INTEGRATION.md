@@ -68,9 +68,11 @@ layout are documented in [the container specification](../GUEST_ARTIFACT_LAYOUT_
 
 ## Ordinary execution
 
-Harness includes complete scenario objects, bundle completion guidance, and
-evidence limitations in the initial task message when they fit its 768 KiB task
-budget. Supplied content stays in user/task data and cannot override system
+Harness starts with campaign-wide objectives, constraints, bundle completion
+guidance, evidence limitations, and a compact index of every scenario. The index
+contains IDs, short descriptions, priority, required status, objective associations,
+and exact selection handles; it is not a replacement for scenario instructions.
+Campaign sequencing requirements remain visible independently of priority. Supplied content stays in user/task data and cannot override system
 instructions or admitted capabilities. The portfolio derives scenario IDs and
 counts from the submitted bundle, independently of the number of invocations.
 
@@ -93,21 +95,34 @@ permissions, or assessment-repair state. Controlled tests verify these boundarie
 and repair dispatch restrictions across native conversation formats; they do not
 prove that a live model will always resist task drift.
 
-For larger bundles, Harness retains complete campaign requirements and one active
-scenario, deferring skill and target details to the existing reference reader.
-The task lists local scenario read handles: `reference_read` loads the selected
-scenario's complete requirements into the next task message, even if the requested
-read returns only a small chunk. These handles are views of verified bundle data,
-not execution or artifact receipts. As a backstop, an attempt call selecting an
-unloaded scenario is withheld before target dispatch. Harness
-loads that scenario in full, then requires a new model turn to read it and
-reconstruct the call; other calls in the same response cannot bypass this boundary.
-Context switches consume the existing tool, model-turn, and read budgets. The
-complete active instructions survive history compaction. If they cannot fit with
-required campaign context, `scenario_context_limit` reports the failure without
-reducing requirements to a hypothesis or executing the call.
+For every bundle size, `reference_read` with a `scenario_references` handle and
+offset zero loads the complete scenario into the next task message. The tool
+returns a short selection confirmation, not a second copy or a paginated chunk;
+`max_bytes` does not truncate scenario instructions. Switching replaces the active
+section. The original verified bundle is unchanged and remains readable through
+its original handle, but is not another required read. Other references retain
+normal byte-range reading. Selecting the next scenario can share a response with
+independent reads of existing observations; execution waits for the next turn.
 
-The model uses three tools: `attempt_execute`, `observation_read`, and `finish`.
+An attempt for an unloaded scenario is withheld before target dispatch. Harness
+loads its complete requirements and requires another model turn to reconstruct
+the attempt. Selection and execution in one response cannot bypass this boundary.
+Context switches consume existing tool, model-turn, and read allowances. If full
+active requirements cannot fit alongside campaign context within the 768 KiB task
+limit, `scenario_context_limit` reports the failure without truncating requirements
+or executing the call. Native prompt limits and protected finalization still apply.
+
+The index remains visible during finalization. Product-owned facts distinguish
+instructions delivered from completed executions, and associate scenario IDs,
+execution status, observations, inspected citations, snapshots, and restore
+lineage. These records do not assert objective success. History trimming removes
+complete old exchanges, never retained evidence; a citation may stay valid while
+its content is absent from the current prompt. Revisit individual scenario
+requirements and reread evidence as needed for the assessment. Unvisited scenarios
+and unresolved findings must be reported honestly. Scenario selection remains
+available during assessment repair; new target actions remain blocked.
+
+After scenario selection, ordinary execution uses three tools: `attempt_execute`, `observation_read`, and `finish`.
 Operator retains effective input before dispatch and returns authoritative
 execution receipts and permitted observation entries. If retention fails, it
 does not dispatch the target operation.

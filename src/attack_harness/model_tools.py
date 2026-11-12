@@ -174,7 +174,9 @@ class ModelTools:
             checkpoint_id=checkpoint), available=metadata.get("status") == "ready")
         value["session"] = self.register("session", dict(source_session=session), available=True)
         if "parent" in value:
-            value["parent"] = self.register("checkpoint", value["parent"])
+            identity = ("checkpoint", _canonical_value(value["parent"], ORDINARY_LIMIT))
+            value["parent"] = self._identities.get(identity) or self.register("checkpoint", value["parent"])
+        self.resources[value["snapshot"]]["snapshot_context"] = deepcopy(value)
         return value
 
     def context_facts(self, present_citations):
@@ -202,8 +204,11 @@ class ModelTools:
                     reference=resource['value']['reference_id'],
                     **({'range': resource['value']['range']} if 'range' in resource['value'] else {})))
             elif resource['kind'] not in ('observation', 'reference'):
-                other.append(dict(handle=handle, kind=resource['kind'], available=resource['available'], live=resource['live']))
-        return dict(executions=executions, other_handles=other)
+                other.append(dict(handle=handle, kind=resource['kind'], available=resource['available'], live=resource['live'],
+                    **({'snapshot_metadata': resource['snapshot_context']} if 'snapshot_context' in resource else {})))
+        restores = [deepcopy(result.value) for (name, _), result in self._calls.values()
+                    if name == 'restore_request' and result is not None and result.outcome == 'restored']
+        return dict(executions=executions, other_handles=other, restores=restores)
 
     def _present(self, name, body, result, arguments):
         value = deepcopy(result)
@@ -214,8 +219,10 @@ class ModelTools:
             value.pop("target_output", None); value.pop("observations", None)
             value["execution"] = self.register("execution", dict(attempt_receipt_id=receipt), available=True)
             self.resources[value['execution']]['execution_context'] = {
+                "run_revision": self.client.run_revision,
+                **({'parent': arguments['parent']} if 'parent' in arguments else {}),
                 **{k: body[k] for k in ('origin', 'scenario_id') if k in body},
-                **{k: result[k] for k in ('status', 'invocation_state', 'target_contact', 'retry_disposition') if k in result},
+                **{k: result[k] for k in ('status', 'invocation_state', 'target_contact', 'retry_disposition', 'cleanup_state') if k in result},
             }
             feedback = value.pop("feedback", {})
             value["feedback"] = {k: v for k, v in feedback.items() if k != "entries"}
@@ -238,6 +245,9 @@ class ModelTools:
             value = dict(status=value["status"], artifact=self.register("artifact",
                 dict(artifact_receipt=value["artifact_receipt"], purpose=value["purpose"]), available=True),
                 purpose=value["purpose"], media_type=artifact["media_type"], size_bytes=artifact["size_bytes"])
+        elif name == "reference_read" and value.get("status") == "scenario-selected":
+            # Activation is not a byte read in tool history or an inspected citation.
+            return value
         elif name in ("observation_read", "reference_read"):
             observation = name == "observation_read"
             kind = "observation" if observation else "reference"
@@ -283,6 +293,7 @@ class ModelTools:
         elif name == "snapshot_list":
             value["snapshots"] = [self._snapshot(item) for item in value["snapshots"]]
         elif name == "restore_request":
+            value["restored_snapshot"] = arguments["snapshot"]
             # INJECTION_CLEANUP_CONTRACT keeps same-campaign action mappings
             # valid across healthy restores, including previously deleted
             # injections. A fresh deletion goes to Operator, which revalidates

@@ -60,6 +60,9 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 					"uncertainties": []any{map[string]any{"kind": "evidence-gap", "description": "Only inspected ranges support this assessment."}}}
 			}
 			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil {
+					return response, err
+				}
 				switch turn {
 				case 1:
 					if !bytes.Contains(encode(q), []byte("minimal_inline_example")) || !bytes.Contains(encode(q), []byte("readable_observation")) {
@@ -369,6 +372,9 @@ func TestHarnessAssessmentRepairProcess(t *testing.T) {
 					"uncertainties": []any{map[string]any{"kind": "evidence-gap", "description": "Internal effects were not observed."}}}
 			}
 			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil {
+					return response, err
+				}
 				if turn > 2 && !bytes.Contains(encode(q), []byte("Assessment repair is active")) {
 					return nil, fmt.Errorf("repair context lost on turn %d", turn)
 				}
@@ -521,6 +527,9 @@ func TestHarnessLocalContextReductionProcess(t *testing.T) {
 					"objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "Other effects remain unknown.", "observations": []string{citation}}}}
 			}
 			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
+				if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil {
+					return response, err
+				}
 				if q["tool_choice"] == "none" {
 					return nil, fmt.Errorf("local reduction purchased a model summary")
 				}

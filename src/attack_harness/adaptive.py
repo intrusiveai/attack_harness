@@ -135,6 +135,12 @@ class NativeConversation:
 
     def body(self):
         body = {"purpose": "generation", "conversation": deepcopy(self._request[self._history_field()])}
+        if hasattr(self, 'task_context'):
+            # Refresh verified facts in the replaceable task, not in appended history.
+            task = json.loads(self._task)
+            task.update(self.task_context(self._present_citations(body['conversation'])))
+            text = json.dumps(task, separators=(',', ':')) + self._summary + self._finalization_guidance() + self._repair_context()
+            body['conversation'][0] = self._initial(text)[self._history_field()][0]
         raw = _canonical_value(body, ORDINARY_LIMIT)
         self.protocol.validate_model_request(raw)
         return body, raw
@@ -245,7 +251,7 @@ class NativeConversation:
         while True:
             omitted = previous_omissions + len(self._groups) - len(groups)
             retained = [item for group in groups for item in group]
-            facts = (self.resource_context(self._present_citations(retained))
+            facts = ({} if hasattr(self, 'task_context') else self.resource_context(self._present_citations(retained))
                      if hasattr(self, 'resource_context') else dict(retained_identities=ledger))
             suffix = ('\n\nLocally trimmed history; no model summary was generated. '
                 'Omitted content is not evidence of inspection. Read retained observations when needed. '
@@ -253,6 +259,7 @@ class NativeConversation:
                 json.dumps(dict(history_provenance='harness-local-trimming', omitted_complete_groups=omitted,
                     previous_summary_omitted=omitted_summary, verified_state_at_reduction=facts,
                     validation_corrections=corrections)))
+            self._summary = suffix
             self._request = self._initial(self._task + suffix + self._finalization_guidance() + self._repair_context(retained))
             self._request[self._history_field()].extend(deepcopy([item for group in groups for item in group]))
             try:
@@ -485,6 +492,8 @@ class AdaptiveHarness:
                 batch = native_batch(self.protocol, self.conversation.policy_raw,
                                      request_raw, result_raw)
                 self.conversation.delivered_task_generation = self.conversation.task_generation
+                if hasattr(self.conversation, 'on_task_delivered'):
+                    self.conversation.on_task_delivered()
             except RuntimeStopped:
                 self.loop.hard_stop()
                 raise

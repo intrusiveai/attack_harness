@@ -94,14 +94,20 @@ class FixedHandlers:
             else:
                 source, content = self.inputs.entry(arguments["reference_id"])
         except ContractError as error:
-            if error.reason == "scenario_context_limit":
+            if error.reason in ("scenario_context_limit", "task_context_limit"):
                 raise ToolError.from_contract(error) from None
             raise ToolError("invalid_reference", "Unknown reference.", path="/reference", correction="Use a reference from the input reference index or tool-guide:<advertised tool name>; do not invent a reference.") from None
         offset = arguments["offset"]
+        if task is not None:
+            if offset != 0:
+                raise ToolError("range_exceeded", "Scenario selection is not a paginated read.",
+                    path="/offset", correction="Use offset 0 to load the complete scenario in the next task message.")
+            self.scenario_delivery.activate(content, task)
+            return HandlerResult({"status": "scenario-selected", "reference": source["entry_id"],
+                "scenario_id": source["scenario_id"],
+                "message": "Complete instructions are in the next task's active scenario section. Read them before constructing an attempt; no pagination is needed."})
         if offset > len(content):
             raise ToolError("range_exceeded", "Reference offset exceeds content size.", path="/offset", correction=f"Use an offset from 0 through {len(content)} for this reference, or start at 0. An offset equal to size returns EOF.")
-        if task is not None:
-            self.scenario_delivery.activate(content, task)
         selected = content[offset:offset + arguments.get("max_bytes",4096)]
         if selected:
             self.loop.reserve_read("content", source["digest"], offset, len(selected))

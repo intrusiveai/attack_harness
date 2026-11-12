@@ -114,8 +114,10 @@ class ScenarioHost(ScriptedHost):
     def task_from_request(self, request):
         messages = request["conversation"]
         if self.codec == "bedrock-converse-text-tools-v1":
-            return json.loads(messages[0]["content"][0]["text"])
-        return json.loads(messages[0]["content"])
+            return json.JSONDecoder().raw_decode(messages[0]["content"][0]["text"])[0]
+        if self.codec == "gemini-text-tools-v1":
+            return json.JSONDecoder().raw_decode(messages[0]["parts"][0]["text"])[0]
+        return json.JSONDecoder().raw_decode(messages[0]["content"])[0]
 
     def _task(self):
         return self.task_from_request(self.model_requests[-1])
@@ -139,6 +141,12 @@ class ScenarioHost(ScriptedHost):
 
     def _calls(self, turn):
         task = self._task()
+        turn = getattr(self, 'scenario_step', 0) + 1
+        desired = {1: 'baseline', 3: 'refund', 7: 'malformed'}.get(turn)
+        if desired and task['context_delivery']['active_scenario_id'] != desired:
+            reference = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == desired)
+            return [(f'select-{turn}', 'reference_read', {'reference': reference})]
+        self.scenario_step = turn
         scenarios = {s['scenario_id']: s for s in task['scenario_bundle']['scenarios']}
 
         def invoke(identifier, query):
@@ -215,7 +223,9 @@ class ScenarioDeliveryTest(unittest.TestCase):
         campaign, host, inputs = self.campaign(codec_file=codec_file)
         result = campaign.run()
         task = host.task_from_request(host.model_requests[0])
-        self.assertEqual(task["scenario_bundle"], inputs.bundle())
+        self.assertEqual(task["scenario_bundle"], {**inputs.bundle(), "scenarios": []})
+        self.assertEqual(len(task["scenario_references"]), 4)
+        self.assertNotIn("17.25 USD", json.dumps(task))
         self.assertNotIn("scenario_index", task)
         self.assertEqual(task["portfolio"]["scenario_count"], 4)
         self.assertEqual(task["portfolio"]["scenario_ids"], ["baseline", "refund", "malformed", "union"])
@@ -241,7 +251,9 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 campaign, _, inputs = self.campaign(codec_file=filename)
                 c = campaign.adaptive.conversation
                 body, _ = c.body()
-                self.assertEqual(json.loads(c.task)["scenario_bundle"], inputs.bundle())
+                self.assertEqual(json.loads(c.task)["scenario_bundle"], {**inputs.bundle(), "scenarios": []})
+                c.replace_task(build_task(inputs, active_scenario="refund"))
+                body, _ = c.body()
                 task = json.loads(c.task)
                 # Supplied instructions stay in user/task data, never the privileged prompt.
                 self.assertNotIn(inputs.bundle()["coverage"]["completion_guidance"], inputs.prompt_raw.decode())
@@ -250,7 +262,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
                 c._budget = {"near_prompt_limit": False, "input_tokens":100}
                 c._last_bytes = len(_canonical_value(body, 4 << 20))
                 c.apply_compaction("Incomplete retrieval, refund and attack coverage.", "sha256:" + "a" * 64, 1)
-                c.replace_task(build_task(inputs))
+                c.replace_task(build_task(inputs, active_scenario="refund"))
                 body, _ = c.body()  # Shared codec validation still accepts the history.
                 self.assertIn("summary_provenance", json.dumps(body))
                 self.assertIn("17.25 USD", json.dumps(body))
@@ -266,7 +278,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         bundle["scenarios"][0]["coverage_obligations"] = [str(i) + "x" * 4000 for i in range(210)]
         inputs = ScenarioInputs(self.protocol, self.root, bundle, ScenarioHost(self.protocol))
         with self.assertRaises(ContractError) as caught:
-            build_task(inputs)
+            build_task(inputs, active_scenario="baseline")
         diagnostic = fatal_diagnostic(caught.exception, "runtime")
         self.assertEqual(diagnostic["reason"], "scenario_context_limit")
         self.assertIn("Complete active scenario", diagnostic["message"])
@@ -304,7 +316,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
         with patch('attack_harness.composition.TASK_LIMIT', 20000):
             campaign, host, _ = self.campaign(bundle, SwitchingHost(self.protocol))
             result = campaign.run()
-        self.assertEqual(host.initial_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][0]])
+        self.assertEqual(host.initial_task["scenario_bundle"]["scenarios"], [])
         self.assertEqual(host.active_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][1]])
         self.assertEqual(host.active_task["scenario_bundle"]["coverage"], bundle["coverage"])
         self.assertEqual(host.active_task["scenario_bundle"]["evidence"], bundle["evidence"])
@@ -322,12 +334,31 @@ class ScenarioDeliveryTest(unittest.TestCase):
         if use_reference:
             messages = host.model_requests[1]["conversation"]
             read = next(json.loads(m["content"]) for m in messages if m.get("tool_call_id") == "select")
-            self.assertEqual(read["raw_length"], 1)
-            self.assertFalse(read["eof"])
-            self.assertEqual(read["source"]["bundle_reference_id"], "bundle")
+            self.assertEqual(read["status"], "scenario-selected")
+            self.assertEqual(read["scenario_id"], "refund")
+            self.assertNotIn("content", read)
+            self.assertNotIn("continuation", read)
             # Even a one-byte reference read delivers all requirements in task
             # data before the next construction turn, never a partial hypothesis.
             self.assertEqual(host.active_task["scenario_bundle"]["scenarios"], [bundle["scenarios"][1]])
+
+    def test_selection_offset_is_explicit_and_original_bundle_reads_stay_ordinary(self):
+        from attack_harness.tools import ToolCall
+        campaign, _, inputs = self.campaign()
+        c = campaign.adaptive.conversation
+        reference = json.loads(c.task)["scenario_references"][0]["reference_id"]
+        campaign.adaptive.loop.begin_model()
+        results = campaign.adaptive.dispatcher.dispatch([
+            ToolCall("bad-offset", "reference_read", json.dumps({"reference": reference, "offset": 1}).encode()),
+            ToolCall("raw-bundle", "reference_read", b'{"reference":"bundle","offset":0,"max_bytes":1}'),
+        ])
+        rejected, ordinary = [json.loads(r.content) for r in results]
+        self.assertEqual(rejected["diagnostic"]["field_path"], "/offset")
+        self.assertIn("Use offset 0", rejected["diagnostic"]["correction"])
+        self.assertEqual(ordinary["content"], inputs.bundle_raw[:1].decode())
+        self.assertEqual(ordinary["raw_length"], 1)
+        self.assertFalse(ordinary["eof"])
+        self.assertIsNone(json.loads(c.task)["context_delivery"]["active_scenario_id"])
 
     def test_later_unrepresentable_scenario_is_correctable_without_dispatch(self):
         bundle = support_bundle()

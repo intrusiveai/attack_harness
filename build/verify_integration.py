@@ -80,7 +80,36 @@ def main():
         # The model now receives an execution handle, not internal bookkeeping.
         campaign_copy.write_text(source.replace(old_identity,
             'attempts[0]["execution"] == attempts[1]["execution"]'))
+        scenario_overlays = {}
+        for name in ("python_restore_test.go", "python_postgresql_test.go", "python_attempt_timeout_test.go", "unsupported_fields_process_test.go"):
+            original_test = operator / "internal/preparation" / name
+            text = original_test.read_text()
+            if name == "python_restore_test.go":
+                text = text.replace('processResponse([]any{modelCall("record",',
+                    'processResponse([]any{mustScenarioSelection(q), modelCall("record",')
+            elif name == "python_postgresql_test.go":
+                text = text.replace('processResponse([]any{call("snapshot",',
+                    'processResponse([]any{mustScenarioSelection(q), call("snapshot",')
+            elif name == "unsupported_fields_process_test.go":
+                text = text.replace('reply: func(turn int, q map[string]any) ([]byte, error) {',
+                    'reply: func(turn int, q map[string]any) ([]byte, error) { if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err };')
+            else:
+                text = text.replace('if turn != 1 {',
+                    'if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err }; if turn != 1 {')
+                text = text.replace('len(r.provider.requests) != 1', 'len(r.provider.requests) != 2')
+            copied = Path(directory) / name
+            copied.write_text(text)
+            scenario_overlays[str(original_test)] = str(copied)
+        text = origin_copy.read_text().replace('reply := func(turn int, q map[string]any) ([]byte, error) {',
+            'reply := func(turn int, q map[string]any) ([]byte, error) { if mode != "exploratory" { if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err } };')
+        origin_copy.write_text(text)
+        text = campaign_copy.read_text().replace('calls := []any{}',
+            'calls := []any{}; if turn == 1 && origin == "scenario" { calls = append(calls, mustScenarioSelection(q)) }')
+        campaign_copy.write_text(text)
         overlay.write_text(json.dumps({"Replace": {
+            **scenario_overlays,
+            str(operator / "internal/preparation/harness_scenario_loading_test.go"):
+                str(root / "build/operator_scenario_loading_test.go"),
             str(original): str(replacement), str(helper): str(helper_copy),
             str(operator / "internal/preparation/harness_evidence_budget_test.go"):
                 str(root / "build/operator_evidence_budget_test.go"),
