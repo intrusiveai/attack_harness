@@ -97,6 +97,35 @@ class ModelTurnsTest(unittest.TestCase):
                 self.assertEqual(batch.calls,())
                 self.assertTrue(batch.continuation([]))
 
+    def test_tool_looking_prose_is_never_a_call(self):
+        text = 'Next call: attempt_execute({"origin":"exploratory","operation_id":"invoke","text":"test"})'
+        cases = (
+            ('model-codec.json', 'native text and usage preserved'),
+            ('responses-model-codec.json', 'responses: native text with usage details'),
+            ('anthropic-model-codec.json', 'anthropic: native text including cache counts'),
+            ('bedrock-model-codec.json', 'bedrock: native text with separate caches'),
+            ('gemini-model-codec.json', 'gemini: native text including thinking tokens'))
+        for file, name in cases:
+            with self.subTest(codec=file):
+                policy, request, result = self.fixture(file, name)
+                value = decode(result, ORDINARY_LIMIT)
+                response = value['response']
+                if file == 'model-codec.json':
+                    response['choices'][0]['message']['content'] = text
+                elif file == 'responses-model-codec.json':
+                    message = next(v for v in response['output'] if v['type'] == 'message')
+                    message['content'] = [{'type': 'output_text', 'text': text}]
+                elif file == 'anthropic-model-codec.json':
+                    response['content'] = [{'type': 'text', 'text': text}]
+                elif file == 'bedrock-model-codec.json':
+                    response['output']['message']['content'] = [{'text': text}]
+                else:
+                    response['candidates'][0]['content']['parts'] = [{'text': text}]
+                batch = native_batch(self.protocol, policy, request, _canonical_value(value, ORDINARY_LIMIT))
+                self.assertEqual(batch.disposition, 'text')
+                self.assertEqual(batch.calls, ())
+                self.assertEqual(batch.text(), text)
+
 
 if __name__ == "__main__":
     unittest.main()

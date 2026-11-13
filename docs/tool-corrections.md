@@ -13,6 +13,17 @@ alternatives come from verified campaign state. Never copy unrestricted validato
 exceptions or raw rejected payloads into diagnostics. Internal resolution failures
 are terminal product errors, not an instruction to supply hidden identities.
 
+Malformed and unavailable native tool names are rejected before dispatch. Their
+tool results identify `/name`, include a bounded, quoted copy of the untrusted
+name, list the installed catalog's names and brief purposes, and explicitly
+report that no target operation ran. The model must submit a new call with an
+exact advertised name; Harness never trims punctuation or executes a similar
+name. Usable provider call IDs remain attached to the correction and retained
+diagnostic. Rejected calls count toward the ordinary tool-call, invalid-call,
+and no-progress limits. A corrected name still undergoes argument validation,
+scenario-delivery checks and all execution restrictions. Tool-looking prose
+remains text.
+
 The model corrects the identified field, preserves valid request parts, and uses
 returned handles exactly. It reads `tool-guide:<name>` when necessary. It must not
 repeat an unchanged rejected call or replay completed operations to fix an

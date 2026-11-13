@@ -1,6 +1,8 @@
 """Shared normalization over campaign-owned handles; host services stay canonical."""
 from copy import deepcopy
+from dataclasses import dataclass
 import hashlib
+import json
 
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
@@ -9,6 +11,13 @@ from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path, de
 
 from .runtime import RuntimeStopped
 from .tools import HandlerResult, ToolError
+
+
+@dataclass
+class RecordedCall:
+    signature: tuple
+    result: HandlerResult | None = None
+    activity: dict | None = None
 
 
 class ModelTools:
@@ -122,15 +131,17 @@ class ModelTools:
         key = (call.batch_id, call.call_id, call.correlation)
         signature = (call.name, call.arguments)
         if key in self._calls:
-            old, result = self._calls[key]
-            if old != signature:
+            recorded = self._calls[key]
+            if recorded.signature != signature:
                 error = ToolError("call_identity_conflict", "Call identity was reused with different arguments.",
                     correction="Inspect the prior result before choosing another action; do not replay uncertain effects.")
                 error.value["diagnostic"].update(execution_occurred="unknown", resubmission_safe=False)
                 raise error
-            if result is None:
+            if recorded.result is None:
                 self.client.fail("operation-failed")
-            return deepcopy(result)
+            return deepcopy(recorded.result)
+        recorded = RecordedCall(signature)
+        self._calls[key] = recorded
         stable = "native-" + hashlib.sha256(_canonical_value(list(key), 4096)).hexdigest()
         paths = {}
         try:
@@ -142,9 +153,9 @@ class ModelTools:
             if call.name == "attempt_execute":
                 self.handlers.attempts.reject_submission(call.call_id)
             result = HandlerResult(ToolError.from_contract(error).value, "invalid")
-            self._calls[key] = (signature, result)
+            recorded.result = result
             return deepcopy(result)
-        self._calls[key] = (signature, None)
+        recorded.activity = self._activity_context(call.name, arguments)
         try:
             body = normalized["arguments"]
             self._retain_selections(call, normalized["observation_selections"])
@@ -163,8 +174,60 @@ class ModelTools:
                 raise
             error = ToolError.from_contract(error)
             result = HandlerResult(self._remap(error.value, paths), "invalid")
-        self._calls[key] = (signature, deepcopy(result))
+        recorded.result = deepcopy(result)
         return result
+
+    def _activity_context(self, name, arguments):
+        """Associate a validated action with its scenario, not its claimed success."""
+        delivery = self.handlers.scenario_delivery
+        if delivery is None or name not in (
+                'attempt_execute', 'snapshot_request', 'restore_request', 'injection_delete'):
+            return None
+        if name == 'attempt_execute':
+            if arguments['origin'] != 'scenario':
+                return None
+            scenario_id = arguments['scenario_id']
+        else:
+            active = json.loads(delivery.conversation.task)['active_scenario']
+            if active is None:
+                return None
+            scenario_id = active['scenario_id']
+        return dict(scenario_id=scenario_id, tool=name,
+            **({'operation_id': arguments['operation_id']} if name == 'attempt_execute' else {}),
+            **({'requested_purpose': arguments['rationale'][:160]} if arguments.get('rationale') else {}))
+
+    def scenario_activity(self, executions):
+        """Project retained call outcomes; never parse evidence for progress claims."""
+        by_handle = {e['execution']: e for e in executions}
+        activity = []
+        for recorded in self._calls.values():
+            if recorded.activity is None or recorded.result is None:
+                continue
+            result = recorded.result
+            value = result.value
+            entry = dict(recorded.activity)
+            if result.outcome in ('invalid', 'preflight-rejected'):
+                entry.update(status='not-executed')
+                diagnostic = value.get('diagnostic', {})
+                entry['reason'] = diagnostic.get('reason', value.get('code', value.get('status', 'rejected')))
+                if diagnostic.get('field_path'):
+                    entry['field_path'] = diagnostic['field_path']
+            else:
+                entry['status'] = value.get('status', result.outcome)
+                for key in ('execution', 'snapshot', 'restored_snapshot', 'injection', 'outcome'):
+                    if key in value:
+                        entry[key] = (value[key]['snapshot'] if key == 'snapshot' and isinstance(value[key], dict)
+                                      else deepcopy(value[key]))
+                execution = by_handle.get(value.get('execution'))
+                if execution is not None:
+                    # Preserve uncertain effects/retry restrictions rather than
+                    # translating every returned result into "task complete".
+                    for key in ('invocation_state', 'target_contact', 'retry_disposition', 'after_restore', 'parent'):
+                        if key in execution:
+                            entry[key] = execution[key]
+                    entry['observations'] = execution['observations']
+            activity.append(entry)
+        return activity
 
     def _snapshot(self, metadata):
         value = deepcopy(metadata)
@@ -208,10 +271,14 @@ class ModelTools:
                     **({'snapshot_metadata': {k: v for k, v in resource['snapshot_context'].items()
                         if k in ('snapshot', 'session', 'parent', 'status', 'label', 'description')}}
                        if 'snapshot_context' in resource else {})))
-        restores = [{k: v for k, v in result.value.items() if k in ('restored_snapshot', 'harness_disposition')}
-                    for (name, _), result in self._calls.values()
-                    if name == 'restore_request' and result is not None and result.outcome == 'restored']
-        return dict(executions=executions, other_handles=other, restores=restores)
+        restores = [{k: v for k, v in r.result.value.items() if k in ('restored_snapshot', 'harness_disposition')}
+                    for r in self._calls.values()
+                    if r.signature[0] == 'restore_request' and r.result is not None and r.result.outcome == 'restored']
+        facts = dict(executions=executions, other_handles=other, restores=restores)
+        activity = self.scenario_activity(executions)
+        if activity:
+            facts['scenario_activity'] = activity
+        return facts
 
     @staticmethod
     def _execution_view(value):
@@ -235,8 +302,8 @@ class ModelTools:
             value.pop("api_version", None); value.pop("kind", None)
             value.pop("target_output", None); value.pop("observations", None)
             value["execution"] = self.register("execution", dict(attempt_receipt_id=receipt), available=True)
-            restored = [r.value['restored_snapshot'] for _, r in self._calls.values()
-                        if r is not None and r.outcome == 'restored' and 'restored_snapshot' in r.value]
+            restored = [r.result.value['restored_snapshot'] for r in self._calls.values()
+                        if r.result is not None and r.result.outcome == 'restored' and 'restored_snapshot' in r.result.value]
             self.resources[value['execution']]['execution_context'] = {
                 **({'after_restore': restored[-1]} if restored else {}),
                 "run_revision": self.client.run_revision,

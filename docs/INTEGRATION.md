@@ -106,6 +106,22 @@ its original handle, but is not another required read. Other references retain
 normal byte-range reading. Selecting the next scenario can share a response with
 independent reads of existing observations; execution waits for the next turn.
 
+Beside the active instructions, `active_scenario_activity` shows a compact
+record of associated target attempts, snapshot creation, restores and injection
+deletions. Entries show the operation and returned status, relevant handles and
+which evidence was inspected or remains visible. When supplied, `requested_purpose`
+is the caller's short stated rationale, not a verified result. Inputs and evidence
+bodies stay outside this tracker. A completed invocation does not establish that
+a scenario requirement was satisfied; withheld or rejected associated attempts
+are shown as not executed.
+
+Each request refreshes this record in the task message. Switching scenarios
+replaces it with the new scenario's activity, initially empty. Revisiting a
+scenario restores its retained activity. Earlier evidence remains available for
+the final assessment, even after history reduction. Exploratory attempts are not
+assigned to the loaded scenario, and unvalidated submissions retain their normal
+corrections rather than receiving an inferred scenario association.
+
 An attempt for an unloaded scenario is withheld before target dispatch. Harness
 loads its complete requirements and requires another model turn to reconstruct
 the attempt. Selection and execution in one response cannot bypass this boundary.

@@ -23,6 +23,30 @@ bundle contract, compatibility identity, or native tool declarations.
   objectives MUST remain distinct. Snapshot metadata and restore relationships
   MUST survive switches and local trimming; identifying a snapshot as a parent
   MUST NOT revoke its independently verified availability.
+- Each model request MUST place a compact `active_scenario_activity` record
+  beside the complete active scenario in the replaceable user task. It MUST
+  derive from retained validated calls and their results, not model summaries or
+  target prose. Scenario-origin attempts MUST use their explicit association;
+  snapshot creation, restore and injection deletion MUST use the scenario active
+  when those actions were submitted. Exploratory attempts MUST NOT acquire a
+  scenario association merely because instructions are loaded.
+- Activity entries MUST identify the tool, target operation where applicable,
+  returned execution status and relevant result/evidence handles. A caller's
+  rationale MAY appear as `requested_purpose`, limited to 160 characters and
+  explicitly identified as stated intent rather than verified achievement.
+  Input payloads and observation bodies MUST NOT be copied into the tracker.
+  Associated rejected submissions MUST remain non-executed without invented
+  execution handles. Early invalid submissions with no validated association
+  MUST remain in ordinary correction history rather than being guessed into a
+  scenario. Execution completion MUST NOT mark a scenario requirement satisfied.
+- Switching scenarios MUST replace the visible activity record, empty for an
+  unvisited scenario. Harness MUST retain earlier records and restore them on
+  revisit, including during assessment repair. Duplicate delivery MUST NOT
+  create another activity entry or repeat a target operation. Observation
+  inspection and content presence MUST refresh from verified state and current
+  history, preserving partial-range distinctions. History reduction MUST NOT
+  erase activity, snapshot/restore relationships or evidence availability.
+  Original request/audit records MUST remain unchanged.
 - Provider-valid history reduction MUST retain original evidence outside the
   prompt. Records MUST distinguish inspected citations from content still in
   context and content available for rereading. Target prose MUST NOT create
@@ -43,3 +67,10 @@ and exported scenario associations. Reproducible measurements MUST include extra
 selection requests and fixed prompt/tool overhead, distinguish bytes/estimates
 from provider usage, and report adverse results as well as savings. Controlled
 verification MUST NOT be described as live-model reliability or cloud qualification.
+
+Activity regression tests MUST inspect actual controlled provider requests in
+all five codecs for an initially empty tracker, a withheld attempt, completion
+before evidence inspection, subsequent inspection, switching to an empty
+scenario, revisiting prior activity, snapshot/restore, history reduction and a
+final assessment that can honestly remain inconclusive. The tracker MUST appear
+only in the replaceable task, never as recurring appended history.

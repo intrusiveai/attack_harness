@@ -126,6 +126,8 @@ def build_task(inputs, *, active_scenario=None):
         "Its complete instructions replace active_scenario; the result confirms activation, "
         "not a paginated read. Construct attempts only after receiving those instructions. "
         "Progress records describe instruction delivery and execution, not objective achievement."
+        " active_scenario_activity tracks retained action outcomes, not satisfied requirements; "
+        "requested_purpose is the caller's stated intent. Prior activity returns when a scenario is revisited."
     )
     try:
         return _canonical_value(document, TASK_LIMIT).decode("utf-8")
@@ -164,8 +166,12 @@ class ScenarioDelivery:
             self.delivered.add(active["scenario_id"])
 
     def task_context(self, task, facts):
+        active = task["active_scenario"]
+        task["active_scenario_activity"] = [
+            {k: v for k, v in entry.items() if k != "scenario_id"}
+            for entry in facts.pop("scenario_activity", [])
+            if active and entry["scenario_id"] == active["scenario_id"]]
         for entry in task["scenario_index"]:
-            active = task["active_scenario"]
             entry["instructions"] = ("active" if active and active["scenario_id"] == entry["scenario_id"]
                                      else "previously-loaded" if entry["scenario_id"] in self.delivered
                                      else "not-loaded")

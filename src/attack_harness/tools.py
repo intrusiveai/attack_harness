@@ -2,10 +2,12 @@
 
 from dataclasses import dataclass
 from copy import deepcopy
+import json
 
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
 from operator_contracts.loop import LoopStopped
+from operator_contracts.model_tools import tool_guidance
 from operator_contracts.startup import require
 from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path
 import re
@@ -142,6 +144,27 @@ class Dispatcher:
         self.loop = loop
         self._handlers = dict(handlers)
         self._raw_handlers = dict(raw_handlers)
+        # Installed handlers are the admitted subset of the shared catalog.
+        # Descriptions are product-owned; model-supplied names never select a guide.
+        self._tool_choices = [
+            {"name": name, "purpose": json.loads(tool_guidance(protocol, name))["description"].split(". ", 1)[0]}
+            for name in sorted(handlers.keys() | raw_handlers.keys())
+        ]
+
+    def _name_error(self, call):
+        if call.name in self._handlers or call.name in self._raw_handlers:
+            return None
+        reason = ("unknown_tool" if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", call.name)
+                  else "invalid_tool_name")
+        # Quote untrusted data, bound it, and keep it out of trusted identity
+        # fields. The original response remains in the native exchange record.
+        quoted = json.dumps(call.name, ensure_ascii=True)
+        shown = quoted[:160] + (" (truncated)" if len(quoted) > 160 else "")
+        error = ToolError(reason,
+            f"Invalid or unavailable tool name (untrusted JSON text): {shown}. No target operation was executed.",
+            path="/name", correction="Submit a new call using an exact name from available_tools and its documented arguments. Do not infer or repair a name.")
+        error.value["available_tools"] = self._tool_choices
+        return error
 
     def _check_repair_action(self, call):
         if (self.repair is None and not self.protected_finalization) or call.name in ("finish", "observation_read", "reference_read"):
@@ -276,16 +299,19 @@ class Dispatcher:
         try:
             self.loop.accept_response(len(calls))
             for index, call in enumerate(calls):
-                self.loop.start_tool(call.name)
+                name_error = self._name_error(call)
+                # This label accounts for a rejected submission only. It is
+                # never used for handler lookup, execution, or provider correlation.
+                # Keep the shared loop's trusted-identity/state assertions intact.
+                self.loop.start_tool("rejected_tool_call" if name_error else call.name)
                 handler = self._handlers.get(call.name)
                 raw_handler = self._raw_handlers.get(call.name)
                 try:
+                    if name_error is not None:
+                        raise name_error
                     if len(call.arguments) > ARGUMENT_LIMIT:
                         raise ToolError("argument_limit", "Tool arguments exceed the ordinary frame safety ceiling.",
                             correction="Reduce this call's size; use bounded artifact publication for reusable content.")
-                    if handler is None and raw_handler is None:
-                        raise ToolError("unknown_tool", "Unknown tool name.",
-                                        correction="Choose one of the advertised tools.")
                     self._check_repair_action(call)
                     if raw_handler is not None:
                         handled = raw_handler(call)
