@@ -27,6 +27,10 @@ shared contract, native codecs, dispatch, evidence verification and accounting.
   and repeated guide inventory. Supporting documents and target details MUST remain
   discoverable where useful. Lookup, identities and byte verification MUST remain
   unchanged. Detailed examples stay in the existing shared tool guides.
+- Service resources MUST expose the shared compact endpoint and database-policy
+  detail handles. Exact route allowlists, existing record keys, mutable fields
+  and full delivery schemas MUST remain readable through those verified details,
+  without duplicating them in the task. Discovery MUST NOT imply authorization.
 - `model_tools.py` MUST compact confirmed ordinary success only. Error, partial
   feedback and uncertain effects MUST retain meaningful stage, cleanup and retry
   facts. The complete host result MUST remain retained by execution services/audit.
@@ -45,8 +49,8 @@ shared contract, native codecs, dispatch, evidence verification and accounting.
 ## Shared catalog boundary
 
 Harness MUST NOT locally rewrite shared descriptions, schemas or frozen selection.
-The approved 0.9.1 interface supplies concise declarations, scenario-activation
-semantics, campaign-wide finish and deferred examples/database guidance. Harness
+The approved interface in `build/contract-lock.json` supplies concise declarations,
+scenario-activation semantics, campaign-wide finish and deferred setup guidance. Harness
 MUST consume that generated catalog and its matching shared Python implementation
 through the existing adoption process. Argument validation and permissions remain
 unchanged. The source revision selects the distribution and optional test provenance;

@@ -47,6 +47,32 @@ class ContextPresentationTest(unittest.TestCase):
         self.assertLess(len(inputs.prompt_raw), 2000)
         self.assertEqual(initial['scenario_index'], task['scenario_index'])
 
+    def test_discovered_endpoints_keep_shared_references_and_exact_selector_details(self):
+        fixture = next(f for f in json.loads((self.root / 'fixtures/compact-target-context.json').read_text())
+                       if f['name'] == 'discoverable-injection-targets')
+        inputs = ScenarioInputs(self.protocol, self.root, support_bundle(), ScenarioHost(self.protocol))
+        inputs._context['target'] = fixture['target']
+        from operator_contracts.canonical import _canonical_value
+        from operator_contracts.target_context import compact_target_context
+        raw, inputs.details = compact_target_context(self.protocol, _canonical_value(fixture['target'], 4 << 20))
+        shared_services = json.loads(raw)['capabilities']['services']
+        task = json.loads(build_task(inputs))
+        kinds = set()
+        for service in shared_services:
+            presented = next(r for r in task['target']['resources'] if r.get('service_id') == service['service_id'])
+            self.assertEqual(presented.get('endpoints'), service.get('endpoints'))
+            for endpoint in presented.get('endpoints', []):
+                kinds.add(endpoint['kind'])
+                _, content = inputs.entry(endpoint['details_reference'])
+                detail = json.loads(content)
+                original = next(s for s in fixture['target']['capabilities']['services'] if s['service_id'] == service['service_id'])
+                self.assertEqual(detail['resource'], next(e for e in original['endpoints'] if e['id'] == endpoint['id']))
+                self.assertEqual(detail['service_id'], service['service_id'])
+                # Selector facts stay in the verified reference, not every task.
+                for field in ('methods', 'paths', 'keys', 'mutable_fields', 'delivery'):
+                    self.assertNotIn(field, endpoint)
+        self.assertTrue({'http-route-set', 'state-collection'} <= kinds)
+
 
 if __name__ == '__main__':
     unittest.main()

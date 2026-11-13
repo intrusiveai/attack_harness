@@ -63,7 +63,8 @@ def _target_view(inputs, context):
     for group in ("services", "file_namespaces"):
         for item in caps.get(group, []):
             advanced.append({k: item[k] for k in
-                ("service_id", "namespace_id", "kind", "details_reference") if k in item})
+                ("service_id", "namespace_id", "kind", "details_reference",
+                 "endpoints", "database_tables", "creatable_collections") if k in item})
     if advanced:
         result["resources"] = advanced
     if caps.get("features"):
