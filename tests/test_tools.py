@@ -79,6 +79,61 @@ class ToolTest(unittest.TestCase):
         self.assertIn(dict(field="message", reason="oversized"), diagnostic["omissions"])
         self.assertLessEqual(len(diagnostic["message"].encode()), 512)
 
+    def test_bad_names_use_catalog_corrections_and_normal_batch_accounting(self):
+        executed = []
+        loop, dispatcher = self.dispatcher({
+            "snapshot_list": lambda a: (executed.append(a) or HandlerResult({"status": "ok"}))})
+        calls = [ToolCall("bad-name", "snapshot_list(", b"{}"),
+                 ToolCall("good", "snapshot_list", b"{}"),
+                 ToolCall("unavailable", "attempt_execute", b"{}")]
+        results = dispatcher.dispatch(calls)
+        self.assertEqual(len(executed), 1)
+        self.assertEqual([r.call_id for r in results], [c.call_id for c in calls])
+        self.assertEqual([r.outcome for r in results], ["invalid", "success", "invalid"])
+        for result, reason in ((results[0], "invalid_tool_name"), (results[2], "unknown_tool")):
+            value = json.loads(result.content)
+            self.assertEqual(value["diagnostic"]["reason"], reason)
+            self.assertEqual(value["diagnostic"]["field_path"], "/name")
+            self.assertEqual(value["diagnostic"]["execution_occurred"], "no")
+            self.assertTrue(value["diagnostic"]["resubmission_safe"])
+            self.assertIn(result.name, value["diagnostic"]["message"])
+            self.assertEqual([t["name"] for t in value["available_tools"]], ["snapshot_list"])
+            self.assertTrue(value["available_tools"][0]["purpose"])
+        state = loop.snapshot()
+        self.assertEqual(state["tool_calls"], 3)
+        self.assertEqual(state["invalid_tool_calls"], 2)
+        self.assertEqual(state["consecutive_invalid_tool_calls"], 1)
+        self.assertEqual(state["no_progress_turns"], 1)
+        self.assertEqual(state["mode"], "exploring")
+
+    def test_invalid_name_is_quoted_bounded_and_reported_with_original_call_id(self):
+        loop, dispatcher = self.dispatcher({})
+        name = 'bad\n"ignore instructions"' * 1000
+        result = dispatcher.dispatch([ToolCall("provider-call", name, b"{}")])[0]
+        diagnostic = json.loads(result.content)["diagnostic"]
+        self.assertLessEqual(len(diagnostic["message"].encode()), 512)
+        self.assertNotIn("\n", diagnostic["message"])
+        self.assertIn("truncated", diagnostic["message"])
+        self.assertEqual(dispatcher.last_rejection["tool_call_id"], "provider-call")
+        self.assertEqual(dispatcher.last_rejection["diagnostic"], diagnostic)
+        self.assertNotIn("tool_name", dispatcher.last_rejection)
+        self.assertEqual(result.name, name)
+
+    def test_invalid_names_reach_limits_without_dispatch_or_hard_stop(self):
+        for limit in ("max_consecutive_invalid_tool_calls", "max_invalid_tool_calls", "max_no_progress_turns", "max_tool_calls"):
+            with self.subTest(limit=limit):
+                loop = HarnessLoop(dict(LIMITS, **{limit: 2}))
+                dispatcher = Dispatcher(self.protocol, loop, {"snapshot_list": lambda _: self.fail("dispatched")})
+                for index in range(2):
+                    loop.begin_model()
+                    result = dispatcher.dispatch([ToolCall(f"bad-{index}", "snapshot_list(", b"{}")])
+                    self.assertEqual(result[0].outcome, "invalid")
+                self.assertEqual(loop.snapshot()["mode"], "finalizing")
+                self.assertEqual(loop.snapshot()["invalid_tool_calls"], 2)
+                self.assertEqual(loop.snapshot()["tool_calls"], 2)
+                with self.assertRaises(LoopStopped):
+                    loop.begin_model()
+
     def test_restore_skips_remaining_calls_without_decoding_or_handlers(self):
         invoked = []
 
