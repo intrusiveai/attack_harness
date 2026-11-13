@@ -92,6 +92,44 @@ class ModelToolsTest(unittest.TestCase):
     def execute(self):
         return self.call("attempt_execute", dict(origin="scenario", scenario_id="configuration", operation_id="invoke", json={"query": "marker"}))
 
+    def test_discovered_state_key_correction_execution_evidence_and_finish(self):
+        fixtures = json.loads((self.source / 'fixtures/tool-normalization.json').read_text())
+        rejected = next(f for f in fixtures if f['name'] == 'identity object key rejected')
+        invalid = self.call('attempt_execute', rejected['arguments'])
+        self.assertEqual(invalid['diagnostic']['reason'], rejected['reason'])
+        self.assertEqual(invalid['diagnostic']['field_path'], '/setup/0/selector/key')
+        self.assertEqual(invalid['diagnostic']['execution_occurred'], 'no')
+        self.assertTrue(invalid['diagnostic']['resubmission_safe'])
+        self.assertEqual(self.host.attempt_ids, [])
+        fixture = next(f for f in fixtures if f['name'] == 'identity record key')
+        result = self.call('attempt_execute', fixture['arguments'])
+        sent = next(body for op, body, _ in self.host.events if op == 'engine.attempt_execute')
+        self.assertEqual(sent['pre_actions'][0]['parameters'], fixture['expected']['arguments']['pre_actions'][0]['parameters'])
+        self.assertEqual(sent['injection_input'], {'encoding': 'json', 'value': False})
+        read = self.call('observation_read', {'observation': result['observations'][0]['observation']})
+        finished = self.call('finish', self.finish(read['citation']))
+        self.assertEqual(finished['assessment_state'], 'committed')
+        self.assertEqual(len(self.host.attempt_ids), 1)
+
+    def test_database_key_policy_still_comes_from_verified_startup(self):
+        fixture = next(f for f in json.loads((self.source / 'fixtures/tool-normalization.json').read_text())
+                       if f['name'] == 'database string key rejected')
+        # Recreate the adapter with a trusted database capability, not model data.
+        self.inputs.context = lambda: {'target': {'capabilities': {'services': [
+            {'service_id': 'db', 'database_tables': [{'id': 'accounts', 'keys': ['id']}]}]}}}
+        del self.handlers.model_tools
+        self.dispatcher = Dispatcher(self.protocol, self.loop, {}, raw_handlers=self.handlers.raw_handlers())
+        self.model = self.handlers.model_tools
+        rejected = self.call('attempt_execute', fixture['arguments'])
+        self.assertEqual(rejected['diagnostic']['reason'], 'invalid_database_key')
+        self.assertEqual(rejected['diagnostic']['field_path'], '/setup/0/selector/key')
+        self.assertEqual(self.host.attempt_ids, [])
+        corrected = deepcopy(fixture['arguments'])
+        corrected['setup'][0]['selector']['key'] = {'id': 7}
+        self.call('attempt_execute', corrected)
+        sent = next(body for op, body, _ in self.host.events if op == 'engine.attempt_execute')
+        self.assertEqual(sent['pre_actions'][0]['parameters']['selector']['key'], '{"id":7}')
+
     def finish(self, observation):
         return dict(finish_reason="objectives-addressed", summary="Marker observed.",
             objectives=[dict(objective_id="objective-marker", outcome="supported", summary="Observed.", observations=[observation])],

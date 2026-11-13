@@ -1,6 +1,6 @@
 {
   "api_version": "intrusive.ai/attack-harness-source-lock/v1alpha1",
-  "content_digest": "sha256:b219f4de5a8df654d86a884ea064cce9347fd8a4e4cda2549513b9a4f7449347",
-  "file_count": 69,
+  "content_digest": "sha256:39447ae51511f5679e564009069834b5daf206101e42fbc119170f073124e67c",
+  "file_count": 70,
   "scope": "runtime-build-inputs"
 }
