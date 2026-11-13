@@ -61,7 +61,7 @@ def sample(harness, operator):
     prompt_bytes = len((harness / "assets/default-system-prompt.txt").read_bytes())
     codecs = ("openai-chat-text-tools-v1", "openai-responses-text-tools-v1",
               "anthropic-messages-text-tools-v1", "bedrock-converse-text-tools-v1", "gemini-text-tools-v1")
-    surfaces = ["database_response", "environment_state", "mcp_tool_result", "model_tool_result", "service_response"]
+    surfaces = ["database_response", "environment_state", "mcp_tool_result", "model_response", "model_tool_result", "service_response"]
     operations = sorted(item["name"] for item in protocol.operations())
     ordinary = ["engine.attempt_execute", "engine.finish", "engine.observation_read"]
     configs = {"full": (operations, surfaces), "no-setup": (operations, []), "ordinary": (ordinary, [])}
