@@ -56,6 +56,11 @@ def _target_view(inputs, context):
             entry["details_reference"] = item["details_reference"]
         operations.append(entry)
     result = {"operations": operations}
+    selected = context["model"]["tool_selection"]["injection_surfaces"]
+    if "model_response" in selected and "engine.injection_delete" in context["operations"]:
+        action = next((a for a in caps.get("actions", []) if a.get("surface") == "model_response"), None)
+        if action is not None:
+            result["model_response"] = {k: action[k] for k in ("model_codecs", "placement_root") if k in action}
     # Advanced resources remain discoverable, without advertising their setup
     # mechanics during every ordinary invocation. Never infer permission from
     # natural-language restrictions; the complete active scenario remains visible.

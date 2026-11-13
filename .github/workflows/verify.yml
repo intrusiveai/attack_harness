@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: bb8e71976f0d7c2095e593b58fc693b9a7add6fc
+          ref: 5504e7dc7288e2629de9c34b8cea4c2391fd8e5f
           path: operator_sandbox
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: intrusiveai/operator_sandbox
-          ref: bb8e71976f0d7c2095e593b58fc693b9a7add6fc
+          ref: 5504e7dc7288e2629de9c34b8cea4c2391fd8e5f
           path: operator_sandbox
           persist-credentials: false
       - name: Install pinned Python

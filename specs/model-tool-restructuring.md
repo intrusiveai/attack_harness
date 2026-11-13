@@ -196,9 +196,14 @@ code assigns `action_id` and the fixed action type. `selector` and `placement`
 remain structured because their values express real target selection and
 mutation decisions; they MUST NOT become strings containing JSON.
 
-- The existing five surfaces and their selector/placement rules MUST remain
+- The admitted surfaces and their selector/placement rules MUST remain
   available when admitted: `model_tool_result`, `service_response`,
-  `mcp_tool_result`, `environment_state`, and `database_response`.
+  `mcp_tool_result`, `environment_state`, `database_response`, and `model_response`.
+  `model_response` MUST use the shared contract's application-facing codec
+  selector, simulation mode, scope and placement rules. Its detailed guidance
+  MUST remain available through `tool-guide:attempt_execute`; it MUST NOT be
+  confused with modifying Harness's own model responses. Delivery evidence
+  MUST NOT be treated as proof of target SDK acceptance or tool execution.
 - The shared contract MUST preserve required selectors, simulation/fidelity
   restrictions, once/next-turn/standing scope, JSON pointers, insert indices,
   merge allowed-field lists, and target policy limits. It MUST NOT default a
