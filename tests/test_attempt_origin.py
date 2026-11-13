@@ -127,12 +127,12 @@ class AttemptOriginTest(unittest.TestCase):
                     validator.validate(self.body(origin))
                 self.assertFalse(validator.is_valid(self.body({})))
 
-    def test_trusted_prompt_example_is_valid_and_does_not_infer_origin(self):
+    def test_system_prompt_leaves_argument_examples_to_shared_tools(self):
         prompt = (Path(__file__).resolve().parents[1] / 'assets/default-system-prompt.txt').read_text()
-        example = next(line.removeprefix('Example: ') for line in prompt.splitlines() if line.startswith('Example: '))
-        arguments = self.protocol.validate_tool_arguments('attempt_execute', example.encode())
-        self.assertEqual((arguments['origin'], arguments['scenario_id']), ('scenario', 'configuration'))
-        self.assertIn('linking their evidence to an objective at finish does not change origin', prompt)
+        self.assertNotIn('QA_CONFIG_OK', prompt)
+        self.assertNotIn('Example:', prompt)
+        self.assertIn('complete active scenario before acting', prompt)
+        self.assertIn('end the entire campaign', prompt)
 
 
 if __name__ == '__main__': unittest.main()

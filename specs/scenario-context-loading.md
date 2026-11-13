@@ -3,13 +3,14 @@
 Harness MUST consume the original verified bundle without changing Operator's
 bundle contract, compatibility identity, or native tool declarations.
 
-- The initial task MUST contain every campaign-wide field and an index with the
+- The initial task MUST contain every campaign-wide requirement (excluding producer and integrity metadata) and an index with the
   exact scenario IDs and reference handles, objective associations, priority,
   required status, and a short description. Descriptions MAY be limited to 256
   characters as selection aids; complete requirements MUST remain intact.
 - Scenario bodies MUST NOT be initially loaded. `reference_read` on a scenario
   handle at offset zero MUST replace the active task section with the complete
-  scenario on the next model turn and return a short confirmation. Selection
+  scenario on the next model turn and return a short confirmation stating that
+  the scenario is now active in the current task. No acknowledgment is required. Selection
   MUST NOT paginate, append full instructions to tool history, or mark a partial
   byte range inspected. Ordinary resource reads MUST retain their semantics.
 - The existing delivery-generation guard MUST withhold scenario attempts until

@@ -39,9 +39,9 @@ class LoadingHost(ScenarioHost):
         next_step = self.step + 1
         desired = {1: 'baseline', 4: 'refund', 7: 'baseline'}.get(next_step)
         self.metrics.append(len(_canonical_value(self.model_requests[-1], 4 << 20)))
-        loaded = {s['scenario_id'] for s in task['scenario_bundle']['scenarios']}
+        loaded = {task['active_scenario']['scenario_id']} if task['active_scenario'] else set()
         if desired and desired not in loaded:
-            reference = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == desired)
+            reference = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
             self.selection_requests += 1
             calls = [(f'select-{turn}', 'reference_read', {'reference': reference, 'max_bytes': 1})]
             if self.same_batch and self.step == 0:
@@ -52,8 +52,7 @@ class LoadingHost(ScenarioHost):
         if self.step in (1, 4):
             return [(f'snapshot-{turn}', 'snapshot_request', {})]
         if self.step in (2, 5):
-            scenario = task['scenario_bundle']['scenarios'][0] if len(loaded) == 1 else next(
-                s for s in task['scenario_bundle']['scenarios'] if s['scenario_id'] == ('baseline' if self.step == 2 else 'refund'))
+            scenario = task['active_scenario']
             return [(f'attempt-{turn}', 'attempt_execute', dict(origin='scenario', scenario_id=scenario['scenario_id'],
                 operation_id='invoke', json={'query': 'bounded test'}, rationale='Test the active scenario requirements.'))]
         if self.step in (3, 6):
@@ -62,7 +61,7 @@ class LoadingHost(ScenarioHost):
             # Independent evidence reading and next-scenario selection can share a response;
             # execution still waits until both results and full instructions are delivered.
             if desired not in loaded:
-                ref = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == desired)
+                ref = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
                 calls.append((f'select-{turn}', 'reference_read', {'reference': ref}))
                 self.selection_requests += 1
             return calls
@@ -76,14 +75,14 @@ class LoadingHost(ScenarioHost):
                 self.conversation._compact_at = 1 << 20  # One forced reduction; preserve final reread bodies.
             # Permitted scenario revisit in repair; attempted exploration must stay blocked.
             calls = []
-            if 'scenario_references' in task:
-                ref = next(r['reference_id'] for r in task['scenario_references'] if r['scenario_id'] == 'refund')
+            if 'scenario_index' in task:
+                ref = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == 'refund')
                 calls.append(('revisit', 'reference_read', {'reference': ref}))
                 self.selection_requests += 1
             return calls + [('blocked', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'text': 'new action'})]
         if self.step == 10:
             return [(f'reread-{i}', 'observation_read', {'observation': f'observation-{i}'}) for i in (1, 2)]
-        return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'summary': f"Two scenarios partially investigated; {task['portfolio']['scenario_count'] - 2} untested.",
+        return [('finish', 'finish', {'finish_reason': 'no-useful-next-experiment', 'summary': f"Two scenarios partially investigated; {len(task['scenario_index']) - 2} untested.",
             'objectives': [{'objective_id': 'support', 'outcome': 'inconclusive', 'summary': 'Only external outputs inspected.',
                             'observations': ['observation-1', 'observation-2']}],
             'uncertainties': [{'kind': 'coverage-limit', 'description': 'Required experiments remain untested.'}]})]

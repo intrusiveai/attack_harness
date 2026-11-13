@@ -64,6 +64,7 @@ def main():
             raise SystemExit("Operator process exit fixture changed; review the grace window")
         source = source.replace(marker,
             'if service.StopAccepted() || os.Getenv("HARNESS_TEST_EXIT_MODE") == "runtime-fatal" {')
+        source = source.replace('"reference_handles"', '"scenario_index"')
         helper_copy.write_text(source)
         origin = operator / 'internal/preparation/python_origin_test.go'
         origin_copy = Path(directory) / origin.name
@@ -78,6 +79,13 @@ def main():
         if source.count(old_identity) != 1:
             raise SystemExit("Operator campaign fixture changed; review model handle identity assertion")
         # The model now receives an execution handle, not internal bookkeeping.
+        # Test-only adapters consume the current presentation; canonical evidence
+        # bytes and Operator sources remain unchanged.
+        source = source.replace('task["reference_handles"].([]any)',
+            'task["campaign"].(map[string]any)["references"].([]any)')
+        source = source.replace('e["role"] == "reference"', 'e["reference"] != nil').replace('e["entry_id"]', 'e["reference"]')
+        source = source.replace('text, ok := value["content"].(string)',
+            'if value["encoding"] == "json" { return json.Marshal(value["content"]) }; text, ok := value["content"].(string)')
         campaign_copy.write_text(source.replace(old_identity,
             'attempts[0]["execution"] == attempts[1]["execution"]'))
         scenario_overlays = {}
@@ -88,6 +96,8 @@ def main():
                 text = text.replace('processResponse([]any{modelCall("record",',
                     'processResponse([]any{mustScenarioSelection(q), modelCall("record",')
             elif name == "python_postgresql_test.go":
+                text = text.replace('_, ok := v["content"].(string)', '_, ok := v["content"]')
+                text = text.replace('_, ok := observed["content"].(string)', '_, ok := observed["content"]')
                 text = text.replace('processResponse([]any{call("snapshot",',
                     'processResponse([]any{mustScenarioSelection(q), call("snapshot",')
             elif name == "unsupported_fields_process_test.go":

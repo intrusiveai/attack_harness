@@ -16,7 +16,7 @@ func scenarioTask(q map[string]any) (map[string]any, error) {
 		m := value.(map[string]any)
 		if m["role"] == "user" {
 			var task map[string]any
-			if err := json.NewDecoder(strings.NewReader(m["content"].(string))).Decode(&task); err == nil && task["scenario_references"] != nil {
+			if err := json.NewDecoder(strings.NewReader(m["content"].(string))).Decode(&task); err == nil && task["scenario_index"] != nil {
 				return task, nil
 			}
 		}
@@ -29,7 +29,7 @@ func scenarioSelectionCall(q map[string]any, id string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, value := range task["scenario_references"].([]any) {
+	for _, value := range task["scenario_index"].([]any) {
 		r := value.(map[string]any)
 		if r["scenario_id"] == id {
 			return modelCall("select-"+id, "reference_read", map[string]any{"reference": r["reference_id"]}), nil
@@ -86,8 +86,8 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 						return nil, fmt.Errorf("scenario body duplicated in provider tool history")
 					}
 				}
-				active := task["scenario_bundle"].(map[string]any)["scenarios"].([]any)
-				if len(task["scenario_references"].([]any)) != 2 || len(active) > 1 {
+				active, _ := task["active_scenario"].(map[string]any)
+				if len(task["scenario_index"].([]any)) != 2 {
 					return nil, fmt.Errorf("bad scenario projection")
 				}
 				selectCall := func(id string) any {
@@ -122,7 +122,7 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 						return nil, e
 					}
 					citations = append(citations, result["citation"])
-					if active[0].(map[string]any)["scenario_id"] != "second-scenario" {
+					if active["scenario_id"] != "second-scenario" {
 						return nil, fmt.Errorf("active scenario not replaced")
 					}
 					attempt := processAttempt("scenario", "", []byte(`{"query":"followup"}`), "")
@@ -140,7 +140,7 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 				case 7:
 					return processResponse([]any{selectCall("scenario-marker")}), nil
 				case 8:
-					facts := task["execution_records"].(map[string]any)
+					facts := task["evidence"].(map[string]any)
 					if len(facts["executions"].([]any)) != 2 || len(facts["restores"].([]any)) != 1 {
 						return nil, fmt.Errorf("verified history lost on switch")
 					}

@@ -27,13 +27,13 @@ class ScenarioLoadingTest(unittest.TestCase):
                 self.assertEqual(inputs.bundle(), json.loads(inputs.bundle_raw))
                 self.assertEqual(raw_digest(inputs.bundle_raw), inputs.context()['scenario_bundle']['digest'])
                 first = host.task_from_request(host.model_requests[0])
-                self.assertEqual(first['scenario_bundle']['scenarios'], [])
-                self.assertEqual(len(first['scenario_references']), 4)
+                self.assertIsNone(first['active_scenario'])
+                self.assertEqual(len(first['scenario_index']), 4)
                 for request in host.model_requests:
                     task = host.task_from_request(request)
-                    self.assertEqual(task['scenario_bundle']['coverage'], inputs.bundle()['coverage'])
-                    self.assertEqual(len(task['scenario_references']), 4)
-                    active = task['scenario_bundle']['scenarios']
+                    self.assertEqual(task['campaign']['coverage'], inputs.bundle()['coverage'])
+                    self.assertEqual(len(task['scenario_index']), 4)
+                    active = ([task['active_scenario']] if task['active_scenario'] else [])
                     self.assertLessEqual(len(active), 1)
                     if active:
                         original = next(s for s in inputs.bundle()['scenarios'] if s['scenario_id'] == active[0]['scenario_id'])
@@ -43,13 +43,14 @@ class ScenarioLoadingTest(unittest.TestCase):
                     self.assertNotIn('coverage_obligations', history)
                     self.assertNotIn('expected_observations', history)
                 last = host.task_from_request(host.model_requests[-1])
-                facts = last['execution_records']
+                facts = last['evidence']
                 self.assertEqual([x['scenario_id'] for x in facts['executions']], ['baseline', 'refund'])
                 self.assertTrue(all(x['status'] == 'completed' for x in facts['executions']))
                 self.assertTrue(all(x['observations'][0]['inspected'][0]['content_in_prompt'] for x in facts['executions']))
-                self.assertEqual(last['scenario_delivery_state']['instructions_not_yet_delivered'], ['malformed', 'union'])
+                self.assertEqual([s['scenario_id'] for s in last['scenario_index'] if s['instructions'] == 'not-loaded'], ['malformed', 'union'])
                 self.assertEqual(facts['restores'][0]['restored_snapshot'], 'checkpoint-2')
-                self.assertEqual(facts['restores'][0]['run_revision'], 2)
+                self.assertEqual(host.run_revision, 2)
+                self.assertNotIn('run_revision', facts['restores'][0])
                 snapshots = {x['handle']: x for x in facts['other_handles'] if x['kind'] == 'checkpoint'}
                 self.assertEqual(snapshots['checkpoint-2']['snapshot_metadata']['parent'], 'checkpoint-1')
                 self.assertTrue(snapshots['checkpoint-1']['available'])
