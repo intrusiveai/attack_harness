@@ -45,11 +45,13 @@ shared contract, native codecs, dispatch, evidence verification and accounting.
 ## Shared catalog boundary
 
 Harness MUST NOT locally rewrite shared descriptions, schemas or frozen selection.
-The requested catalog corrections require Operator's generated interface change.
-The user requested a handoff rather than Operator implementation in this branch:
-[Operator coordination](../../maintainers/attack_harness/operator-context-presentation.md). Until adopted,
-the existing tool descriptions, including their known limitations, remain intact.
-No contract pin or compatibility identity changes as part of this Harness-local work.
+The approved 0.9.1 interface supplies concise declarations, scenario-activation
+semantics, campaign-wide finish and deferred examples/database guidance. Harness
+MUST consume that generated catalog and its matching shared Python implementation
+through the existing adoption process. Argument validation and permissions remain
+unchanged. The source revision selects the distribution and optional test provenance;
+only the approved interface version and exact document-byte digest determine
+runtime compatibility. No local catalog or source-commit equality gate is added.
 
 ## Verification
 

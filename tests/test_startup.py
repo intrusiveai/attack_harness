@@ -89,7 +89,7 @@ class StartupTest(unittest.TestCase):
         profiles = {"jcs-v1": "semantics/digests", "manifest-paths-v1": "semantics/paths",
                     "harness-loop-v1": "semantics/limits"}
         files.update({name: b"Test semantic profile.\n" for name in profiles.values()})
-        manifest, cls.pin = protocol.build_package_manifest("0.9.0", files, profiles)
+        manifest, cls.pin = protocol.build_package_manifest(json.loads(files["asyncapi.json"])["info"]["version"], files, profiles)
         cls.protocol = protocol.load_verified_protocol(manifest, files, cls.pin)
         cls.example = json.loads((source / "fixtures/startup-example.json").read_text())
 

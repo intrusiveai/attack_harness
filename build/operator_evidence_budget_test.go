@@ -65,8 +65,16 @@ func TestHarnessEvidencePaginationProcess(t *testing.T) {
 				}
 				switch turn {
 				case 1:
-					if bytes.Contains(encode(q), []byte("minimal_inline_example")) || !bytes.Contains(encode(q), []byte("tool-guide:observation_read")) {
-						return nil, fmt.Errorf("detailed examples must be deferred to readable guidance")
+					// Inspect decoded text: JSON encoding may escape < and >.
+					var referenceDescription string
+					for _, raw := range q["tools"].([]any) {
+						function := raw.(map[string]any)["function"].(map[string]any)
+						if function["name"] == "reference_read" {
+							referenceDescription, _ = function["description"].(string)
+						}
+					}
+					if bytes.Contains(encode(q), []byte("minimal_inline_example")) || !strings.Contains(referenceDescription, "tool-guide:<tool_name>") {
+						return nil, fmt.Errorf("reference_read must expose deferred tool guidance")
 					}
 					return processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})}), nil
 				case 2:

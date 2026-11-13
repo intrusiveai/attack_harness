@@ -17,7 +17,8 @@ class ContractLoaderTest(unittest.TestCase):
         cls.files.update({name:(source/name).read_bytes() for name in ("catalog.json","operations.json","asyncapi.json")})
         profiles={"jcs-v1":"semantics/digests.md","manifest-paths-v1":"semantics/paths.md","harness-loop-v1":"semantics/limits.md"}
         cls.files.update({name:b"Test-only semantic profile.\n" for name in profiles.values()})
-        cls.manifest,cls.pin=cls.protocol.build_package_manifest("0.9.0",cls.files,profiles)
+        cls.version = json.loads(cls.files["asyncapi.json"])["info"]["version"]
+        cls.manifest,cls.pin=cls.protocol.build_package_manifest(cls.version,cls.files,profiles)
 
     def setUp(self):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);self.root=Path(tmp.name)
@@ -49,7 +50,7 @@ class ContractLoaderTest(unittest.TestCase):
         files = dict(self.files, **{'source/implementation.py': b'# implementation-only change\n'})
         manifest = json.loads(self.manifest)
         profiles = {p['profile_id']: p['path'] for p in manifest['semantic_profiles']}
-        raw, pin = self.protocol.build_package_manifest('0.9.0', files, profiles)
+        raw, pin = self.protocol.build_package_manifest(self.version, files, profiles)
         self.assertEqual(pin, self.pin)
         self.assertNotEqual(raw, self.manifest)
         (self.root / 'source').mkdir()
