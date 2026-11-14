@@ -58,7 +58,7 @@ class ScenarioLoadingTest(unittest.TestCase):
                 snapshots = {x['handle']: x for x in facts['other_handles'] if x['kind'] == 'checkpoint'}
                 self.assertEqual(snapshots['checkpoint-2']['snapshot_metadata']['parent'], 'checkpoint-1')
                 self.assertTrue(snapshots['checkpoint-1']['available'])
-                self.assertIn('harness-local-trimming', json.dumps(host.model_requests[-1]))
+                self.assertIn('harness-local-checkpoint', json.dumps(host.model_requests[-1]))
                 self.assertIsNone(campaign.adaptive.dispatcher.repair)  # Cleared only after acceptance.
                 self.assertTrue(any('Your finish submission was rejected' in json.dumps(r) for r in host.model_requests))
                 self.assertTrue(any('assessment_repair_active' in json.dumps(r) for r in host.model_requests))
@@ -89,14 +89,15 @@ class ScenarioLoadingTest(unittest.TestCase):
                 self.assertEqual(execution['operation_id'], 'invoke')
                 self.assertEqual(execution['requested_purpose'], 'Test the active scenario requirements.')
                 self.assertEqual(execution['status'], 'completed')
-                self.assertEqual(execution['observations'][0]['inspected'], [])
+                # This snapshot is taken on revisit; incremental reads did not rewrite its predecessor.
+                self.assertTrue(execution['observations'][0]['inspected'])
                 self.assertEqual(execution['observations'][0]['readable'][0]['handle'], 'observation-1')
                 revisited = next(t for t in baseline if any(a.get('execution') == 'execution-1'
                     and a['observations'][0]['inspected'] for a in t['active_scenario_activity']))
                 self.assertFalse(any(a.get('execution') == 'execution-2' for a in revisited['active_scenario_activity']))
                 self.assertTrue(any(a.get('snapshot') == 'checkpoint-1' for a in revisited['active_scenario_activity']))
                 self.assertTrue(any(a.get('restored_snapshot') == 'checkpoint-2'
-                    for t in baseline for a in t['active_scenario_activity']))
+                    for t in tasks for a in t.get('campaign_activity', [])))
                 last = tasks[-1]
                 self.assertEqual(last['active_scenario']['scenario_id'], 'refund')
                 actions = last['active_scenario_activity']
@@ -105,7 +106,7 @@ class ScenarioLoadingTest(unittest.TestCase):
                 self.assertTrue(next(a for a in actions if a.get('execution') == 'execution-2')
                                 ['observations'][0]['inspected'][0]['content_in_prompt'])
                 self.assertEqual([e['execution'] for e in last['evidence']['executions']], ['execution-1', 'execution-2'])
-                # The tracker occurs once, in the replaceable task, never appended to history.
+                # The tracker is a checkpoint snapshot, never repeated in ordinary tool history.
                 for request in host.model_requests:
                     self.assertNotIn('active_scenario_activity', json.dumps(request['conversation'][1:]))
                 self.assertEqual(result['assessment_state'], 'committed')
@@ -146,6 +147,8 @@ class ScenarioLoadingTest(unittest.TestCase):
         loop.begin_model()
         campaign.adaptive.dispatcher.dispatch([ToolCall('explore', 'attempt_execute', json.dumps(dict(
             origin='exploratory', operation_id='invoke', json={'query': 'explore'})).encode())])
+        self.assertEqual(host.task_from_request(conversation.body()[0]), task)
+        conversation._schedule_checkpoint('context-limit')
         task = host.task_from_request(conversation.body()[0])
         self.assertEqual(len(task['active_scenario_activity']), 1)  # No fabricated scenario association.
         self.assertEqual(task['evidence']['executions'][0]['origin'], 'exploratory')

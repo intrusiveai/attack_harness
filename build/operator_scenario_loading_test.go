@@ -5,6 +5,7 @@ package preparation_test
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -22,6 +23,39 @@ func scenarioTask(q map[string]any) (map[string]any, error) {
 		}
 	}
 	return nil, fmt.Errorf("missing scenario task")
+}
+
+// Inspect effective provider requests after host policy/tool assembly, not just
+// the guest relay. Context renewal must discard every old native exchange.
+func assertProcessConversationPrefixes(t *testing.T, requests [][]byte) {
+	t.Helper()
+	var previous []any
+	var policy map[string]any
+	var conversation any
+	for _, raw := range requests {
+		var request map[string]any
+		if err := json.Unmarshal(raw, &request); err != nil {
+			t.Fatal(err)
+		}
+		task, err := scenarioTask(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current := task["conversation_checkpoint"].(map[string]any)["conversation"]
+		messages := request["messages"].([]any)
+		if conversation == current {
+			if len(messages) < len(previous) || !reflect.DeepEqual(messages[:len(previous)], previous) {
+				t.Fatal("effective provider conversation prefix changed")
+			}
+		} else if len(messages) != 2 {
+			t.Fatal("checkpoint retained old native exchanges")
+		}
+		delete(request, "messages")
+		if policy != nil && !reflect.DeepEqual(policy, request) {
+			t.Fatal("frozen provider options/tools changed")
+		}
+		policy, previous, conversation = request, messages, current
+	}
 }
 
 func scenarioSelectionCall(q map[string]any, id string) (any, error) {
@@ -104,9 +138,8 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 					}
 					return processResponse([]any{selectCall("scenario-marker")}), nil
 				case 2:
-					selected, e := modelToolResult(q, "select-scenario-marker")
-					if e != nil || selected["content"] != nil || selected["status"] != "scenario-selected" {
-						return nil, fmt.Errorf("selection duplicated instructions")
+					if len(q["messages"].([]any)) != 2 || active["scenario_id"] != "scenario-marker" {
+						return nil, fmt.Errorf("selection did not start a fresh active-scenario conversation")
 					}
 					return processResponse([]any{modelCall("snapshot", "snapshot_request", map[string]any{}), modelCall("first", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"baseline"}`), ""))}), nil
 				case 3:
@@ -117,11 +150,11 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 					snapshot = result["snapshot"].(string)
 					return processResponse([]any{modelCall("read-first", "observation_read", map[string]any{"observation": "observation-1"}), selectCall("second-scenario")}), nil
 				case 4:
-					result, e := modelToolResult(q, "read-first")
-					if e != nil {
-						return nil, e
+					pages, _ := task["retained_evidence"].([]any)
+					if len(pages) != 1 || pages[0].(map[string]any)["readable_observation"] != "observation-1" {
+						return nil, fmt.Errorf("recent verified evidence not carried into scenario checkpoint")
 					}
-					citations = append(citations, result["citation"])
+					citations = append(citations, pages[0].(map[string]any)["citation"])
 					if active["scenario_id"] != "second-scenario" {
 						return nil, fmt.Errorf("active scenario not replaced")
 					}
@@ -149,6 +182,7 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 				return nil, fmt.Errorf("unexpected model turn %d", turn)
 			}})
 			finishEvidenceRun(t, run)
+			assertProcessConversationPrefixes(t, run.provider.requests)
 			if !run.service.AssessmentCommitted() || run.cmd.ProcessState.ExitCode() != 0 {
 				t.Fatal("assessment not committed", run.output.String())
 			}

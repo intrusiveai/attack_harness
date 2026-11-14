@@ -65,6 +65,10 @@ def main():
         source = source.replace(marker,
             'if service.StopAccepted() || os.Getenv("HARNESS_TEST_EXIT_MODE") == "runtime-fatal" {')
         source = source.replace('"reference_handles"', '"scenario_index"')
+        # The 250-reference startup fixture exceeds the frozen 10k prompt
+        # allowance. Validate honest local admission failure, not an oversized call.
+        source = source.replace('if len(r.provider.requests) != 1 {',
+            'if prompt == "extension" { if len(r.provider.requests) != 0 || r.service.WorkflowFailure() == nil || r.service.WorkflowFailure().Reason != "context_limit" || r.service.AssessmentCommitted() { t.Fatal("mandatory context was not rejected honestly", r.service.WorkflowFailure()) }; return }; if len(r.provider.requests) != 1 {', 1)
         helper_copy.write_text(source)
         origin = operator / 'internal/preparation/python_origin_test.go'
         origin_copy = Path(directory) / origin.name
@@ -93,14 +97,20 @@ def main():
             original_test = operator / "internal/preparation" / name
             text = original_test.read_text()
             if name == "python_restore_test.go":
-                text = text.replace('processResponse([]any{modelCall("record",',
-                    'processResponse([]any{mustScenarioSelection(q), modelCall("record",')
+                marker = 'var attempt map[string]any\n\t\t\treply := func(turn int, q map[string]any) ([]byte, error) {'
+                text = text.replace(marker, marker + ' if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err };')
+                # Full injection declarations need a representative context profile.
+                profile_marker = 'reply: reply, change: func(in *preparation.Input) {'
+                if text.count(profile_marker) != 1:
+                    raise SystemExit('Operator injection fixture changed; review its context profile')
+                text = text.replace(profile_marker, 'reply: reply, settings: processExpandedContext, change: func(in *preparation.Input) {')
             elif name == "python_postgresql_test.go":
                 text = text.replace('_, ok := v["content"].(string)', '_, ok := v["content"]')
                 text = text.replace('_, ok := observed["content"].(string)', '_, ok := observed["content"]')
                 text = text.replace('processResponse([]any{call("snapshot",',
                     'processResponse([]any{mustScenarioSelection(q), call("snapshot",')
             elif name == "unsupported_fields_process_test.go":
+                text = text.replace('modelToolResult(q, "finish-bad")', 'modelRepairRejection(q, "finish-bad")')
                 text = text.replace('reply: func(turn int, q map[string]any) ([]byte, error) {',
                     'reply: func(turn int, q map[string]any) ([]byte, error) { if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err };')
             else:
@@ -113,8 +123,10 @@ def main():
         text = origin_copy.read_text().replace('reply := func(turn int, q map[string]any) ([]byte, error) {',
             'reply := func(turn int, q map[string]any) ([]byte, error) { if mode != "exploratory" { if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err } };')
         origin_copy.write_text(text)
-        text = campaign_copy.read_text().replace('calls := []any{}',
-            'calls := []any{}; if turn == 1 && origin == "scenario" { calls = append(calls, mustScenarioSelection(q)) }')
+        text = campaign_copy.read_text().replace('reply := func(turn int, q map[string]any) ([]byte, error) {',
+            'reply := func(turn int, q map[string]any) ([]byte, error) { if origin == "scenario" { if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err } };')
+        text = text.replace('len(r.provider.requests) != 6',
+            '(origin == "scenario" && len(r.provider.requests) != 7 || origin != "scenario" && len(r.provider.requests) != 6)')
         campaign_copy.write_text(text)
         overlay.write_text(json.dumps({"Replace": {
             **scenario_overlays,

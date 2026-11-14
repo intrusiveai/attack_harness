@@ -59,7 +59,9 @@ MUST be maintained by Harness and reinstated independently of the generated
 summary. Existing typed resource and inspection state in `ModelTools` MUST remain
 intact. Retained context MUST obey existing size limits; inability to fit MUST use
 the existing context-limit termination rather than silently discard corrections.
-No compaction policy or token-reservation redesign is required.
+Repair MUST follow the checkpoint boundaries in
+[append-only conversations](append-only-conversations.md); token reservations
+remain unchanged. Subsequent correction notices MUST NOT rewrite prior messages.
 
 ## Assessment and termination
 

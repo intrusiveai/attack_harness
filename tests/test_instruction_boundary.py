@@ -141,6 +141,7 @@ class InstructionBoundaryTest(unittest.TestCase):
                 conversation = adaptive.conversation
                 from attack_harness.composition import build_task
                 conversation.replace_task(build_task(inputs, active_scenario='baseline'))
+                conversation.body()  # Materialize the scenario checkpoint before recording turns.
                 original = conversation.task
                 privileged = inputs.prompt_raw.decode()
                 # Execute/read through the real adapter and dispatcher, then

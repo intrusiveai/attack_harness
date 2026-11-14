@@ -88,11 +88,11 @@ does not establish relevance or coverage. Target claims of side effects retain
 their attribution unless appropriate evidence verifies those effects.
 
 Automated continuations explicitly return the model to the submitted campaign;
-they are not human answers, approvals, or menu selections. Compaction separates
-original requirements, executed actions, target claims and suggestions, Harness
-interpretations, and unresolved work. The original task stays supplied directly,
-and summaries are labeled as fallible history that cannot amend requirements,
-permissions, or assessment-repair state. Controlled tests verify these boundaries
+they are not human answers, approvals, or menu selections. Context checkpoints
+retain original requirements and verified execution facts separately from target
+content. They do not generate a model summary or turn target suggestions into
+requirements. Any explicitly supplied summary remains fallible history that cannot
+amend requirements, permissions, or assessment-repair state. Controlled tests verify these boundaries
 and repair dispatch restrictions across native conversation formats; they do not
 prove that a live model will always resist task drift.
 
@@ -100,8 +100,9 @@ For every bundle size, `reference_read` with a `scenario_index` reference handle
 offset zero activates the complete scenario. The request delivering its confirmation
 already contains those instructions in `active_scenario`; no acknowledgment is required. The tool
 returns a short selection confirmation, not a second copy or a paginated chunk;
-`max_bytes` does not truncate scenario instructions. Switching replaces the active
-section. The original verified bundle is unchanged and remains readable through
+`max_bytes` does not truncate scenario instructions. Switching starts a fresh
+model conversation containing the new active section, after the current tool batch
+is resolved. Earlier native messages and thinking blocks are not carried into it. The original verified bundle is unchanged and remains readable through
 its original handle, but is not another required read. Other references retain
 normal byte-range reading. Selecting the next scenario can share a response with
 independent reads of existing observations; execution waits for the next turn.
@@ -115,9 +116,10 @@ bodies stay outside this tracker. A completed invocation does not establish that
 a scenario requirement was satisfied; withheld or rejected associated attempts
 are shown as not executed.
 
-Each request refreshes this record in the task message. Switching scenarios
-replaces it with the new scenario's activity, initially empty. Revisiting a
-scenario restores its retained activity. Earlier evidence remains available for
+The record is a snapshot at the start of the conversation. Subsequent tool results
+provide incremental updates; Harness never edits the original message to refresh
+it. Switching scenarios starts a new snapshot for the selected scenario, initially
+empty if no actions exist. Revisiting a scenario restores its retained activity. Earlier evidence remains available for
 the final assessment, even after history reduction. Exploratory attempts are not
 assigned to the loaded scenario, and unvalidated submissions retain their normal
 corrections rather than receiving an inferred scenario association.
@@ -133,8 +135,10 @@ or executing the call. Native prompt limits and protected finalization still app
 The index remains visible during finalization. Product-owned facts distinguish
 instructions delivered from completed executions, and associate scenario IDs,
 execution status, observations, inspected citations, snapshots, and restore
-lineage. These records do not assert objective success. History trimming removes
-complete old exchanges, never retained evidence; a citation may stay valid while
+lineage. Entering protected finalization or assessment repair starts a campaign-wide
+checkpoint containing activity from all scenarios, including unvisited scenarios.
+These records do not assert objective success. Context renewal omits old native
+exchanges, never retained evidence; a citation may stay valid while
 its content is absent from the current prompt. Revisit individual scenario
 requirements and reread evidence as needed for the assessment. Unvisited scenarios
 and unresolved findings must be reported honestly. Scenario selection remains
@@ -501,10 +505,10 @@ A later real rejection retains its request and stronger repair guidance. Finaliz
 requests may use the protected capacity whenever the ordinary limits can fund
 one request; they do not have to leave another reserve behind.
 
-Context reduction is local during both exploration and protected finalization. Harness removes
-older complete native exchanges, retaining recent groups where they fit, original
-requirements, privileged instructions, finalization/repair state, verified handles,
-and unresolved corrections. It records omissions without generating a summary or
+Context reduction is local during both exploration and protected finalization.
+Harness starts a fresh native conversation containing original requirements,
+privileged instructions, finalization/repair state, verified handles and unresolved
+corrections. No old assistant, tool-call, or thinking blocks cross that boundary. It records omissions without generating a summary or
 marking unread evidence inspected. Full evidence remains available from Operator.
 If mandatory context cannot fit safely, Harness reports `context_limit` rather
 than making an oversized model request or dropping requirements.
@@ -538,27 +542,35 @@ are never removed or interpreted as Harness handles. All original evidence remai
 available for rereading. The shared native tool declarations and validation remain
 authoritative, independent of this presentation.
 
-At the context warning threshold, Harness drops the oldest complete native
-exchanges toward 75% of that threshold (and the local serialized-size threshold),
-retaining recent exchanges where they fit. This is an estimate for local reduction,
-not a smaller token reservation. Native request validation and Operator's budget
-accounting remain authoritative. Full request/response records and evidence are
-not deleted. A model-generated summary is not needed to shrink removable history;
-irreducible mandatory context produces an honest context-limit termination.
+Within each conversation, messages are append-only. Tool feedback and automated
+continuations are appended; activity changes never rewrite earlier task messages.
+A local invariant detects accidental prefix or model-policy changes before another
+request. Native reasoning and signatures stay unchanged with the prefix that
+produced them. Scenario changes, context reduction and entry into finalization or
+repair start fresh conversations without old native reasoning or continuation IDs.
+Checkpoints wait for the complete current tool batch; they do not replay operations,
+reset counters, change accounting, or imply a scenario completed successfully.
 
-A reduction records verified execution-to-scenario and observation associations,
-readable ranges, inspected citations, and whether cited content remains in that
-prompt. These facts refresh from verified state on each request; they are not an assessment
-of objective success. Inspection state survives removal
-of the bytes from the prompt; the model must reread evidence needed to substantiate
-claims, or report its limitation. Target prose never supplies handles or permissions.
+At the context warning threshold, the same checkpoint path renews the conversation.
+It may carry up to four complete recent verified evidence/reference envelopes,
+within an 8 KiB combined limit, as attributed task data. These optional pages are
+removed oldest-first if needed for headroom. A page is never truncated while
+retaining its whole-page citation. All other content remains rereadable. Checkpoints
+record omissions and distinguish previously inspected evidence from bytes actually
+included. Current tool results supply subsequent progress. Target prose never
+supplies handles or permissions. Full request/response records and original evidence
+are not rewritten. Estimates do not lower reservations; Operator remains the
+request-validation and accounting authority. Irreducible mandatory context produces
+an honest context-limit termination.
 
-During repair, one current task-context block supplies the latest rejection and
-correction. It points to the original failed call while that call remains in native
-history; after removal it includes the exact rejected arguments, including duplicate
-JSON keys. Tool-result and continuation reminders point back to this block. Harness
-retains the original submission and diagnostic independently, and the same dispatcher
-restriction continues to prevent new target actions.
+During repair, the new checkpoint includes the exact rejected submission (including
+duplicate JSON keys) and its correction. Later rejections are appended as native
+feedback. Any subsequent checkpoint reinstates the latest rejection from retained
+state; it is never reconstructed from a model summary. The dispatcher continues
+to prevent new target actions. A campaign-wide assessment can selectively revisit
+requirements and observations from earlier scenarios; it need not reload every
+scenario or observation. An ordinary accepted finish is not delayed for another
+assessment request. Finish acceptance and confirmed cleanup remain distinct.
 
 This guarantees that exploration and compaction cannot consume the protected
 allocation. It does not guarantee two valid finish submissions or assessment

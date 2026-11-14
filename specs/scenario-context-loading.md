@@ -9,7 +9,7 @@ bundle contract, compatibility identity, or native tool declarations.
   characters as selection aids; complete requirements MUST remain intact.
 - Scenario bodies MUST NOT be initially loaded. `reference_read` on a scenario
   handle at offset zero MUST replace the active task section with the complete
-  scenario on the next model turn and return a short confirmation stating that
+  scenario in a fresh conversation on the next model turn and return a short confirmation stating that
   the scenario is now active in the current task. No acknowledgment is required. Selection
   MUST NOT paginate, append full instructions to tool history, or mark a partial
   byte range inspected. Ordinary resource reads MUST retain their semantics.
@@ -18,13 +18,13 @@ bundle contract, compatibility identity, or native tool declarations.
   instructions. Same-response selection MUST NOT bypass this guard.
 - Campaign sequencing and completion guidance MUST remain visible. Priority
   MUST NOT be interpreted as an implicit dependency graph.
-- Verified execution/scenario/observation associations MUST be refreshed in the
-  task. Loaded instructions, dispatch, completed execution, and supported
+- Verified execution/scenario/observation associations MUST be captured in each
+  checkpoint task; subsequent tool results MUST provide incremental updates. Loaded instructions, dispatch, completed execution, and supported
   objectives MUST remain distinct. Snapshot metadata and restore relationships
   MUST survive switches and local trimming; identifying a snapshot as a parent
   MUST NOT revoke its independently verified availability.
-- Each model request MUST place a compact `active_scenario_activity` record
-  beside the complete active scenario in the replaceable user task. It MUST
+- Each checkpoint MUST place a compact `active_scenario_activity` record
+  beside the complete active scenario in the immutable checkpoint user task. It MUST
   derive from retained validated calls and their results, not model summaries or
   target prose. Scenario-origin attempts MUST use their explicit association;
   snapshot creation, restore and injection deletion MUST use the scenario active
@@ -43,8 +43,8 @@ bundle contract, compatibility identity, or native tool declarations.
   unvisited scenario. Harness MUST retain earlier records and restore them on
   revisit, including during assessment repair. Duplicate delivery MUST NOT
   create another activity entry or repeat a target operation. Observation
-  inspection and content presence MUST refresh from verified state and current
-  history, preserving partial-range distinctions. History reduction MUST NOT
+  inspection and content presence MUST be captured from verified state at each
+  checkpoint and advanced by new results, preserving partial-range distinctions. History reduction MUST NOT
   erase activity, snapshot/restore relationships or evidence availability.
   Original request/audit records MUST remain unchanged.
 - Provider-valid history reduction MUST retain original evidence outside the
@@ -73,4 +73,7 @@ all five codecs for an initially empty tracker, a withheld attempt, completion
 before evidence inspection, subsequent inspection, switching to an empty
 scenario, revisiting prior activity, snapshot/restore, history reduction and a
 final assessment that can honestly remain inconclusive. The tracker MUST appear
-only in the replaceable task, never as recurring appended history.
+only in checkpoint tasks, never as recurring appended tables.
+
+[Append-only conversations](append-only-conversations.md) governs checkpoint
+boundaries, immutable native history and campaign-wide finalization context.

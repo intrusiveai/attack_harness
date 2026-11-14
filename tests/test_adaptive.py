@@ -103,7 +103,9 @@ class AdaptiveTest(unittest.TestCase):
             return HandlerResult({"status": "ok", "snapshots": []})
 
         dispatcher = Dispatcher(self.protocol, loop, {"snapshot_list": snapshots})
-        client = Client([tool_case["result"], text_case["result"]])
+        results = deepcopy([tool_case["result"], text_case["result"]])
+        results[0]["context_budget"].update(remaining_model_tokens=1000000, remaining_model_turns=20)
+        client = Client(results)
         finalizer = Finalizer()
         result = AdaptiveHarness(self.protocol, client, loop, dispatcher,
                                  conversation, finalizer).run()
@@ -139,7 +141,7 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual(len(client.requests), 3)
         self.assertTrue(all(r['purpose'] == 'generation' for r in client.requests))
         trimmed = client.requests[2]['conversation'][0]['content']
-        self.assertIn('harness-local-trimming', trimmed)
+        self.assertIn('harness-local-checkpoint', trimmed)
         self.assertNotIn('model-generated-not-evidence', trimmed)
         self.assertEqual(loop.snapshot()["model_turns"], 3)
 
@@ -161,6 +163,18 @@ class AdaptiveTest(unittest.TestCase):
         self.assertEqual(finalizer.reason, "context-limit")
         self.assertEqual(client.requests, [])
         self.assertEqual(loop.snapshot()["model_turns"], 0)
+
+    def test_irreducible_initial_checkpoint_does_not_charge_a_model_turn(self):
+        case = next(c for c in self.cases('model-codec.json') if c['mode'] == 'context' and c['valid'])
+        conversation = NativeConversation(self.protocol, _canonical_value(case['policy'], 4 << 20),
+            'Mandatory context.' * 100000, remaining=dict(model_tokens=1000000, model_turns=20))
+        loop, client, finalizer = HarnessLoop(LIMITS), Client([]), Finalizer()
+        AdaptiveHarness(self.protocol, client, loop, Dispatcher(self.protocol, loop, {}),
+                        conversation, finalizer).run()
+        self.assertEqual(finalizer.reason, 'context-limit')
+        self.assertEqual(client.requests, [])
+        self.assertEqual(loop.snapshot()['model_turns'], 0)
+        self.assertEqual(conversation._remaining['model_tokens'], 1000000)
 
     def test_warning_growth_funding_and_repeated_identity_preservation(self):
         case = next(item for item in self.cases("model-codec.json")

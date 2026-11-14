@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-// Harness-local overlay: context warnings trim complete native exchanges without
+// Harness-local overlay: context warnings renew native conversations without
 // purchasing a summarization request; Operator accounting remains authoritative.
 package preparation_test
 
@@ -59,7 +59,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					return encode(result), nil
 				case 3:
 					raw := string(encode(q))
-					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-trimming") || !strings.Contains(raw, "verified_state_at_reduction") || !strings.Contains(raw, first) || !strings.Contains(raw, "scenario-marker") {
+					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-checkpoint") || !strings.Contains(raw, "verified_state") || !strings.Contains(raw, first) || !strings.Contains(raw, "scenario-marker") {
 						return nil, fmt.Errorf("warning did not trim locally with verified scenario/execution context")
 					}
 					if strings.Contains(raw, "Unverified working notes.") {
@@ -82,6 +82,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 			}
 			run := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: reply, timeout: 90 * time.Second})
 			run.finish(t)
+			assertProcessConversationPrefixes(t, run.provider.requests)
 			if len(run.provider.requests) != 5 {
 				t.Fatal("unexpected model calls", len(run.provider.requests))
 			}

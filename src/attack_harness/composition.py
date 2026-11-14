@@ -130,7 +130,8 @@ def build_task(inputs, *, active_scenario=None):
         "Select or revisit a scenario with reference_read using its reference_id and offset 0. "
         "Its complete instructions replace active_scenario; the result confirms activation, "
         "not a paginated read. Construct attempts only after receiving those instructions. "
-        "Progress records describe instruction delivery and execution, not objective achievement."
+        "Progress snapshots describe instruction delivery and execution at conversation start; "
+        "Use subsequent tool results for newer progress. Execution does not establish objective achievement."
         " active_scenario_activity tracks retained action outcomes, not satisfied requirements; "
         "requested_purpose is the caller's stated intent. Prior activity returns when a scenario is revisited."
     )
@@ -170,12 +171,18 @@ class ScenarioDelivery:
         if active is not None:
             self.delivered.add(active["scenario_id"])
 
-    def task_context(self, task, facts):
+    def task_context(self, task, facts, *, assessment=False):
         active = task["active_scenario"]
+        activity = facts.pop("scenario_activity", [])
         task["active_scenario_activity"] = [
             {k: v for k, v in entry.items() if k != "scenario_id"}
-            for entry in facts.pop("scenario_activity", [])
+            for entry in activity
             if active and entry["scenario_id"] == active["scenario_id"]]
+        if assessment:
+            task['campaign_activity'] = activity
+            task['assessment_scope'] = ('Assess the entire submitted campaign, including unvisited scenarios, '
+                'unmet requirements and evidence gaps. Selectively revisit requirements or read evidence; '
+                'do not resume target actions. Execution completion does not establish objective success.')
         for entry in task["scenario_index"]:
             entry["instructions"] = ("active" if active and active["scenario_id"] == entry["scenario_id"]
                                      else "previously-loaded" if entry["scenario_id"] in self.delivered
@@ -265,6 +272,7 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
     dispatcher=Dispatcher(protocol,loop,handlers.handlers(),raw_handlers=handlers.raw_handlers(), client=client)
     conversation.resource_context = handlers.model_tools.context_facts
     conversation.task_context = lambda task, citations: scenario_delivery.task_context(
-        task, handlers.model_tools.context_facts(citations))
+        task, handlers.model_tools.context_facts(citations), assessment=conversation._assessment_phase)
+    conversation.finalization_task = lambda: build_task(inputs)
     adaptive=AdaptiveHarness(protocol,client,loop,dispatcher,conversation,finalizer,limits=admission["limits"]["harness"])
     return Campaign(adaptive,handlers,attempts,finalizer)

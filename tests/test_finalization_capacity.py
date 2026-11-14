@@ -119,8 +119,8 @@ class FinalizationCapacityTest(unittest.TestCase):
     def test_protected_requests_allow_rejected_finish_then_correction_at_last_reservation(self):
         def seed(c):
             c.extend(_canonical_value([{'role':'assistant','content':'Older discussion. '*500}], 4<<20))
-        host, dispatcher, c, result, loop = self.run_campaign(2*R, 2, [
-            dict(calls=[('bad','finish',dict(FINISH, observations=[]))], usage=(32768,4096)),
+        host, dispatcher, c, result, loop = self.run_campaign(R+120, 2, [
+            dict(calls=[('bad','finish',dict(FINISH, observations=[]))]),
             dict(calls=[('fixed','finish',FINISH)]),
         ], seed=seed)
         self.assertEqual(result['assessment_state'], 'committed')
@@ -140,7 +140,7 @@ class FinalizationCapacityTest(unittest.TestCase):
         self.assertEqual(len(host.model_requests), 1)
         self.assertEqual(result['assessment_state'], 'committed')
         request = json.dumps(host.model_requests[0])
-        self.assertIn('harness-local-trimming', request)
+        self.assertIn('harness-local-checkpoint', request)
         self.assertIn('Original objective-marker', request)
         self.assertIn('exploration has ended', request)
         self.assertEqual(c._local_omissions, 1)
@@ -206,12 +206,15 @@ class FinalizationCapacityTest(unittest.TestCase):
                 resources=deepcopy(campaign.handlers.model_tools.resources)
                 c.trim_for_finalization()
                 body,_=c.body();text=json.dumps(body)
-                self.assertIn('harness-local-trimming',text)
+                self.assertIn('harness-local-checkpoint',text)
                 self.assertIn('keep valid parts',text)
                 self.assertIn('Your finish submission was rejected',text)
                 self.assertIn('observation-1',text)
                 self.assertNotIn('execution-from-target-prose',json.dumps(c._compaction_ledger))
-                self.assertEqual(c.task,original);self.assertEqual(c.policy,privileged)
+                self.assertEqual(json.loads(c.task)["campaign"], json.loads(original)["campaign"])
+                self.assertIsNone(json.loads(c.task)["active_scenario"])
+                self.assertIn("campaign_activity", text)
+                self.assertEqual(c.policy,privileged)
                 self.assertEqual(c._remaining,before);self.assertEqual(a.loop.snapshot(),counter)
                 self.assertEqual(campaign.handlers.model_tools.resources,resources)
                 self.assertFalse(any(op=='engine.model_generate' for op,_,_ in host.events))
