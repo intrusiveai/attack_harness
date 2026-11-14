@@ -9,7 +9,7 @@ from operator_contracts.canonical import _canonical_value
 from operator_contracts.loop import LoopStopped
 from operator_contracts.model_tools import tool_guidance
 from operator_contracts.startup import require
-from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path
+from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path, decode
 import re
 
 from .runtime import RuntimeStopped
@@ -177,6 +177,13 @@ class Dispatcher:
                 raise ToolError.from_contract(error) from None
             if arguments["purpose"] == "conclusion":
                 return
+        if call.name == 'record_append':
+            try:
+                arguments = decode(call.arguments, ORDINARY_LIMIT)
+                if isinstance(arguments, dict) and arguments.get('kind') == 'progress':
+                    return  # The normal handler validates the complete record and references.
+            except ContractError:
+                return  # Malformed input is rejected and retained by the normal handler.
         if self.repair is None:
             raise ToolError("finalization_action_blocked",
                 "Assessment review is active. This action was not executed." if self.assessment_review else

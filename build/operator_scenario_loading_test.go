@@ -133,14 +133,36 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 						}
 						return call
 					}
+					if continuity && turn == 4 {
+						return processResponse([]any{
+							modelCall("oversized-progress", "record_append", map[string]any{"kind": "progress", "summary": strings.Repeat("Repeated narration. ", 150) + "Independent effects unresolved.", "decision": "Review remaining evidence.", "observations": []any{"observation-1"}}),
+							selectCall("second-scenario"),
+						}), nil
+					}
+					if continuity && turn == 5 {
+						result, e := modelToolResult(q, "oversized-progress")
+						if e != nil {
+							return nil, e
+						}
+						if result["diagnostic"].(map[string]any)["reason"] != "configured_size_exceeded" || active["scenario_id"] != "scenario-marker" || len(q["messages"].([]any)) <= 2 {
+							return nil, fmt.Errorf("handoff rejection lost correction context: %v", result)
+						}
+						return processResponse([]any{
+							modelCall("corrected-progress", "record_append", map[string]any{"kind": "progress", "summary": "First output inspected; independent effects unresolved.", "decision": "Do not replay; assess remaining evidence gaps at finish.", "observations": []any{"observation-1"}}),
+							selectCall("second-scenario"),
+						}), nil
+					}
+					if continuity && turn >= 6 {
+						turn -= 2
+					}
 					if continuity && turn >= 8 {
 						state := task["continuity"].(map[string]any)
-						records := task["model_records"].(map[string]any)["entries"].([]any)
+						records := state["assessment_handoffs"].(map[string]any)["entries"].([]any)
 						if len(records) != 1 || !strings.Contains(string(encode(records)), "Do not replay") {
 							return nil, fmt.Errorf("accepted progress record lost across checkpoints")
 						}
-						if !strings.Contains(string(encode(state["model_notes"])), "External evidence only") {
-							return nil, fmt.Errorf("model assessment note lost across checkpoints")
+						if strings.Contains(string(encode(state)), "External evidence only") {
+							return nil, fmt.Errorf("unstructured model commentary copied into checkpoint")
 						}
 						if state["phase"] == "assessment" {
 							if !reviewStarted {
@@ -185,7 +207,10 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 						if continuity {
 							calls = append(calls, modelCall("progress", "record_append", map[string]any{"kind": "progress", "summary": "First output inspected.", "decision": "Do not replay; assess remaining evidence gaps at finish.", "attempts": []any{"execution-1"}, "observations": []any{"observation-1"}}))
 						}
-						raw := processResponse(append(calls, selectCall("second-scenario")))
+						if !continuity {
+							calls = append(calls, selectCall("second-scenario"))
+						}
+						raw := processResponse(calls)
 						if continuity {
 							var response map[string]any
 							json.Unmarshal(raw, &response)

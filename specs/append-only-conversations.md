@@ -81,17 +81,45 @@ state remains continuous; only the model's working conversation is renewed.
 - Checkpoints MUST retain a bounded recent navigation trail, per-scenario selection
   counts, the current no-progress count/limit, and the persistent assessment phase.
   Repeated selection MUST NOT count as substantive progress or reset limits.
-- Harness MUST retain the latest bounded public model note for each scenario and
-  for campaign-wide assessment. Notes SHOULD state assessed requirements, cited
-  evidence, unresolved obligations and the purpose of a revisit. Notes MUST be
-  attributed as model interpretation, never verified facts, authorization or a
-  committed assessment. Tool-only responses MUST NOT erase earlier notes. Native
-  reasoning/thinking blocks MUST NOT be extracted into checkpoint notes.
-- Accepted optional `record_append` content MUST remain associated with its verified
-  record handle and the scenario active when submitted. Checkpoints MUST expose a
-  bounded projection of those records, with explicit omissions. Acceptance proves
-  retention, not the truth of the model's assessment. No record or note is required
-  to execute or finish. Original records MUST remain unchanged.
+- Harness MUST NOT copy arbitrary public commentary, text prefixes or native
+  reasoning into checkpoint notes. Verified activity/evidence remains product-owned.
+- Purpose-built model handoffs MUST use the existing shared `record_append` tool
+  with `kind: progress`, a nonempty `summary`, a nonempty `decision`, and its
+  existing validated reference fields. Summary SHOULD identify requirements
+  assessed, findings and unresolved obligations; decision SHOULD identify the next
+  step or specific revisit purpose. No new shared schema or semantic keyword
+  validator is permitted. Missing model assessments MUST be explicit, not inferred.
+- The complete canonical progress arguments MUST fit a per-handoff allowance of
+  min(2048, floor(16384 / (scenario count + 1))) bytes. The extra slot is for
+  campaign-wide review. Harness MUST disclose this allowance in task guidance.
+  Missing decision or an oversized handoff MUST receive a correctable pre-send
+  diagnostic. It MUST NOT be truncated, retained at Operator, or replace the last
+  accepted handoff. Shared argument/reference validation remains authoritative.
+- Harness MUST keep the latest complete validated handoff for each scenario and
+  campaign-wide review, including its accepted record handle when available and submission scope. It MUST
+  replace that scope's previous handoff rather than accumulate prose. Model
+  assertions MUST remain separate from verified facts and MUST NOT imply assessed
+  success or amend requirements. Superseded records remain in the audit history.
+  Model guidance MUST require carrying forward unresolved obligations when revising
+  a handoff; structural validation cannot establish the truth/completeness of prose.
+- A host `gap-and-continue` rejection after shared/local validation (for example,
+  the existing progress-record rate limit) MUST NOT become a correction/retry gate.
+  Harness MUST retain the complete validated handoff locally with the host rejection,
+  explicitly marked `harness-only`, without an accepted record handle. It MUST
+  preserve the original disposition and allow navigation. It MUST NOT bypass the
+  host limit, retry automatically, or promote local retention to host acceptance.
+- A correctable rejected progress handoff MUST preserve its exact submission and correction.
+  Subsequent scenario selection in that batch MUST be withheld. A selection queued
+  earlier in the same batch MUST be cancelled before delivering a new task, with
+  that cancellation made explicit. Current native history MUST remain available
+  for correction while it fits; forced context renewal MUST preserve the rejected
+  handoff, or fail honestly if mandatory context cannot fit.
+- An accepted corrected handoff MUST clear only handoff rejection state, never
+  assessment repair or restricted finalization. Progress handoff records MAY be
+  submitted during finalization/repair; other optional record kinds remain blocked.
+  No handoff is a prerequisite for a valid finish, deadline enforcement, or cleanup.
+  Checkpoints without a submitted assessment MUST report that absence and preserve
+  verified facts; they MUST NOT manufacture assessment prose or another model call.
 - When a repeated navigation-only turn leaves at most two turns before the
   existing no-progress limit, Harness MUST enter restricted assessment review
   before the next model request. The transition MUST retain its distinct reason,
@@ -99,14 +127,25 @@ state remains continuous; only the model's working conversation is renewed.
   admission before an accepted finish. Scenario revisits MUST NOT leave this phase.
   Budget, deadline and invalid/no-progress limits MUST remain unchanged; this is
   an opportunity to finish, not a guarantee of an accepted assessment.
-- Transition, review, and repair MUST retain campaign-wide facts and model notes
+- Transition, review, and repair MUST retain campaign-wide facts and complete model handoffs
   separately. Invocation success MUST NOT trigger inferred requirement completion.
   There MUST be no new model tool, shared contract, planner or model-summary call.
 - Controlled native conversation tests MUST complete multiple scenarios, retain
-  notes/records and evidence through repeated reviews, correct a rejected finish,
+  handoffs/records and evidence through repeated reviews, correct a rejected finish,
   and finish without another target invocation. Cover all codecs, same-batch
-  restrictions, unchanged signed prefixes, bounded omissions, and an uncooperative
+  restrictions, unchanged signed prefixes, whole-record limits, and an uncooperative
   model reaching the unchanged no-progress limit with no committed assessment.
+- Tests MUST cover an oversized replacement with a material unresolved finding at
+  its end, a concise correction preserving that finding, and both orders of
+  same-batch record/selection calls. The failed submission MUST reach neither
+  Operator's record store nor a partial accepted handoff. Shared reference errors,
+  duplicate JSON keys and correctable Operator rejections MUST retain corrections.
+  Host rate-limit gaps MUST retain whole local assertions without false record handles. A forced
+  checkpoint MUST carry the whole rejected submission and last accepted handoff.
+  A replacement MUST supersede only its delivered scenario's handoff, including
+  when a later selection in the same response names another scenario. Matching
+  process tests MUST verify accepted finish, exit zero, cleanup and exported
+  scenario attribution without target replay.
 
 Reuse `NativeConversation`, `ScenarioDelivery`, `ModelTools.context_facts`, native
 codec continuations and the existing dispatcher/finalizer. No new tool, provider

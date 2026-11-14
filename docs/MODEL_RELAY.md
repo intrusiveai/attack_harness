@@ -46,9 +46,15 @@ objective outcome. See [integration behavior](INTEGRATION.md#ordinary-execution)
 and the [session specification](../specs/append-only-conversations.md).
 
 Compact continuity accompanies those facts: recent navigation and selection
-counts, the actual no-progress counter, bounded public model notes and accepted
-optional record content. Model assertions remain explicitly separate from verified
-execution and inspected evidence; native reasoning is never copied into notes.
+counts, the actual no-progress counter, and the latest complete validated progress
+handoff for each scenario and campaign-wide assessment. Handoffs use the existing
+record tool with a summary, next decision and validated references. Oversized
+handoffs receive a correction before scenario navigation; no prose is truncated.
+Correctable failures survive necessary checkpoints until corrected. Host admission
+gaps retain the validated handoff locally with its rejection and no record handle;
+shared rate limits remain enforced and navigation can continue. Public commentary
+and native reasoning are not carried as handoffs. Model assertions remain separate
+from verified execution and inspected evidence.
 Near the unchanged no-progress limit, repeated navigation enters restricted
 assessment review. Reviewing another scenario cannot reopen exploration or erase
 an unresolved finish correction. This offers a path to an honest final assessment,

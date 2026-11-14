@@ -144,15 +144,20 @@ class ModelTools:
         self._calls[key] = recorded
         stable = "native-" + hashlib.sha256(_canonical_value(list(key), 4096)).hexdigest()
         paths = {}
+        delivery = self.handlers.scenario_delivery
+        arguments = None
         try:
             arguments = self.protocol.validate_tool_arguments(call.name, call.arguments)
             normalized = self.protocol.normalize_tool_arguments(call.name, call.arguments,
                 self._context(arguments, stable))
             paths = normalized["paths"]
+            if delivery and call.name == 'record_append' and arguments['kind'] == 'progress':
+                delivery.validate_handoff(arguments)
         except ContractError as error:
             if call.name == "attempt_execute":
                 self.handlers.attempts.reject_submission(call.call_id)
             result = HandlerResult(ToolError.from_contract(error).value, "invalid")
+            result = self._handoff_rejection(call, arguments, result)
             recorded.result = result
             return deepcopy(result)
         recorded.activity = self._activity_context(call.name, arguments)
@@ -174,7 +179,32 @@ class ModelTools:
                 raise
             error = ToolError.from_contract(error)
             result = HandlerResult(self._remap(error.value, paths), "invalid")
+        result = self._handoff_rejection(call, arguments, result)
         recorded.result = deepcopy(result)
+        return result
+
+    def _handoff_rejection(self, call, arguments, result):
+        delivery = self.handlers.scenario_delivery
+        if not delivery or call.name != 'record_append' or result.outcome not in ('invalid', 'preflight-rejected'):
+            return result
+        if arguments is None:
+            try:
+                arguments = decode(call.arguments, ORDINARY_LIMIT)
+            except ContractError:
+                arguments = {}  # An undecodable record cannot safely authorize a switch.
+        if (result.value.get('disposition') == 'gap-and-continue' and isinstance(arguments, dict)
+                and arguments.get('kind') == 'progress'):
+            # Shared and local validation passed before the host request. Keep
+            # the whole model interpretation without inventing a record receipt
+            # or converting an admission limit into a correction/retry loop.
+            delivery.accept_handoff(None, arguments, host_rejection=result.value)
+            return HandlerResult(dict(result.value, handoff_guidance=
+                'The complete validated handoff is retained locally as a model interpretation. Operator did not accept a historical record; no record handle was created. Follow its disposition; scenario navigation remains available.'), result.outcome)
+        if (result.value.get('disposition') == 'correct-and-resubmit' and isinstance(arguments, dict)
+                and arguments.get('kind', 'progress') == 'progress'):
+            result = HandlerResult(dict(result.value, handoff_guidance=
+                'The handoff was not accepted. Pending scenario navigation is cancelled. Correct this record before selecting a scenario; the current conversation remains active. A valid finish is still permitted.'), result.outcome)
+            delivery.reject_handoff(call, result.value, known_progress=arguments.get('kind') == 'progress')
         return result
 
     def _activity_context(self, name, arguments):
@@ -276,7 +306,7 @@ class ModelTools:
                     if r.signature[0] == 'restore_request' and r.result is not None and r.result.outcome == 'restored']
         facts = dict(executions=executions, other_handles=other, restores=restores)
         records = [dict(record=h, **r['assessment_context']) for h, r in self.resources.items()
-                   if 'assessment_context' in r]
+                   if 'assessment_context' in r and r['assessment_context']['submitted'].get('kind') != 'progress']
         if records:
             # Accepted records remain in the call/resource state. Bound their
             # prompt projection without promoting assertions to verified facts.
@@ -427,9 +457,16 @@ class ModelTools:
         elif name == "record_append":
             value["record"] = self.register("record", dict(record_receipt_id=value.pop("receipt_id")), available=True)
             delivery = self.handlers.scenario_delivery
-            active = json.loads(delivery.conversation.task)['active_scenario'] if delivery else None
+            active = json.loads(delivery.response_task)['active_scenario'] if delivery else None
             self.resources[value['record']]['assessment_context'] = dict(
                 scenario_id=active['scenario_id'] if active else None, submitted=deepcopy(arguments))
+            if delivery and delivery.handoff_rejection and not delivery.handoff_rejection['known_progress'] and arguments['kind'] != 'progress':
+                delivery.handoff_rejection = None  # A malformed historical record was corrected.
+            if delivery and arguments['kind'] == 'progress':
+                scope = delivery.accept_handoff(value['record'], arguments)
+                self.resources[value['record']]['assessment_context']['scenario_id'] = scope
+                value['checkpoint_handoff'] = dict(status='accepted', scenario_id=scope,
+                    message='Complete handoff retained for this scope; older handoff content is superseded. This is a model assessment, not verified objective success.')
             if body["record_kind"] == "hypothesis":
                 value["hypothesis"] = self.register("hypothesis", dict(hypothesis_id=body["record"]["hypothesis_id"]), available=True)
         elif name in ("snapshot_request", "snapshot_inspect"):

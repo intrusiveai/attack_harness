@@ -145,21 +145,51 @@ and unresolved findings must be reported honestly. Scenario selection remains
 available during assessment repair; new target actions remain blocked.
 
 Checkpoints also carry recent scenario navigation, selection counts, the current
-no-progress count and bounded model-authored continuity. Public commentary can
-identify assessed requirements, cited evidence, unresolved work and the purpose
-of a revisit. Harness retains the latest note per scenario (up to 2 KiB each,
-16 KiB total in context) and labels it as interpretation, not evidence. Tool-only
-responses do not erase notes. Native thinking blocks are never used as notes.
-Accepted optional records retain their submitted content and scenario association;
-up to eight whole records within 8 KiB appear separately as model assertions.
-Truncation and omitted entries are explicit. These notes and records neither
-establish objective success nor add permissions, and are not prerequisites to finish.
+no-progress count and deliberately submitted assessment handoffs. Use
+`record_append` with `kind: progress`: `summary` identifies assessed requirements,
+findings and unresolved obligations; `decision` states the next step or revisit
+purpose. Supply evidence in the existing validated `attempts`, `observations` and
+`records` fields. These remain model interpretations, separate from verified
+execution facts. Public commentary and native reasoning are not handoffs.
+
+Before switching away from assessed work, submit a concise handoff. Recording and selection
+may share a response in that order. Harness retains the latest complete validated
+handoff for each scenario, plus a campaign-wide handoff during assessment. A replacement
+must carry unresolved work forward. Older records remain in retained history but
+are not repeatedly copied into checkpoint context. A missing handoff is explicitly
+shown as `not-submitted`; it does not imply completed work or block a valid finish.
+
+The task discloses the complete-argument allowance: at most 2,048 canonical JSON
+UTF-8 bytes, reduced to `floor(16384 / (scenario count + 1))` for larger campaigns.
+The extra slot accommodates campaign-wide review. This bounds submitted handoff
+content without evicting earlier scenarios. Oversized records receive the actual
+size, allowance and a correction directing the model to retain findings, unresolved
+obligations, evidence references and the next decision while removing narration.
+Harness never cuts the text. Structural checks cannot establish that model prose
+is truthful or complete.
+
+A correctable handoff rejection leaves the previous version intact and retains the exact
+failed request and correction. Scenario selection is withheld until correction;
+selection queued earlier in the same response is cancelled explicitly. The existing
+conversation stays intact while it fits. If context renewal is necessary, the
+rejection crosses the checkpoint with the verified facts; irreducible mandatory
+context produces an honest context-limit stop. Handoff correction is allowed during
+assessment review and finish repair without reopening target actions or clearing
+the rejected finish. A valid finish, deadline enforcement and cleanup do not depend
+on a handoff. If Operator instead returns `gap-and-continue` after validation,
+Harness preserves the complete handoff locally, marked `harness-only` with the host
+rejection and no accepted record handle. This respects Operator's progress-record
+rate limit without forcing retries or blocking navigation. The text remains a
+model interpretation; it cannot be cited as an accepted historical record.
+Other optional historical records appear separately as whole model
+assertions, limited to eight records within 8 KiB, with omissions identified.
 
 If repeated scenario-only navigation leaves at most two turns before the existing
 no-progress limit, Harness enters assessment review. It presents campaign-wide
 facts and retains that phase through later scenario switches. The same dispatcher
 restriction used for finalization permits finish, retained evidence/reference
-reads and conclusion artifacts, while blocking new target actions. This transition
+reads, progress handoff records and conclusion artifacts, while blocking new target
+actions. This transition
 does not infer that requirements were met or close execution admission. The model
 must submit an honest assessment, including unresolved work. Limits are unchanged;
 further navigation can still exhaust them and produce an unavailable assessment.
@@ -277,12 +307,13 @@ After a correctable finish rejection, Harness enters assessment repair. It keeps
 the rejected submission and precise correction, and asks the model to repair the
 assessment using existing evidence. Prose or a menu of other tasks does not
 resume exploration. The dispatcher permits only corrected finish submissions,
-observation/input/tool-guidance reads, and conclusion-purpose artifact publication;
-it rejects new target actions, injection changes, snapshots, restores, and record
-appends before dispatch, including later calls in the same model response.
+observation/input/tool-guidance reads, progress handoffs, and conclusion-purpose
+artifact publication; it rejects new target actions, injection changes, snapshots,
+restores, and other record kinds before dispatch, including later calls in the same
+model response. Handoff acceptance does not clear finish repair.
 
-Repair state, original objectives, and verified handles survive compaction
-independently of the model summary. Existing limits still apply. If repair cannot
+Repair state, original objectives, and verified handles survive checkpoints
+independently of model-authored handoffs. Existing limits still apply. If repair cannot
 finish, the unresolved correction is reported separately from the actual stopping
 cause; the bounded unavailable-finish path does not imply assessment success.
 An accepted finish remains the authority for closing execution. See the
