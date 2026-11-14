@@ -1,6 +1,7 @@
 """Fixed post-admission composition root for one campaign process."""
 
 from dataclasses import dataclass
+from copy import deepcopy
 import json
 import time
 
@@ -161,12 +162,16 @@ class ScenarioDelivery:
         self.delivered = set()
         self.visits = {}
         self.navigation = []
-        self.notes = {}
+        self.handoffs = {}
+        self.handoff_rejection = None
+        self.response_task = conversation.task
+        self.response_generation = conversation.task_generation
         self.last_navigation_turn = None
         self.navigation_only_turns = 0
         conversation.on_task_delivered = self.mark_delivered
-        conversation.on_model_response = self.remember_response
+        conversation.on_model_response = self.begin_response
         bundle = inputs.bundle()
+        self.handoff_limit = min(2048, 16384 // (len(bundle['scenarios']) + 1))
         self.references = {entry["reference_id"]: scenario for entry, scenario in
                            zip(_scenario_references(bundle), bundle["scenarios"])}
         if self.references.keys() & {entry["entry_id"] for entry in inputs.reference_index()}:
@@ -177,15 +182,50 @@ class ScenarioDelivery:
         if active is not None:
             self.delivered.add(active["scenario_id"])
 
-    def remember_response(self, batch):
-        text = batch.public_text()
-        if not text:
-            return
-        active = json.loads(self.conversation.task)["active_scenario"]
-        key = active["scenario_id"] if active else None
-        raw = text.encode("utf-8")
-        self.notes[key] = dict(scenario_id=key, model_turn=self.loop.snapshot()["model_turns"],
-            text=raw[:2048].decode("utf-8", errors="ignore"), truncated=len(raw) > 2048)
+    def begin_response(self, _batch):
+        # Bind records to the task actually delivered, not a selection later in
+        # the same response. Public prose and opaque reasoning are not handoffs.
+        self.response_task = self.conversation.task
+        self.response_generation = self.conversation.task_generation
+
+    def validate_handoff(self, arguments):
+        if not arguments.get('summary', '').strip() or not arguments.get('decision', '').strip():
+            raise ToolError('invalid_arguments', 'A checkpoint handoff needs a summary and next-step decision.',
+                path='/decision' if not arguments.get('decision', '').strip() else '/summary',
+                correction='Use summary for assessed requirements and unresolved findings; use decision for the next step or revisit purpose. Keep evidence handles in the existing reference fields.')
+        size = len(_canonical_value(arguments, ORDINARY_LIMIT))
+        if size > self.handoff_limit:
+            raise ToolError('configured_size_exceeded', f'Checkpoint handoff is {size} bytes; allowance is {self.handoff_limit} bytes. No progress record was accepted.',
+                correction=f'Resubmit a complete progress record within {self.handoff_limit} UTF-8 canonical JSON bytes. Preserve unresolved obligations, findings, relevant evidence references and the next decision; remove narration and repeated instructions. Then select the scenario again.')
+
+    def reject_handoff(self, call, rejection, *, known_progress=True):
+        active = json.loads(self.response_task)['active_scenario']
+        scope = (self.handoff_rejection['scenario_id'] if self.handoff_rejection else
+                 active['scenario_id'] if active else None)
+        self.handoff_rejection = dict(rejected_arguments=call.arguments.decode('utf-8', errors='replace'),
+            tool_call_id=call.call_id, scenario_id=scope, known_progress=known_progress, rejection=deepcopy(rejection))
+        # Scenario activation only selects a future task. Cancel uncommitted
+        # navigation, without modifying any sealed message or native response.
+        if self.conversation.task != self.response_task:
+            self.conversation.cancel_scenario_change(self.response_task, self.response_generation)
+            for entry in self.navigation:
+                if entry['model_turn'] == self.loop.snapshot()['model_turns']:
+                    entry['cancelled'] = 'handoff-rejected'
+
+    def accept_handoff(self, record, arguments, *, host_rejection=None):
+        active = json.loads(self.response_task)['active_scenario']
+        key = (self.handoff_rejection['scenario_id'] if self.handoff_rejection else
+               active['scenario_id'] if active else None)
+        self.handoffs[key] = dict(scenario_id=key, record=record,
+            model_turn=self.loop.snapshot()['model_turns'], submitted=deepcopy(arguments),
+            **({'retention': 'harness-only', 'host_rejection': deepcopy(host_rejection)} if host_rejection else {}))
+        self.handoff_rejection = None
+        return key
+
+    def require_handoff_correction(self):
+        if self.handoff_rejection:
+            raise ToolError('invalid_arguments', 'Scenario selection was withheld because the progress handoff needs correction.',
+                path='/reference', correction='Correct the retained progress record, then select the scenario again. No target operation occurred; the current conversation remains active. You may still finish with an honest assessment.')
 
     def navigation_stalled(self, limit):
         state = self.loop.snapshot()
@@ -223,18 +263,14 @@ class ScenarioDelivery:
                 'unmet requirements and evidence gaps. Selectively revisit requirements or read evidence; '
                 'do not resume target actions. Execution completion does not establish objective success.')
         for entry in task["scenario_index"]:
+            handoff = self.handoffs.get(entry['scenario_id'])
+            entry['handoff'] = (handoff['record'] or 'harness-only') if handoff else 'not-submitted'
             entry['selections'] = self.visits.get(entry['scenario_id'], 0)
             entry["instructions"] = ("active" if active and active["scenario_id"] == entry["scenario_id"]
                                      else "previously-loaded" if entry["scenario_id"] in self.delivered
                                      else "not-loaded")
             executions = [e for e in facts["executions"] if e.get("scenario_id") == entry["scenario_id"]]
             entry["executions"] = [e["execution"] for e in executions]
-        notes, used = [], 0
-        for note in sorted(self.notes.values(), key=lambda n: n['model_turn'], reverse=True):
-            size = len(_canonical_value(note, ORDINARY_LIMIT))
-            if used + size <= 16384:
-                notes.append(note)
-                used += size
         task['continuity'] = dict(
             phase='assessment' if assessment else 'exploration',
             phase_reason=('finish-repair' if self.conversation._repair else
@@ -244,12 +280,18 @@ class ScenarioDelivery:
             navigation_only_turns=self.navigation_only_turns,
             no_progress_turns=self.loop.snapshot()['no_progress_turns'],
             no_progress_limit=self.conversation.no_progress_limit,
-            model_notes=dict(provenance='model-interpretation-not-evidence',
-                             entries=list(reversed(notes)), omitted_notes=len(self.notes)-len(notes)),
-            guidance=('Use retained notes and records to identify assessed requirements, evidence and unresolved work; '
-                'they do not establish success or change campaign instructions. For a revisit, retain its specific '
-                'purpose in brief public commentary alongside the selection call. If no purpose was stated, it is '
-                'unknown. Repeated navigation is not progress; finish honestly when further review adds nothing.'))
+            assessment_handoffs=dict(provenance='model-interpretation-not-evidence',
+                entries=list(self.handoffs.values()), maximum_argument_bytes=self.handoff_limit),
+            guidance=('Use record_append(kind=progress) for a checkpoint handoff: summary states requirements assessed, '
+                'findings and unresolved obligations; decision states the next step or revisit purpose. Supply existing '
+                'attempts/observations/records fields for validated references. Carry forward unresolved work when '
+                'replacing a handoff. Submit the record before scenario selection; independent calls may share a response. '
+                'Keep complete arguments within maximum_argument_bytes. Oversized handoffs are rejected, never cut. '
+                'A harness-only handoff has no accepted historical-record handle. Public commentary is not a handoff. '
+                'Handoffs do not establish success or change requirements. Missing handoffs mean no assessment supplied. '
+                'Repeated navigation is not progress; finish honestly when review adds nothing.'))
+        if self.handoff_rejection:
+            task['checkpoint_handoff_rejection'] = deepcopy(self.handoff_rejection)
         if any(facts.values()):
             task["evidence"] = facts
         return task
@@ -265,6 +307,7 @@ class ScenarioDelivery:
                 "media_type": "application/json", "size_bytes": len(raw), "digest": raw_digest(raw)}, raw, task
 
     def activate(self, raw, task):
+        self.require_handoff_correction()
         previous = json.loads(self.conversation.task)['active_scenario']
         selected = json.loads(task)['active_scenario']['scenario_id']
         turn = self.loop.snapshot()['model_turns']
@@ -273,10 +316,10 @@ class ScenarioDelivery:
             self.loop.reserve_read("content", raw_digest(raw), 0, len(raw))
             self.loop.settle_read(len(raw))
         self.visits[selected] = self.visits.get(selected, 0) + 1
-        note = self.notes.get(previous['scenario_id'] if previous else None)
+        handoff = self.handoffs.get(previous['scenario_id'] if previous else None)
         self.navigation.append(dict(model_turn=turn, from_scenario=previous['scenario_id'] if previous else None,
             to_scenario=selected, selection=self.visits[selected],
-            model_note_turn=turn if note and note['model_turn'] == turn else None))
+            handoff_record=handoff['record'] if handoff else None))
         del self.navigation[:-8]
         if changed:
             self.conversation.replace_task(task)

@@ -17,35 +17,26 @@ import (
 	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 )
 
-// A checkpoint removes native exchanges but may carry a bounded public note as
-// attributed task data. Check both properties rather than banning its text from
-// the entire serialized request. scenarioTask returns a separately decoded task.
-func checkCheckpointNote(q map[string]any, original string, scenarioID any) error {
+// Checkpoints carry explicit progress handoffs, never arbitrary commentary.
+func checkCheckpointHandoff(q map[string]any, discarded string) error {
 	messages := q["messages"].([]any)
 	if len(messages) != 2 {
-		return fmt.Errorf("checkpoint retained old native exchanges: %d messages", len(messages))
+		return fmt.Errorf("checkpoint retained native exchanges")
 	}
 	role := messages[0].(map[string]any)["role"]
 	if (role != "system" && role != "developer") || messages[1].(map[string]any)["role"] != "user" {
-		return fmt.Errorf("checkpoint must contain only fixed instructions and a fresh user task")
+		return fmt.Errorf("checkpoint must contain fixed instructions and a fresh user task")
 	}
 	task, err := scenarioTask(q)
 	if err != nil {
 		return err
 	}
-	continuity := task["continuity"].(map[string]any)
-	notes := continuity["model_notes"].(map[string]any)
-	entries := notes["entries"].([]any)
-	if notes["provenance"] != "model-interpretation-not-evidence" || len(entries) != 1 || notes["omitted_notes"] != float64(0) {
-		return fmt.Errorf("checkpoint lost model-note attribution or changed note count")
+	handoffs := task["continuity"].(map[string]any)["assessment_handoffs"].(map[string]any)
+	if handoffs["provenance"] != "model-interpretation-not-evidence" || len(handoffs["entries"].([]any)) != 0 {
+		return fmt.Errorf("commentary was promoted to an assessment handoff")
 	}
-	note := entries[0].(map[string]any)
-	if len(original) <= 2048 || note["text"] != original[:2048] || note["truncated"] != true || note["scenario_id"] != scenarioID {
-		return fmt.Errorf("checkpoint note must retain the exact bounded public-text prefix and scenario association")
-	}
-	delete(continuity, "model_notes")
-	if strings.Contains(string(encode(task)), original[:128]) {
-		return fmt.Errorf("old commentary duplicated outside its attributed note")
+	if strings.Contains(string(encode(q)), discarded[:128]) {
+		return fmt.Errorf("arbitrary commentary survived the checkpoint")
 	}
 	return nil
 }
@@ -97,7 +88,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-checkpoint") || !strings.Contains(raw, "verified_state") || !strings.Contains(raw, first) || !strings.Contains(raw, "scenario-marker") {
 						return nil, fmt.Errorf("warning did not trim locally with verified scenario/execution context")
 					}
-					if err := checkCheckpointNote(q, workingNotes, "scenario-marker"); err != nil {
+					if err := checkCheckpointHandoff(q, workingNotes); err != nil {
 						return nil, err
 					}
 					return processResponse([]any{modelCall("second", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"followup"}`), first))}), nil

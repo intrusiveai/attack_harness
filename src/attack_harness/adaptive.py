@@ -92,6 +92,13 @@ class NativeConversation:
         self.task_generation += 1
         self._schedule_checkpoint('scenario-change')
 
+    def cancel_scenario_change(self, task, generation):
+        """Cancel a prospective task until a rejected handoff is corrected."""
+        self._check_prefix()
+        require(self._response_open)
+        self._task, self.task_generation = task, generation
+        self._checkpoint_reasons = [r for r in self._checkpoint_reasons if r != 'scenario-change']
+
     def _enter_assessment(self, reason):
         if not self._assessment_phase:
             self._assessment_phase = True

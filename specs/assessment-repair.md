@@ -27,10 +27,13 @@ rewriter is required.
   other tool results, and model-generated summaries MUST NOT clear it.
 - During repair, the dispatcher MUST allow only `finish`, `observation_read`,
   `reference_read`, and `artifact_publish` with shared-validated purpose
-  `conclusion`, subject to existing admission, integrity, and budget checks.
+  `conclusion`, and `record_append` with `kind: progress` for checkpoint continuity,
+  subject to existing admission, integrity, and budget checks. Progress handoffs
+  MUST satisfy the [whole-record policy](append-only-conversations.md) and MUST NOT
+  clear an unresolved finish rejection or authorize another target action.
 - All other model actions MUST be rejected before their handler or host request.
   This includes target attempts, injection deletion, snapshot creation/inspection/
-  listing, restores, record appends, and payload artifact publication. The same
+  listing, restores, other record kinds, and payload artifact publication. The same
   restriction MUST apply to later calls in the model response containing the
   rejected finish.
 - A blocked call MUST explicitly state that repair is active and the action was

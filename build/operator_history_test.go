@@ -46,7 +46,7 @@ func TestPythonProcessLargeHistoryCompaction(t *testing.T) {
 					if strings.Contains(raw, "model-generated-not-evidence") {
 						return nil, fmt.Errorf("a model summary was purchased")
 					}
-					if err := checkCheckpointNote(q, commentary, nil); err != nil {
+					if err := checkCheckpointHandoff(q, commentary); err != nil {
 						return nil, err
 					}
 					return processResponse([]any{modelCall("finish", "finish", map[string]any{
