@@ -23,6 +23,7 @@ func processText(text string) []byte {
 func TestPythonProcessLargeHistoryCompaction(t *testing.T) {
 	for _, transport := range []string{"fifo", "spool"} {
 		t.Run(transport, func(t *testing.T) {
+			var commentary string
 			reply := func(turn int, q map[string]any) ([]byte, error) {
 				switch turn {
 				case 1:
@@ -35,14 +36,18 @@ func TestPythonProcessLargeHistoryCompaction(t *testing.T) {
 					if count <= 512<<10 || count >= (1<<20)+8192 {
 						return nil, fmt.Errorf("unexpected initial request size")
 					}
-					return processText(strings.Repeat("x", count)), nil
+					commentary = strings.Repeat("x", count)
+					return processText(commentary), nil
 				case 2:
 					raw := string(encode(q))
 					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-checkpoint") || !strings.Contains(raw, "omitted_complete_groups") || !strings.Contains(raw, "objective-marker") || len(encode(q)) >= 1<<20 {
 						return nil, fmt.Errorf("local reduction lost task, provenance, or request bound")
 					}
-					if strings.Contains(raw, strings.Repeat("x", 1024)) || strings.Contains(raw, "model-generated-not-evidence") {
-						return nil, fmt.Errorf("removed history retained or a model summary was purchased")
+					if strings.Contains(raw, "model-generated-not-evidence") {
+						return nil, fmt.Errorf("a model summary was purchased")
+					}
+					if err := checkCheckpointNote(q, commentary, nil); err != nil {
+						return nil, err
 					}
 					return processResponse([]any{modelCall("finish", "finish", map[string]any{
 						"finish_reason": "no-useful-next-experiment", "summary": "No target attempt ran.",
@@ -54,6 +59,7 @@ func TestPythonProcessLargeHistoryCompaction(t *testing.T) {
 			}
 			r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: reply})
 			r.finish(t)
+			assertProcessConversationPrefixes(t, r.provider.requests)
 			if !r.service.AssessmentCommitted() {
 				t.Fatal("honest zero-attempt assessment was not committed")
 			}

@@ -8,18 +8,53 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 )
+
+// A checkpoint removes native exchanges but may carry a bounded public note as
+// attributed task data. Check both properties rather than banning its text from
+// the entire serialized request. scenarioTask returns a separately decoded task.
+func checkCheckpointNote(q map[string]any, original string, scenarioID any) error {
+	messages := q["messages"].([]any)
+	if len(messages) != 2 {
+		return fmt.Errorf("checkpoint retained old native exchanges: %d messages", len(messages))
+	}
+	role := messages[0].(map[string]any)["role"]
+	if (role != "system" && role != "developer") || messages[1].(map[string]any)["role"] != "user" {
+		return fmt.Errorf("checkpoint must contain only fixed instructions and a fresh user task")
+	}
+	task, err := scenarioTask(q)
+	if err != nil {
+		return err
+	}
+	continuity := task["continuity"].(map[string]any)
+	notes := continuity["model_notes"].(map[string]any)
+	entries := notes["entries"].([]any)
+	if notes["provenance"] != "model-interpretation-not-evidence" || len(entries) != 1 || notes["omitted_notes"] != float64(0) {
+		return fmt.Errorf("checkpoint lost model-note attribution or changed note count")
+	}
+	note := entries[0].(map[string]any)
+	if len(original) <= 2048 || note["text"] != original[:2048] || note["truncated"] != true || note["scenario_id"] != scenarioID {
+		return fmt.Errorf("checkpoint note must retain the exact bounded public-text prefix and scenario association")
+	}
+	delete(continuity, "model_notes")
+	if strings.Contains(string(encode(task)), original[:128]) {
+		return fmt.Errorf("old commentary duplicated outside its attributed note")
+	}
+	return nil
+}
 
 func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 	for _, transport := range []string{"fifo", "spool"} {
 		t.Run(transport, func(t *testing.T) {
 			var first string
+			workingNotes := strings.Repeat("Unverified working notes. ", 800)
 			reply := func(turn int, q map[string]any) ([]byte, error) {
 				if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil {
 					return response, err
@@ -34,8 +69,8 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					detail := modelCall("detail", "reference_read", map[string]any{"reference": operation["details_reference"], "offset": 0})
 					var response map[string]any
 					_ = json.Unmarshal(processResponse([]any{detail, modelCall("first", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"baseline"}`), ""))}), &response)
-					// A completed native group contributes removable model reasoning.
-					response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"] = strings.Repeat("Unverified working notes. ", 800)
+					// Public commentary is distinct from opaque native thinking.
+					response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"] = workingNotes
 					return encode(response), nil
 				case 2:
 					detail, err := modelToolResult(q, "detail")
@@ -62,8 +97,8 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-checkpoint") || !strings.Contains(raw, "verified_state") || !strings.Contains(raw, first) || !strings.Contains(raw, "scenario-marker") {
 						return nil, fmt.Errorf("warning did not trim locally with verified scenario/execution context")
 					}
-					if strings.Contains(raw, "Unverified working notes.") {
-						return nil, fmt.Errorf("old native exchange was not removed")
+					if err := checkCheckpointNote(q, workingNotes, "scenario-marker"); err != nil {
+						return nil, err
 					}
 					return processResponse([]any{modelCall("second", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"followup"}`), first))}), nil
 				case 4:
