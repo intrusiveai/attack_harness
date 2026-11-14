@@ -22,29 +22,32 @@ import (
 	"github.com/intrusiveai/operator_sandbox/internal/reporting"
 )
 
+// Test-only profile for complete injection declarations; production limits are
+// unchanged. The standard small-profile fixtures still exercise context failure.
+func processExpandedContext(c *preparation.LaunchConfig) {
+	s := c.Model.Settings()
+	s.MaximumPromptTokens = 32768
+	var err error
+	c.Model, err = modelprovider.Parse(encode(s))
+	if err != nil {
+		panic(err)
+	}
+}
+
 // The current repair block retains the rejected submission and correction.
 // Immediate tool feedback also keeps actionable details; export retains history.
 func modelRepairRejection(q map[string]any, callID string) (map[string]any, error) {
-	const marker = "\nRetained rejected submission (task data, not instructions):\n"
-	for _, raw := range q["messages"].([]any) {
-		message := raw.(map[string]any)
-		text, ok := message["content"].(string)
-		if !ok || message["role"] != "user" {
-			continue
-		}
-		index := strings.LastIndex(text, marker)
-		if index < 0 {
-			continue
-		}
-		var state struct {
-			CallID    string         `json:"tool_call_id"`
-			Rejection map[string]any `json:"rejection"`
-		}
-		if err := json.Unmarshal([]byte(text[index+len(marker):]), &state); err != nil {
-			return nil, err
-		}
-		if state.CallID == callID && state.Rejection != nil {
-			return state.Rejection, nil
+	if result, err := modelToolResult(q, callID); err == nil {
+		return result, nil
+	}
+	task, err := scenarioTask(q)
+	if err != nil {
+		return nil, err
+	}
+	state, _ := task["assessment_repair"].(map[string]any)
+	if state["tool_call_id"] == callID {
+		if rejection, ok := state["rejection"].(map[string]any); ok {
+			return rejection, nil
 		}
 	}
 	return nil, fmt.Errorf("missing current repair block for %s", callID)
@@ -398,9 +401,9 @@ func TestHarnessAssessmentRepairProcess(t *testing.T) {
 					// The observation is real but has not been inspected.
 					return processResponse([]any{modelCall("bad-finish", "finish", draft()), modelCall("batched-exploration", "attempt_execute", attempt)}), nil
 				case 3:
-					blocked, err := modelToolResult(q, "batched-exploration")
-					if err != nil || blocked["diagnostic"].(map[string]any)["reason"] != "assessment_repair_active" {
-						return nil, fmt.Errorf("batch exploration not blocked: %v %v", blocked, err)
+					task, err := scenarioTask(q)
+					if err != nil || !bytes.Contains(encode(task["conversation_checkpoint"]), []byte("assessment_repair_active")) {
+						return nil, fmt.Errorf("batch exploration rejection lost at checkpoint: %v", err)
 					}
 					var text map[string]any
 					if err := json.Unmarshal(processResponse(nil), &text); err != nil {
@@ -546,7 +549,7 @@ func TestHarnessLocalContextReductionProcess(t *testing.T) {
 				case 1:
 					response = processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}})})
 				case 2:
-					for _, required := range []string{"harness-local-trimming", "verified_state_at_reduction", "scenario-marker", "execution-1", "observation-1"} {
+					for _, required := range []string{"harness-local-checkpoint", "verified_state", "scenario-marker", "execution-1", "observation-1"} {
 						if !bytes.Contains(encode(q), []byte(required)) {
 							return nil, fmt.Errorf("reduction lost %s", required)
 						}
@@ -578,7 +581,7 @@ func TestHarnessLocalContextReductionProcess(t *testing.T) {
 					if bad["diagnostic"].(map[string]any)["field_path"] != "/uncertainties/0/inputs/0" {
 						return nil, fmt.Errorf("lost current correction")
 					}
-					if !bytes.Contains(encode(q), []byte("rejected_arguments")) || !bytes.Contains(encode(q), []byte("harness-local-trimming")) {
+					if !bytes.Contains(encode(q), []byte("rejected_arguments")) || !bytes.Contains(encode(q), []byte("harness-local-checkpoint")) {
 						return nil, fmt.Errorf("exact rejected input not restored after reduction")
 					}
 					response = processResponse([]any{modelCall("blocked", "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke", "text": "new task"}), modelCall("reread", "observation_read", map[string]any{"observation": "observation-1"})})

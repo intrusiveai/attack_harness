@@ -27,12 +27,11 @@ model reservations, or configured campaign limits. This change builds on
   referenced by native call identity while retained, but MUST be included exactly
   after that exchange is omitted. Duplicate-key input MUST NOT be rewritten.
   Model-facing result/reminder projections MUST NOT replace canonical records.
-- `NativeConversation` MUST reuse its complete native history groups for local
-  reduction during exploration and finalization. At the existing warning threshold,
-  remove oldest complete groups toward 75% of the warning/byte threshold, retaining
-  recent groups where feasible. Mandatory context MUST NOT be dropped to reach
-  this soft headroom target. If mandatory context cannot fit safely after reduction,
-  use the existing context-limit/unavailable finish, not an oversized request.
+- `NativeConversation` MUST use deterministic fresh-conversation checkpoints at
+  the existing context warning threshold, rather than dropping a prefix beneath
+  retained reasoning. Recent bounded evidence MAY carry forward as attributed
+  task data. Mandatory context MUST NOT be omitted to meet a soft headroom target;
+  if it cannot fit, use the existing context-limit/unavailable finish.
 - The adaptive loop MUST NOT purchase model-generated summaries. Existing summary
   interpretation/provenance helpers MUST continue to treat supplied historical
   summaries as subordinate to original requirements and independent repair state.
@@ -66,3 +65,6 @@ bytes, and cumulative overhead including rereads. Record actual provider usage a
 unavailable when none was measured; synthetic fixture accounting MUST NOT be
 reported as live token savings. Include request-size regressions as well as savings.
 No paid cloud campaign or release publication is part of this verification.
+
+[Append-only conversations](append-only-conversations.md) supersedes any older
+requirement to rewrite task messages or retain native suffixes after trimming.

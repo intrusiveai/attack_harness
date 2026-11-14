@@ -26,7 +26,7 @@ func TestHarnessExitProcess(t *testing.T) {
 					if mode == "healthy-unwind" && turn == 1 {
 						assessment["objectives"].([]any)[0].(map[string]any)["attempts"] = []string{"unknown-receipt"}
 					} else if mode == "healthy-unwind" {
-						feedback, err := modelToolResult(request, "finish-1")
+						feedback, err := modelRepairRejection(request, "finish-1")
 						if err != nil || feedback["status"] != "error" {
 							t.Fatalf("missing rejection: %v %v", feedback, err)
 						}

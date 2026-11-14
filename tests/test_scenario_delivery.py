@@ -334,11 +334,10 @@ class ScenarioDeliveryTest(unittest.TestCase):
         self.assertEqual(result["assessment_state"], "committed")
         if use_reference:
             messages = host.model_requests[1]["conversation"]
-            read = next(json.loads(m["content"]) for m in messages if m.get("tool_call_id") == "select")
-            self.assertEqual(read["status"], "scenario-selected")
-            self.assertEqual(read["scenario_id"], "refund")
-            self.assertNotIn("content", read)
-            self.assertNotIn("continuation", read)
+            # Selection is resolved before the fresh conversation; no old native
+            # call/result group or second copy of instructions crosses it.
+            self.assertEqual(len(messages), 1)
+            self.assertIn('scenario-change', json.dumps(messages))
             # Even a one-byte reference read delivers all requirements in task
             # data before the next construction turn, never a partial hypothesis.
             self.assertEqual(host.active_task["active_scenario"], bundle["scenarios"][1])

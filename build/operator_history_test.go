@@ -38,7 +38,7 @@ func TestPythonProcessLargeHistoryCompaction(t *testing.T) {
 					return processText(strings.Repeat("x", count)), nil
 				case 2:
 					raw := string(encode(q))
-					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-trimming") || !strings.Contains(raw, "omitted_complete_groups") || !strings.Contains(raw, "objective-marker") || len(encode(q)) >= 1<<20 {
+					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-checkpoint") || !strings.Contains(raw, "omitted_complete_groups") || !strings.Contains(raw, "objective-marker") || len(encode(q)) >= 1<<20 {
 						return nil, fmt.Errorf("local reduction lost task, provenance, or request bound")
 					}
 					if strings.Contains(raw, strings.Repeat("x", 1024)) || strings.Contains(raw, "model-generated-not-evidence") {

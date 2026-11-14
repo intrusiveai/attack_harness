@@ -62,7 +62,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						if turn == 1 {
 							a["hypotheses"] = []any{h}
 						} else if turn == 2 {
-							rejected, e := modelToolResult(q, "finish-bad")
+							rejected, e := modelRepairRejection(q, "finish-bad")
 							if e != nil || rejected["status"] != "error" {
 								return nil, fmt.Errorf("invalid assessment falsely accepted: %v %v", rejected, e)
 							}

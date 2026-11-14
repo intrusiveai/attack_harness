@@ -3,6 +3,10 @@
 This change simplifies presentation while preserving the active-scenario workflow,
 shared contract, native codecs, dispatch, evidence verification and accounting.
 
+Conversation lifetime and context renewal follow
+[append-only conversations](append-only-conversations.md). Activity and evidence
+tables are checkpoint snapshots; subsequent tool results carry updates.
+
 ## Required behavior
 
 - The privileged prompt MUST state purpose, campaign scope, source trust,
@@ -19,7 +23,7 @@ shared contract, native codecs, dispatch, evidence verification and accounting.
   instructions from execution handles. Evidence facts MUST distinguish inspection
   from content still in the prompt and objective achievement. Snapshot readiness,
   parentage and restore associations MUST survive switching and trimming.
-- Scenario activation MUST replace instructions without adding their body to tool
+- Scenario activation MUST start a fresh conversation with the selected instructions without adding their body to tool
   history. The confirmation MUST identify instructions as present in the current
   task. Existing delivery-generation guards MUST prevent same-response execution
   before those instructions have reached the model; no acknowledgment is added.
@@ -42,7 +46,8 @@ shared contract, native codecs, dispatch, evidence verification and accounting.
   nor target prose may create trusted handles or progress facts during trimming.
 - Empty oracle feedback MUST be described as absence of a positive verdict, not
   evidence of attack success or failure.
-- Existing complete-group history reduction MUST remain the only history manager.
+- Existing history management MUST renew context through deterministic checkpoints;
+  it MUST NOT retain native reasoning after changing the conversation prefix.
   Full evidence stays retained. Assessment repair, precise corrections, protected
   finalization and honest context-limit termination MUST remain enforced.
 

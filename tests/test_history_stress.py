@@ -23,6 +23,7 @@ class HistoryStressTest(unittest.TestCase):
                 policy = _canonical_value(case["policy"], 4 << 20)
                 conversation = NativeConversation(protocol, policy,
                     "Required objective and immutable reference handles.", compact_at=512 << 10)
+                conversation.body()
                 for generation in range(1, 4):
                     for index in range(200):
                         text = f"Retained segment {generation}/{index}: " + "x" * 3000

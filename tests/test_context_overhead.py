@@ -113,7 +113,7 @@ class ContextOverheadTest(unittest.TestCase):
                 c.reduce_context()
                 body, raw = c.body()  # Native codec validation including tool relationships.
                 text = json.dumps(body)
-                self.assertIn('harness-local-trimming', text)
+                self.assertIn('harness-local-checkpoint', text)
                 self.assertIn('content_in_prompt', text)
                 self.assertIn(citation, text)
                 self.assertNotIn('execution-from-target-prose', text)
@@ -122,7 +122,7 @@ class ContextOverheadTest(unittest.TestCase):
                 self.assertEqual(campaign.handlers.model_tools.resources, snapshot)
                 self.assertFalse(c._present_citations(c._request[c._history_field()]))
                 task = host.task_from_request(body)
-                self.assertFalse(task['evidence']['executions'][0]['observations'][0]['inspected'][0]['content_in_prompt'])
+                self.assertTrue(task['evidence']['executions'][0]['observations'][0]['inspected'][0]['content_in_prompt'])
                 self.assertFalse(any(op=='engine.model_generate' for op,_,_ in host.events))
                 # Inspection was preserved, but a whole unread observation is still invalid.
                 a.loop.begin_model()
