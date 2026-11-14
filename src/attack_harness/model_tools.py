@@ -275,6 +275,19 @@ class ModelTools:
                     for r in self._calls.values()
                     if r.signature[0] == 'restore_request' and r.result is not None and r.result.outcome == 'restored']
         facts = dict(executions=executions, other_handles=other, restores=restores)
+        records = [dict(record=h, **r['assessment_context']) for h, r in self.resources.items()
+                   if 'assessment_context' in r]
+        if records:
+            # Accepted records remain in the call/resource state. Bound their
+            # prompt projection without promoting assertions to verified facts.
+            selected, used = [], 0
+            for record in reversed(records):
+                size = len(_canonical_value(record, ORDINARY_LIMIT))
+                if len(selected) < 8 and used + size <= 8192:
+                    selected.append(deepcopy(record))
+                    used += size
+            facts['model_records'] = dict(provenance='accepted-model-assertions-not-verified-outcomes',
+                entries=list(reversed(selected)), omitted_records=len(records)-len(selected))
         activity = self.scenario_activity(executions)
         if activity:
             facts['scenario_activity'] = activity
@@ -413,6 +426,10 @@ class ModelTools:
                 value.pop("reason", None)
         elif name == "record_append":
             value["record"] = self.register("record", dict(record_receipt_id=value.pop("receipt_id")), available=True)
+            delivery = self.handlers.scenario_delivery
+            active = json.loads(delivery.conversation.task)['active_scenario'] if delivery else None
+            self.resources[value['record']]['assessment_context'] = dict(
+                scenario_id=active['scenario_id'] if active else None, submitted=deepcopy(arguments))
             if body["record_kind"] == "hypothesis":
                 value["hypothesis"] = self.register("hypothesis", dict(hypothesis_id=body["record"]["hypothesis_id"]), available=True)
         elif name in ("snapshot_request", "snapshot_inspect"):

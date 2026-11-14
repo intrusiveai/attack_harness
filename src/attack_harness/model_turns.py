@@ -20,9 +20,8 @@ class NativeBatch:
     disposition: str
     calls: tuple[ToolCall, ...]
 
-    def _text(self):
-        """Return supported native text without treating it as evidence."""
-        require(self.disposition == "text")
+    def public_text(self):
+        """Public commentary only, including text alongside tools; never reasoning."""
         body = self.protocol._catalog.validate(
             ENGINE_MODEL_GENERATE_RESULT_SCHEMA, self.result_raw)
         response = body["response"]
@@ -40,11 +39,17 @@ class NativeBatch:
                       response["output"]["message"]["content"] if "text" in item]
         elif self.codec_id == "gemini-text-tools-v1":
             values = [item["text"] for item in
-                      response["candidates"][0]["content"]["parts"] if "text" in item]
+                      response["candidates"][0]["content"]["parts"] if "text" in item and not item.get("thought")]
         else:
             raise ContractError("unsupported model codec")
         require(all(value is None or type(value) is str for value in values))
         text = "\n".join(value for value in values if value)
+        return text
+
+    def _text(self):
+        """Return supported native text without treating it as evidence."""
+        require(self.disposition == "text")
+        text = self.public_text()
         require(text != "")
         return text
 

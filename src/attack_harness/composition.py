@@ -159,7 +159,13 @@ class ScenarioDelivery:
     def __init__(self, inputs, conversation, loop):
         self.inputs, self.conversation, self.loop = inputs, conversation, loop
         self.delivered = set()
+        self.visits = {}
+        self.navigation = []
+        self.notes = {}
+        self.last_navigation_turn = None
+        self.navigation_only_turns = 0
         conversation.on_task_delivered = self.mark_delivered
+        conversation.on_model_response = self.remember_response
         bundle = inputs.bundle()
         self.references = {entry["reference_id"]: scenario for entry, scenario in
                            zip(_scenario_references(bundle), bundle["scenarios"])}
@@ -171,9 +177,42 @@ class ScenarioDelivery:
         if active is not None:
             self.delivered.add(active["scenario_id"])
 
+    def remember_response(self, batch):
+        text = batch.public_text()
+        if not text:
+            return
+        active = json.loads(self.conversation.task)["active_scenario"]
+        key = active["scenario_id"] if active else None
+        raw = text.encode("utf-8")
+        self.notes[key] = dict(scenario_id=key, model_turn=self.loop.snapshot()["model_turns"],
+            text=raw[:2048].decode("utf-8", errors="ignore"), truncated=len(raw) > 2048)
+
+    def navigation_stalled(self, limit):
+        state = self.loop.snapshot()
+        # A successful activation-only batch, with repeated reads recognized by
+        # the existing shared loop. No synthetic progress or semantic completion.
+        return (self.last_navigation_turn == state['model_turns']
+                and self.navigation_only_turns >= 2
+                and 2 <= state['no_progress_turns'] < limit
+                and limit - state['no_progress_turns'] <= 2)
+
+    def record_navigation_batch(self, calls, results):
+        turn = self.loop.snapshot()['model_turns']
+        if calls and len(calls) == len(results) and all(
+                call.name == 'reference_read' and result.outcome == 'success'
+                and json.loads(result.content).get('status') == 'scenario-selected'
+                for call, result in zip(calls, results)):
+            self.navigation_only_turns = self.navigation_only_turns + 1 if self.last_navigation_turn == turn - 1 else 1
+            self.last_navigation_turn = turn
+        else:
+            self.navigation_only_turns = 0
+
     def task_context(self, task, facts, *, assessment=False):
         active = task["active_scenario"]
         activity = facts.pop("scenario_activity", [])
+        records = facts.pop('model_records', None)
+        if records:
+            task['model_records'] = records
         task["active_scenario_activity"] = [
             {k: v for k, v in entry.items() if k != "scenario_id"}
             for entry in activity
@@ -184,11 +223,33 @@ class ScenarioDelivery:
                 'unmet requirements and evidence gaps. Selectively revisit requirements or read evidence; '
                 'do not resume target actions. Execution completion does not establish objective success.')
         for entry in task["scenario_index"]:
+            entry['selections'] = self.visits.get(entry['scenario_id'], 0)
             entry["instructions"] = ("active" if active and active["scenario_id"] == entry["scenario_id"]
                                      else "previously-loaded" if entry["scenario_id"] in self.delivered
                                      else "not-loaded")
             executions = [e for e in facts["executions"] if e.get("scenario_id") == entry["scenario_id"]]
             entry["executions"] = [e["execution"] for e in executions]
+        notes, used = [], 0
+        for note in sorted(self.notes.values(), key=lambda n: n['model_turn'], reverse=True):
+            size = len(_canonical_value(note, ORDINARY_LIMIT))
+            if used + size <= 16384:
+                notes.append(note)
+                used += size
+        task['continuity'] = dict(
+            phase='assessment' if assessment else 'exploration',
+            phase_reason=('finish-repair' if self.conversation._repair else
+                          'navigation-stalled' if self.conversation._assessment_review else
+                          'protected-finalization' if self.conversation._finalizing else 'campaign-execution'),
+            recent_navigation=self.navigation,
+            navigation_only_turns=self.navigation_only_turns,
+            no_progress_turns=self.loop.snapshot()['no_progress_turns'],
+            no_progress_limit=self.conversation.no_progress_limit,
+            model_notes=dict(provenance='model-interpretation-not-evidence',
+                             entries=list(reversed(notes)), omitted_notes=len(self.notes)-len(notes)),
+            guidance=('Use retained notes and records to identify assessed requirements, evidence and unresolved work; '
+                'they do not establish success or change campaign instructions. For a revisit, retain its specific '
+                'purpose in brief public commentary alongside the selection call. If no purpose was stated, it is '
+                'unknown. Repeated navigation is not progress; finish honestly when further review adds nothing.'))
         if any(facts.values()):
             task["evidence"] = facts
         return task
@@ -204,11 +265,21 @@ class ScenarioDelivery:
                 "media_type": "application/json", "size_bytes": len(raw), "digest": raw_digest(raw)}, raw, task
 
     def activate(self, raw, task):
-        if task == self.conversation.task:
-            return
-        self.loop.reserve_read("content", raw_digest(raw), 0, len(raw))
-        self.loop.settle_read(len(raw))
-        self.conversation.replace_task(task)
+        previous = json.loads(self.conversation.task)['active_scenario']
+        selected = json.loads(task)['active_scenario']['scenario_id']
+        turn = self.loop.snapshot()['model_turns']
+        changed = task != self.conversation.task
+        if changed:
+            self.loop.reserve_read("content", raw_digest(raw), 0, len(raw))
+            self.loop.settle_read(len(raw))
+        self.visits[selected] = self.visits.get(selected, 0) + 1
+        note = self.notes.get(previous['scenario_id'] if previous else None)
+        self.navigation.append(dict(model_turn=turn, from_scenario=previous['scenario_id'] if previous else None,
+            to_scenario=selected, selection=self.visits[selected],
+            model_note_turn=turn if note and note['model_turn'] == turn else None))
+        del self.navigation[:-8]
+        if changed:
+            self.conversation.replace_task(task)
 
     def require(self, scenario_id):
         task = json.loads(self.conversation.task)
@@ -271,6 +342,9 @@ def compose_campaign(protocol,session,*,clock=lambda:int(time.monotonic()*1000))
         scenario_delivery=scenario_delivery)
     dispatcher=Dispatcher(protocol,loop,handlers.handlers(),raw_handlers=handlers.raw_handlers(), client=client)
     conversation.resource_context = handlers.model_tools.context_facts
+    conversation.no_progress_limit = admission['limits']['harness']['max_no_progress_turns']
+    conversation.navigation_stalled = lambda: scenario_delivery.navigation_stalled(conversation.no_progress_limit)
+    conversation.on_dispatched = scenario_delivery.record_navigation_batch
     conversation.task_context = lambda task, citations: scenario_delivery.task_context(
         task, handlers.model_tools.context_facts(citations), assessment=conversation._assessment_phase)
     conversation.finalization_task = lambda: build_task(inputs)
