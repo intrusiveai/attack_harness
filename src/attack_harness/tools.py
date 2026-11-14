@@ -140,6 +140,7 @@ class Dispatcher:
         self.last_results = []
         self.repair = None
         self.protected_finalization = False
+        self.assessment_review = False
         self.protocol = protocol
         self.loop = loop
         self._handlers = dict(handlers)
@@ -167,7 +168,7 @@ class Dispatcher:
         return error
 
     def _check_repair_action(self, call):
-        if (self.repair is None and not self.protected_finalization) or call.name in ("finish", "observation_read", "reference_read"):
+        if (self.repair is None and not self.protected_finalization and not self.assessment_review) or call.name in ("finish", "observation_read", "reference_read"):
             return
         if call.name == "artifact_publish":
             try:
@@ -178,6 +179,7 @@ class Dispatcher:
                 return
         if self.repair is None:
             raise ToolError("finalization_action_blocked",
+                "Assessment review is active. This action was not executed." if self.assessment_review else
                 "Protected finalization is active. This action was not executed.",
                 correction="Submit an assessment using retained evidence; read observations or tool guidance only when necessary.")
         raise ToolError("assessment_repair_active",

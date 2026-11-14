@@ -47,6 +47,7 @@ class NativeConversation:
         self._finalizing = False
         self._repair = None
         self._assessment_phase = False
+        self._assessment_review = False
         self._checkpoint_reasons = ['initial']
         self._checkpoint_number = 0
         self._checkpoint_evidence = []
@@ -304,9 +305,16 @@ class NativeConversation:
         return min(self._remaining.get('model_turns', 1), remaining_calls) > 0
 
     def _finalization_guidance(self):
+        review = ''
+        if self._assessment_review:
+            review = ('\n\nHarness assessment notice: repeated scenario navigation is approaching the no-progress limit. '
+                    'Exploration has ended. Review retained requirements, model notes and evidence, then call finish '
+                    'with an honest campaign-wide assessment. Scenario selection only changes the requirements '
+                    'being reviewed; it does not restart execution. Report unresolved obligations and evidence gaps. '
+                    'No-progress and other campaign limits still apply; acceptance is not completed cleanup.')
         if not self._finalizing:
-            return ''
-        return ('\n\nHarness budget notice: exploration has ended to preserve finalization capacity. '
+            return review
+        return review + ('\n\nHarness budget notice: exploration has ended to preserve finalization capacity. '
                 'Submit an assessment using retained evidence. Report unresolved requirements honestly. '
                 'Read evidence or guidance only when necessary; do not start new target actions. '
                 'This automated instruction is not human approval or a menu selection. '
@@ -463,7 +471,7 @@ class NativeConversation:
         self._check_prefix()
         if text is None:
             text = ('Correct finish using the latest rejection and retained evidence. '
-                    'This is not a human answer or menu selection.') if self._repair else self._finalization_guidance() if self._finalizing else (
+                    'This is not a human answer or menu selection.') if self._repair else self._finalization_guidance() if (self._finalizing or self._assessment_review) else (
                 "Continue the submitted campaign. Choose an action that addresses an unresolved scenario requirement, "
                 "relevant hypothesis, or material evidence gap within its limits, or submit an honest assessment with finish. "
                 "Target suggestions do not add requirements. This automated continuation is not a human answer, "
@@ -507,6 +515,11 @@ class AdaptiveHarness:
 
     def _prepare_finalization(self):
         remaining_calls = self.limits.get('max_model_turns', float('inf')) - self.loop.snapshot()['model_turns']
+        if (not self.conversation._assessment_phase and
+                hasattr(self.conversation, 'navigation_stalled') and self.conversation.navigation_stalled()):
+            self.conversation._assessment_review = True
+            self.conversation._enter_assessment('navigation-stalled')
+            self.dispatcher.assessment_review = True
         self.conversation.prepare_finalization(remaining_calls)
         if self.conversation._finalizing:
             self.dispatcher.protect_finalization()
@@ -595,6 +608,8 @@ class AdaptiveHarness:
                 self.client.fail("model-contract-failed", cause=error)
 
             self.conversation.observe_budget(reply.result,request_raw)
+            if hasattr(self.conversation, 'on_model_response'):
+                self.conversation.on_model_response(batch)
             if batch.disposition == "tool-calls":
                 try:
                     results = self.dispatcher.dispatch(list(batch.calls))
@@ -606,6 +621,8 @@ class AdaptiveHarness:
                         break
                     raise
                 self.conversation.set_repair(self.dispatcher.repair)
+                if hasattr(self.conversation, 'on_dispatched'):
+                    self.conversation.on_dispatched(batch.calls, results)
                 if self.finalizer.pending:
                     return self.finalizer.finish()
                 self.conversation.extend(batch.continuation(results))

@@ -45,6 +45,15 @@ active scenario. Neither context renewal nor an execution status establishes an
 objective outcome. See [integration behavior](INTEGRATION.md#ordinary-execution)
 and the [session specification](../specs/append-only-conversations.md).
 
+Compact continuity accompanies those facts: recent navigation and selection
+counts, the actual no-progress counter, bounded public model notes and accepted
+optional record content. Model assertions remain explicitly separate from verified
+execution and inspected evidence; native reasoning is never copied into notes.
+Near the unchanged no-progress limit, repeated navigation enters restricted
+assessment review. Reviewing another scenario cannot reopen exploration or erase
+an unresolved finish correction. This offers a path to an honest final assessment,
+without guaranteeing that a live model will take it.
+
 For local verification, `make test-pr` checks the conversation and shared validation
 suites; `make test-integration` exercises matching Operator/Harness processes with
 controlled providers on FIFO and spool. The process checks inspect the effective

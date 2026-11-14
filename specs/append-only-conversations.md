@@ -76,6 +76,38 @@ state remains continuous; only the model's working conversation is renewed.
 
 ## Implementation and verification
 
+### Continuity across scenario revisits
+
+- Checkpoints MUST retain a bounded recent navigation trail, per-scenario selection
+  counts, the current no-progress count/limit, and the persistent assessment phase.
+  Repeated selection MUST NOT count as substantive progress or reset limits.
+- Harness MUST retain the latest bounded public model note for each scenario and
+  for campaign-wide assessment. Notes SHOULD state assessed requirements, cited
+  evidence, unresolved obligations and the purpose of a revisit. Notes MUST be
+  attributed as model interpretation, never verified facts, authorization or a
+  committed assessment. Tool-only responses MUST NOT erase earlier notes. Native
+  reasoning/thinking blocks MUST NOT be extracted into checkpoint notes.
+- Accepted optional `record_append` content MUST remain associated with its verified
+  record handle and the scenario active when submitted. Checkpoints MUST expose a
+  bounded projection of those records, with explicit omissions. Acceptance proves
+  retention, not the truth of the model's assessment. No record or note is required
+  to execute or finish. Original records MUST remain unchanged.
+- When a repeated navigation-only turn leaves at most two turns before the
+  existing no-progress limit, Harness MUST enter restricted assessment review
+  before the next model request. The transition MUST retain its distinct reason,
+  use existing finalization action restrictions, and MUST NOT close execution
+  admission before an accepted finish. Scenario revisits MUST NOT leave this phase.
+  Budget, deadline and invalid/no-progress limits MUST remain unchanged; this is
+  an opportunity to finish, not a guarantee of an accepted assessment.
+- Transition, review, and repair MUST retain campaign-wide facts and model notes
+  separately. Invocation success MUST NOT trigger inferred requirement completion.
+  There MUST be no new model tool, shared contract, planner or model-summary call.
+- Controlled native conversation tests MUST complete multiple scenarios, retain
+  notes/records and evidence through repeated reviews, correct a rejected finish,
+  and finish without another target invocation. Cover all codecs, same-batch
+  restrictions, unchanged signed prefixes, bounded omissions, and an uncooperative
+  model reaching the unchanged no-progress limit with no committed assessment.
+
 Reuse `NativeConversation`, `ScenarioDelivery`, `ModelTools.context_facts`, native
 codec continuations and the existing dispatcher/finalizer. No new tool, provider
 service, parallel compatibility mechanism or campaign ledger is required.

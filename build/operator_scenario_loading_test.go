@@ -96,106 +96,154 @@ func scenarioSelectionTurn(turn *int, q map[string]any) ([]byte, error) {
 
 func TestHarnessScenarioLoadingProcess(t *testing.T) {
 	for _, lane := range []string{"fifo", "spool"} {
-		t.Run(lane, func(t *testing.T) {
-			var snapshot string
-			citations := []any{}
-			run := newProcessRun(t, processCase{transport: lane, prompt: "default", change: func(in *preparation.Input) {
-				snapshotInput(t)(in)
-				var bundle map[string]any
-				json.Unmarshal(in.Bundle, &bundle)
-				first := bundle["scenarios"].([]any)[0]
-				var second map[string]any
-				json.Unmarshal(encode(first), &second)
-				second["scenario_id"] = "second-scenario"
-				bundle["scenarios"] = []any{first, second}
-				in.Bundle = encode(bundle)
-			}, reply: func(turn int, q map[string]any) ([]byte, error) {
-				task, err := scenarioTask(q)
-				if err != nil {
-					return nil, err
+		for _, continuity := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/continuity=%t", lane, continuity), func(t *testing.T) {
+				var snapshot string
+				reviewStarted := false
+				citations := []any{}
+				run := newProcessRun(t, processCase{transport: lane, prompt: "default", change: func(in *preparation.Input) {
+					snapshotInput(t)(in)
+					var bundle map[string]any
+					json.Unmarshal(in.Bundle, &bundle)
+					first := bundle["scenarios"].([]any)[0]
+					var second map[string]any
+					json.Unmarshal(encode(first), &second)
+					second["scenario_id"] = "second-scenario"
+					bundle["scenarios"] = []any{first, second}
+					in.Bundle = encode(bundle)
+				}, reply: func(turn int, q map[string]any) ([]byte, error) {
+					task, err := scenarioTask(q)
+					if err != nil {
+						return nil, err
+					}
+					for _, value := range q["messages"].([]any) {
+						m := value.(map[string]any)
+						if m["role"] == "tool" && strings.Contains(fmt.Sprint(m["content"]), "coverage_obligations") {
+							return nil, fmt.Errorf("scenario body duplicated in provider tool history")
+						}
+					}
+					active, _ := task["active_scenario"].(map[string]any)
+					if len(task["scenario_index"].([]any)) != 2 {
+						return nil, fmt.Errorf("bad scenario projection")
+					}
+					selectCall := func(id string) any {
+						call, e := scenarioSelectionCall(q, id)
+						if e != nil {
+							t.Fatal(e)
+						}
+						return call
+					}
+					if continuity && turn >= 8 {
+						state := task["continuity"].(map[string]any)
+						records := task["model_records"].(map[string]any)["entries"].([]any)
+						if len(records) != 1 || !strings.Contains(string(encode(records)), "Do not replay") {
+							return nil, fmt.Errorf("accepted progress record lost across checkpoints")
+						}
+						if !strings.Contains(string(encode(state["model_notes"])), "External evidence only") {
+							return nil, fmt.Errorf("model assessment note lost across checkpoints")
+						}
+						if state["phase"] == "assessment" {
+							if !reviewStarted {
+								if state["no_progress_turns"] != float64(8) || state["phase_reason"] != "navigation-stalled" {
+									return nil, fmt.Errorf("wrong review transition: %v", state)
+								}
+								reviewStarted = true
+								return processResponse([]any{
+									modelCall("bad-finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Missing refs", "objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "supported", "summary": "Missing refs"}}}),
+									modelCall("blocked", "snapshot_request", map[string]any{}),
+								}), nil
+							}
+							if task["assessment_repair"] == nil {
+								return nil, fmt.Errorf("finish rejection lost during review")
+							}
+							return processResponse([]any{modelCall("finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Both outputs inspected; independent effects unresolved.", "objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "External evidence only.", "observations": citations}}})}), nil
+						}
+						id := "scenario-marker"
+						if turn%2 == 0 {
+							id = "second-scenario"
+						}
+						return processResponse([]any{selectCall(id)}), nil
+					}
+					switch turn {
+					case 1:
+						if len(active) != 0 {
+							return nil, fmt.Errorf("full scenarios in initial request")
+						}
+						return processResponse([]any{selectCall("scenario-marker")}), nil
+					case 2:
+						if len(q["messages"].([]any)) != 2 || active["scenario_id"] != "scenario-marker" {
+							return nil, fmt.Errorf("selection did not start a fresh active-scenario conversation")
+						}
+						return processResponse([]any{modelCall("snapshot", "snapshot_request", map[string]any{}), modelCall("first", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"baseline"}`), ""))}), nil
+					case 3:
+						result, e := modelToolResult(q, "snapshot")
+						if e != nil {
+							return nil, e
+						}
+						snapshot = result["snapshot"].(string)
+						calls := []any{modelCall("read-first", "observation_read", map[string]any{"observation": "observation-1"})}
+						if continuity {
+							calls = append(calls, modelCall("progress", "record_append", map[string]any{"kind": "progress", "summary": "First output inspected.", "decision": "Do not replay; assess remaining evidence gaps at finish.", "attempts": []any{"execution-1"}, "observations": []any{"observation-1"}}))
+						}
+						raw := processResponse(append(calls, selectCall("second-scenario")))
+						if continuity {
+							var response map[string]any
+							json.Unmarshal(raw, &response)
+							response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"] = "External evidence only for the baseline: observation-1. Independent effects unresolved. Review the second scenario next."
+							raw = encode(response)
+						}
+						return raw, nil
+					case 4:
+						pages, _ := task["retained_evidence"].([]any)
+						if len(pages) != 1 || pages[0].(map[string]any)["readable_observation"] != "observation-1" {
+							return nil, fmt.Errorf("recent verified evidence not carried into scenario checkpoint")
+						}
+						citations = append(citations, pages[0].(map[string]any)["citation"])
+						if active["scenario_id"] != "second-scenario" {
+							return nil, fmt.Errorf("active scenario not replaced")
+						}
+						attempt := processAttempt("scenario", "", []byte(`{"query":"followup"}`), "")
+						attempt["scenario_id"] = "second-scenario"
+						return processResponse([]any{modelCall("second", "attempt_execute", attempt)}), nil
+					case 5:
+						return processResponse([]any{modelCall("read-second", "observation_read", map[string]any{"observation": "observation-2"})}), nil
+					case 6:
+						result, e := modelToolResult(q, "read-second")
+						if e != nil {
+							return nil, e
+						}
+						citations = append(citations, result["citation"])
+						return processResponse([]any{modelCall("restore", "restore_request", map[string]any{"snapshot": snapshot})}), nil
+					case 7:
+						return processResponse([]any{selectCall("scenario-marker")}), nil
+					case 8:
+						facts := task["evidence"].(map[string]any)
+						if len(facts["executions"].([]any)) != 2 || len(facts["restores"].([]any)) != 1 {
+							return nil, fmt.Errorf("verified history lost on switch")
+						}
+						return processResponse([]any{modelCall("finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Two scenario outputs inspected; internal effects remain unknown.", "objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "External evidence only.", "observations": citations}}})}), nil
+					}
+					return nil, fmt.Errorf("unexpected model turn %d", turn)
+				}})
+				finishEvidenceRun(t, run)
+				assertProcessConversationPrefixes(t, run.provider.requests)
+				if !run.service.AssessmentCommitted() || run.cmd.ProcessState.ExitCode() != 0 {
+					t.Fatal("assessment not committed", run.output.String())
 				}
-				for _, value := range q["messages"].([]any) {
-					m := value.(map[string]any)
-					if m["role"] == "tool" && strings.Contains(fmt.Sprint(m["content"]), "coverage_obligations") {
-						return nil, fmt.Errorf("scenario body duplicated in provider tool history")
-					}
+				if continuity && !reviewStarted {
+					t.Fatal("assessment review never began")
 				}
-				active, _ := task["active_scenario"].(map[string]any)
-				if len(task["scenario_index"].([]any)) != 2 {
-					return nil, fmt.Errorf("bad scenario projection")
+				if run.native.restores != 1 {
+					t.Fatal("restore lost or repeated")
 				}
-				selectCall := func(id string) any {
-					call, e := scenarioSelectionCall(q, id)
-					if e != nil {
-						t.Fatal(e)
-					}
-					return call
+				if err := run.writer.Close(); err != nil {
+					t.Fatal(err)
 				}
-				switch turn {
-				case 1:
-					if len(active) != 0 {
-						return nil, fmt.Errorf("full scenarios in initial request")
-					}
-					return processResponse([]any{selectCall("scenario-marker")}), nil
-				case 2:
-					if len(q["messages"].([]any)) != 2 || active["scenario_id"] != "scenario-marker" {
-						return nil, fmt.Errorf("selection did not start a fresh active-scenario conversation")
-					}
-					return processResponse([]any{modelCall("snapshot", "snapshot_request", map[string]any{}), modelCall("first", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"baseline"}`), ""))}), nil
-				case 3:
-					result, e := modelToolResult(q, "snapshot")
-					if e != nil {
-						return nil, e
-					}
-					snapshot = result["snapshot"].(string)
-					return processResponse([]any{modelCall("read-first", "observation_read", map[string]any{"observation": "observation-1"}), selectCall("second-scenario")}), nil
-				case 4:
-					pages, _ := task["retained_evidence"].([]any)
-					if len(pages) != 1 || pages[0].(map[string]any)["readable_observation"] != "observation-1" {
-						return nil, fmt.Errorf("recent verified evidence not carried into scenario checkpoint")
-					}
-					citations = append(citations, pages[0].(map[string]any)["citation"])
-					if active["scenario_id"] != "second-scenario" {
-						return nil, fmt.Errorf("active scenario not replaced")
-					}
-					attempt := processAttempt("scenario", "", []byte(`{"query":"followup"}`), "")
-					attempt["scenario_id"] = "second-scenario"
-					return processResponse([]any{modelCall("second", "attempt_execute", attempt)}), nil
-				case 5:
-					return processResponse([]any{modelCall("read-second", "observation_read", map[string]any{"observation": "observation-2"})}), nil
-				case 6:
-					result, e := modelToolResult(q, "read-second")
-					if e != nil {
-						return nil, e
-					}
-					citations = append(citations, result["citation"])
-					return processResponse([]any{modelCall("restore", "restore_request", map[string]any{"snapshot": snapshot})}), nil
-				case 7:
-					return processResponse([]any{selectCall("scenario-marker")}), nil
-				case 8:
-					facts := task["evidence"].(map[string]any)
-					if len(facts["executions"].([]any)) != 2 || len(facts["restores"].([]any)) != 1 {
-						return nil, fmt.Errorf("verified history lost on switch")
-					}
-					return processResponse([]any{modelCall("finish", "finish", map[string]any{"finish_reason": "no-useful-next-experiment", "summary": "Two scenario outputs inspected; internal effects remain unknown.", "objectives": []any{map[string]any{"objective_id": "objective-marker", "outcome": "inconclusive", "summary": "External evidence only.", "observations": citations}}})}), nil
+				result := harnessExport(t, run)
+				if len(result.Attempts) != 2 || result.Attempts[0].ScenarioID != "scenario-marker" || result.Attempts[1].ScenarioID != "second-scenario" {
+					t.Fatal("scenario evidence attribution lost", result.Attempts)
 				}
-				return nil, fmt.Errorf("unexpected model turn %d", turn)
-			}})
-			finishEvidenceRun(t, run)
-			assertProcessConversationPrefixes(t, run.provider.requests)
-			if !run.service.AssessmentCommitted() || run.cmd.ProcessState.ExitCode() != 0 {
-				t.Fatal("assessment not committed", run.output.String())
-			}
-			if run.native.restores != 1 {
-				t.Fatal("restore lost or repeated")
-			}
-			if err := run.writer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			result := harnessExport(t, run)
-			if len(result.Attempts) != 2 || result.Attempts[0].ScenarioID != "scenario-marker" || result.Attempts[1].ScenarioID != "second-scenario" {
-				t.Fatal("scenario evidence attribution lost", result.Attempts)
-			}
-		})
+			})
+		}
 	}
 }

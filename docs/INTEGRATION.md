@@ -144,6 +144,26 @@ requirements and reread evidence as needed for the assessment. Unvisited scenari
 and unresolved findings must be reported honestly. Scenario selection remains
 available during assessment repair; new target actions remain blocked.
 
+Checkpoints also carry recent scenario navigation, selection counts, the current
+no-progress count and bounded model-authored continuity. Public commentary can
+identify assessed requirements, cited evidence, unresolved work and the purpose
+of a revisit. Harness retains the latest note per scenario (up to 2 KiB each,
+16 KiB total in context) and labels it as interpretation, not evidence. Tool-only
+responses do not erase notes. Native thinking blocks are never used as notes.
+Accepted optional records retain their submitted content and scenario association;
+up to eight whole records within 8 KiB appear separately as model assertions.
+Truncation and omitted entries are explicit. These notes and records neither
+establish objective success nor add permissions, and are not prerequisites to finish.
+
+If repeated scenario-only navigation leaves at most two turns before the existing
+no-progress limit, Harness enters assessment review. It presents campaign-wide
+facts and retains that phase through later scenario switches. The same dispatcher
+restriction used for finalization permits finish, retained evidence/reference
+reads and conclusion artifacts, while blocking new target actions. This transition
+does not infer that requirements were met or close execution admission. The model
+must submit an honest assessment, including unresolved work. Limits are unchanged;
+further navigation can still exhaust them and produce an unavailable assessment.
+
 After scenario selection, ordinary execution uses three tools: `attempt_execute`, `observation_read`, and `finish`.
 Operator retains effective input before dispatch and returns authoritative
 execution receipts and permitted observation entries. If retention fails, it
