@@ -55,6 +55,11 @@ def main():
         source = source.replace(old, new)
         # Honor each controlled case's selected profile instead of the helper's
         # fixed 10k-token profile. Production admission still validates both.
+        # The explicit constraints/handle descriptions in contract 0.12 exceed
+        # the old 10k fixture. Use the existing representative 32k test profile;
+        # case-specific settings below still override it. Production is unchanged.
+        source = source.replace('if tc.settings != nil {',
+                                'processExpandedContext(&cfg)\n\tif tc.settings != nil {')
         source = source.replace('MaximumPromptTokens: 10000}',
                                 'MaximumPromptTokens: cfg.Model.Settings().MaximumPromptTokens}')
         # The fixture kills on FIFO EOF before Python finishes flushing stderr.
@@ -65,7 +70,7 @@ def main():
         source = source.replace(marker,
             'if service.StopAccepted() || os.Getenv("HARNESS_TEST_EXIT_MODE") == "runtime-fatal" {')
         source = source.replace('"reference_handles"', '"scenario_index"')
-        # The 250-reference startup fixture exceeds the frozen 10k prompt
+        # The 250-reference startup fixture exceeds the 32k test prompt
         # allowance. Validate honest local admission failure, not an oversized call.
         source = source.replace('if len(r.provider.requests) != 1 {',
             'if prompt == "extension" { if len(r.provider.requests) != 0 || r.service.WorkflowFailure() == nil || r.service.WorkflowFailure().Reason != "context_limit" || r.service.AssessmentCommitted() { t.Fatal("mandatory context was not rejected honestly", r.service.WorkflowFailure()) }; return }; if len(r.provider.requests) != 1 {', 1)
@@ -93,10 +98,14 @@ def main():
         campaign_copy.write_text(source.replace(old_identity,
             'attempts[0]["execution"] == attempts[1]["execution"]'))
         scenario_overlays = {}
-        for name in ("python_restore_test.go", "python_postgresql_test.go", "python_attempt_timeout_test.go", "unsupported_fields_process_test.go"):
+        for name in ("python_restore_test.go", "python_postgresql_test.go", "python_attempt_timeout_test.go", "unsupported_fields_process_test.go", "model_diagnostic_process_test.go"):
             original_test = operator / "internal/preparation" / name
             text = original_test.read_text()
-            if name == "python_restore_test.go":
+            if name == "model_diagnostic_process_test.go":
+                # Keep deliberate over-reservation usage above the selected
+                # 32k process profile, including its independent CLI assertions.
+                text = text.replace("10001", "32769").replace("10000", "32768")
+            elif name == "python_restore_test.go":
                 marker = 'var attempt map[string]any\n\t\t\treply := func(turn int, q map[string]any) ([]byte, error) {'
                 text = text.replace(marker, marker + ' if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil { return response, err };')
                 # Full injection declarations need a representative context profile.

@@ -83,8 +83,8 @@ state remains continuous; only the model's working conversation is renewed.
   Repeated selection MUST NOT count as substantive progress or reset limits.
 - Harness MUST NOT copy arbitrary public commentary, text prefixes or native
   reasoning into checkpoint notes. Verified activity/evidence remains product-owned.
-- Purpose-built model handoffs MUST use the existing shared `record_append` tool
-  with `kind: progress`, a nonempty `summary`, a nonempty `decision`, and its
+- Purpose-built model handoffs MUST use the shared `record_progress` tool
+  with a nonempty `summary`, an optional `decision`, and its
   existing validated reference fields. Summary SHOULD identify requirements
   assessed, findings and unresolved obligations; decision SHOULD identify the next
   step or specific revisit purpose. No new shared schema or semantic keyword
@@ -92,7 +92,7 @@ state remains continuous; only the model's working conversation is renewed.
 - The complete canonical progress arguments MUST fit a per-handoff allowance of
   min(2048, floor(16384 / (scenario count + 1))) bytes. The extra slot is for
   campaign-wide review. Harness MUST disclose this allowance in task guidance.
-  Missing decision or an oversized handoff MUST receive a correctable pre-send
+  An oversized handoff MUST receive a correctable pre-send
   diagnostic. It MUST NOT be truncated, retained at Operator, or replace the last
   accepted handoff. Shared argument/reference validation remains authoritative.
 - Harness MUST keep the latest complete validated handoff for each scenario and

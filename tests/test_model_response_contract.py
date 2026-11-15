@@ -25,7 +25,7 @@ class ModelResponseHost(LoadingHost):
     def _calls(self, turn):
         task = self._task()
         if task['active_scenario'] is None:
-            return [('select', 'reference_read', {'reference': task['scenario_index'][0]['reference_id']})]
+            return [('select', 'scenario_select', {'reference': task['scenario_index'][0]['reference_id']})]
         self.step += 1
         if self.step in (1, 2):
             args = deepcopy(self.invalid if self.step == 1 else self.valid)

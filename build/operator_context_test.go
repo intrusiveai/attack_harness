@@ -81,7 +81,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 					raw := processResponse([]any{modelCall("observe", "observation_read", map[string]any{"observation": entry["observation"], "offset": 0})})
 					var result map[string]any
 					_ = json.Unmarshal(raw, &result)
-					result["usage"] = map[string]any{"prompt_tokens": 8200, "completion_tokens": 20, "total_tokens": 8220}
+					result["usage"] = map[string]any{"prompt_tokens": 26870, "completion_tokens": 20, "total_tokens": 26890}
 					return encode(result), nil
 				case 3:
 					raw := string(encode(q))
@@ -120,7 +120,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 				t.Fatal(err)
 			}
 			report := reportResult(t, run.root, receipt)
-			if len(report.Attempts) != 2 || len(report.ModelContexts) != 5 || len(report.ModelRequests) != 5 || !report.ModelContexts[2].Budget.NearPromptLimit || report.ModelContexts[2].Budget.InputTokens != 8200 {
+			if len(report.Attempts) != 2 || len(report.ModelContexts) != 5 || len(report.ModelRequests) != 5 || !report.ModelContexts[2].Budget.NearPromptLimit || report.ModelContexts[2].Budget.InputTokens != 26870 {
 				t.Fatal("missing correlated context evidence", report.ModelContexts)
 			}
 			if report.Attempts[0].ScenarioID != "scenario-marker" || report.Attempts[1].ReceiptID == report.Attempts[0].ReceiptID {
@@ -131,7 +131,7 @@ func TestPythonProcessContextWarningAndFinish(t *testing.T) {
 			_ = filepath.WalkDir(run.root, func(path string, d os.DirEntry, e error) error {
 				if e == nil && !d.IsDir() && strings.HasSuffix(path, ".md") {
 					b, _ := os.ReadFile(path)
-					if strings.Contains(string(b), "Model context usage") && strings.Contains(string(b), "8200") {
+					if strings.Contains(string(b), "Model context usage") && strings.Contains(string(b), "26870") {
 						found = true
 					}
 				}

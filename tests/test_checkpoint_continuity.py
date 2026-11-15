@@ -32,7 +32,7 @@ class ContinuityHost(PrefixHost):
         self.comment = ''
         def select(identifier):
             entry = next(s for s in task['scenario_index'] if s['scenario_id'] == identifier)
-            return (f'select-{turn}', 'reference_read', {'reference': entry['reference_id']})
+            return (f'select-{turn}', 'scenario_select', {'reference': entry['reference_id']})
         def finish(valid):
             return (f'finish-{turn}', 'finish', dict(finish_reason='no-useful-next-experiment',
                 summary='Two scenarios inspected; independent effects unresolved.',
@@ -49,7 +49,7 @@ class ContinuityHost(PrefixHost):
             return [(f'read-{turn}', 'observation_read', {'observation':f'observation-{1 if turn == 3 else 2}'})]
         if turn == 4:
             self.comment = NOTE
-            return [('record', 'record_append', dict(kind='progress', summary='Baseline output inspected.',
+            return [('record', 'record_progress', dict(summary='Baseline output inspected.',
                 decision='Assess remaining evidence gaps at finish; do not replay.',
                 attempts=['execution-1'], observations=['observation-1'])), select('refund')]
         if turn == 7:
@@ -216,7 +216,7 @@ class HandoffHost(ContinuityHost):
         self.selection_first = selection_first
         self.force_checkpoint = force_checkpoint
         self.host_rejection = host_rejection
-        self.oversized = dict(kind='progress', summary='Routine narration. ' * 150 +
+        self.oversized = dict(summary='Routine narration. ' * 150 +
             ' IMPORTANT: independent commitment is unresolved.', decision='Review refund next.',
             observations=['observation-1'])
 
@@ -225,21 +225,21 @@ class HandoffHost(ContinuityHost):
         self.comment = ''
         def select(identifier):
             reference = next(s['reference_id'] for s in task['scenario_index'] if s['scenario_id']==identifier)
-            return (f'select-{turn}', 'reference_read', dict(reference=reference))
+            return (f'select-{turn}', 'scenario_select', dict(reference=reference))
         def progress(summary, observations, decision='Review remaining evidence gaps; do not replay.'):
-            return (f'progress-{turn}', 'record_append', dict(kind='progress', summary=summary,
+            return (f'progress-{turn}', 'record_progress', dict(summary=summary,
                 decision=decision, observations=observations))
         if turn <= 3:
             return super()._calls(turn)
         if turn == 4:
             return [progress('Old baseline assessment; unresolved state evidence.', ['observation-1'])]
         if turn == 5:
-            record = (f'oversized-{turn}', 'record_append', self.oversized)
+            record = (f'oversized-{turn}', 'record_progress', self.oversized)
             calls = [record, select('refund')]
             return list(reversed(calls)) if self.selection_first else calls
         if turn == 6:
             if self.host_rejection == 'gap':
-                return [('read-guide', 'reference_read', dict(reference='tool-guide:record_append'))]
+                return [('read-guide', 'reference_read', dict(reference='tool-guide:record_progress'))]
             return [progress('Baseline output inspected; independent commitment is unresolved.', ['observation-1']), select('refund')]
         if turn == 7:
             return [('refund-execution', 'attempt_execute', dict(origin='scenario', scenario_id='refund',
@@ -351,16 +351,14 @@ class PurposeBuiltHandoffTest(unittest.TestCase):
         from attack_harness.tools import ToolError
         campaign, _ = self.campaign('model-codec.json')
         delivery = campaign.handlers.scenario_delivery
-        value = dict(kind='progress', summary='é', decision='Revisit an unresolved finding.')
+        value = dict(summary='é', decision='Revisit an unresolved finding.')
         value['summary'] += 'x' * (delivery.handoff_limit - len(_canonical_value(value, 1 << 20)))
         delivery.validate_handoff(value)
         value['summary'] += 'é'
         with self.assertRaises(ToolError) as caught:
             delivery.validate_handoff(value)
         self.assertIn(str(delivery.handoff_limit + 2), str(caught.exception))
-        with self.assertRaises(ToolError) as caught:
-            delivery.validate_handoff(dict(kind='progress', summary='Unresolved evidence.'))
-        self.assertEqual(caught.exception.field_path, '/decision')
+        delivery.validate_handoff(dict(summary='Unresolved evidence.'))
 
     def test_host_rejection_preserves_precise_correction_before_reselection(self):
         campaign, host = self.campaign('model-codec.json', host_rejection=True, selection_first=True)
@@ -379,16 +377,16 @@ class PurposeBuiltHandoffTest(unittest.TestCase):
         campaign, host = self.campaign('model-codec.json')
         tools = campaign.handlers.model_tools
         delivery = campaign.handlers.scenario_delivery
-        raw = b'{"kind":"progress","summary":"First","summary":"Second","decision":"Review"}'
-        result = tools.dispatch(ToolCall('duplicate', 'record_append', raw))
+        raw = b'{"summary":"First","summary":"Second","decision":"Review"}'
+        result = tools.dispatch(ToolCall('duplicate', 'record_progress', raw))
         self.assertEqual(result.outcome, 'invalid')
         self.assertEqual(delivery.handoff_rejection['rejected_arguments'], raw.decode())
         self.assertEqual(delivery.handoffs, {})
         request, _ = campaign.adaptive.conversation.body()
         retained = host.task_from_request(request)['checkpoint_handoff_rejection']
         self.assertEqual(retained['rejected_arguments'], raw.decode())
-        bad = dict(kind='progress', summary='Unsupported statement.', decision='Review.', observations=['invented'])
-        result = tools.dispatch(ToolCall('bad-reference', 'record_append', _canonical_value(bad, 4096)))
+        bad = dict(summary='Unsupported statement.', decision='Review.', observations=['invented'])
+        result = tools.dispatch(ToolCall('bad-reference', 'record_progress', _canonical_value(bad, 4096)))
         self.assertEqual(result.outcome, 'invalid')
         self.assertIn('/observations/0', json.dumps(result.value))
         self.assertEqual(delivery.handoffs, {})

@@ -1,5 +1,7 @@
 # Model tool restructuring
 
+The model surface is superseded by [tool interface alignment](tool-interface-alignment.md): distinct record kinds, completion forms and scenario selection. Native integrity requirements remain applicable.
+
 ## Outcome and scope
 
 Attack Harness MUST let the model execute a permitted input, inspect the returned
@@ -158,11 +160,11 @@ advanced item shapes are specified after the table.
 | --- | --- | --- |
 | `attempt_execute` | Nested encoding envelope; artifact receipt; parent receipt; setup action IDs/type envelopes. | Required `origin`, `operation_id`, and one of `json`, `text`, `base64`, `artifact`. `scenario_id` required only for scenario origin. Optional `media_type`, `parent`, `caller_principal_id`, `rationale`, `observations`, `setup`, `injection`, `retain_injections`, `strategy_provenance_ref`, `technique_refs`. Return an execution handle, authoritative dispatch/effect status, observation handles, and any injection handles. |
 | `observation_read` | Receipt ID plus entry ID, mandatory offset. | Required `observation`; optional `offset`, `max_bytes`. Resolve the pair internally. Return inspected observation/range handle, content, availability, truncation, and continuation metadata. |
-| `finish` | Nested `assessment`, claim/gap IDs, repeated receipt lists, cross-reference bookkeeping. | Required `finish_reason`, plus exactly one of inline assessment fields, `artifact`, or `unavailable_reason`. Inline fields and expansion are defined below. Return the existing authoritative acceptance/finalization state. |
+| `finish` | Nested `assessment`, claim/gap IDs, repeated receipt lists, cross-reference bookkeeping. | Required `finish_reason`, `summary`, and `objectives`. Use separate `finish_artifact` or `finish_unavailable` for other forms. Inline fields and expansion are defined below. Return the existing authoritative acceptance/finalization state. |
 | `artifact_publish` | `content.encoding` plus encoding-specific nested value. | Required `purpose`, `media_type`, and exactly one of `json`, `text`, `base64`. Return a committed artifact handle, purpose, media type, and size. Hashes, chunking, descriptors, and commit receipts stay product-owned. |
-| `reference_read` | Reference ID and mandatory offset. | Required `reference`; optional `offset`, `max_bytes`. Accept the trusted task/reference handle, including existing scenario/resource/tool-guide references. Return content, source/range identity, and continuation metadata. |
+| `reference_read` | Reference ID and mandatory offset. | Required `reference`; optional `offset`, `max_bytes`. Accept the trusted task/reference handle, including resource/tool-guide references; `scenario_select(reference)` handles scenario activation. Return content, source/range identity, and continuation metadata. |
 | `injection_delete` | Execution receipt plus action ID. | Required `injection`. Resolve the original action and execution binding. Return authoritative removal/effect state. Removal MUST NOT imply reversal of an already committed target mutation. |
-| `record_append` | Record-kind wrapper, nested record, repeated receipts and generated IDs. | Required `kind` plus the flattened fields for that kind below. Return an accepted record handle and, when relevant, a hypothesis handle. Keep one optional historical-record tool. |
+| `record_hypothesis`, `record_progress`, `record_lineage`, `record_coverage` | Record-kind wrapper, nested record, repeated receipts and generated IDs. | Separate kind-specific arguments; no model kind selector. Return an accepted record handle and, when relevant, a hypothesis handle. |
 | `snapshot_request` | Already simple: optional label/description. | Keep `label?`, `description?`; `{}` remains valid. Return a checkpoint handle only when an actual checkpoint identity exists, plus authoritative status. A pending identity MUST NOT imply readiness. |
 | `snapshot_list` | Optional raw source session and numeric pagination. | Keep optional `offset`, `limit`; replace raw `source_session` with `session?`. Return checkpoint handles and `next_offset`/end-of-list information. Omission retains current authorized session scope, not a wider search. |
 | `snapshot_inspect` | Source session plus checkpoint ID. | Required `snapshot`. Resolve both identities and return authoritative state and permitted metadata. |
@@ -174,7 +176,7 @@ not to an unbounded read. A response MUST identify the next offset when content
 remains. Requiring multiple reads for large content is acceptable; requiring an
 extra lookup merely to reconstruct a known identifier pair is not.
 
-`reference_read` MUST preserve complete active-scenario delivery, resource detail
+`scenario_select` MUST preserve complete active-scenario delivery; `reference_read` preserves resource detail
 reads, and the existing context-switch gate. Shortening tool arguments MUST NOT
 reduce a scenario to its hypothesis or weaken the task-data trust boundary.
 
@@ -226,7 +228,7 @@ merely because a scenario does not mention it. Arbitrary JSON values SHOULD use
 the existing compact provider projection strategy rather than recursive schema
 expansion; shared validators MUST still enforce exact runtime depth/size rules.
 
-### One finish operation
+### One native finish operation with distinct model forms
 
 Inline finish arguments MUST place `summary`, `objectives`, and optional assessment
 collections at the root alongside `finish_reason`. There is no `assessment`
@@ -246,7 +248,7 @@ The revised item shapes are:
 | `objectives` | `objective_id`, `outcome`, `summary` | `observations`, `attempts`, `records` |
 | `claims` | `statement`, `interpretation`, `assurance`, `confidence` | `observations`, `attempts`, `uncertainties` |
 | `hypotheses` | `origin`, `outcome`, `summary`; `scenario_id` for scenario origin | `label`, `parent`, `objective_refs`, `observations`, `attempts`, `records` |
-| `coverage` | `objective_id`, `status`, `reason` | `hypothesis`, `alternative`, `observations`, `attempts` |
+| `record_coverage` | `objective_id`, `status`, `reason` | `hypothesis`, `alternative`, `observations`, `attempts` |
 | `uncertainties` | `kind`, `description` | `label`, `observations`, `inputs`, `records` |
 
 `observations`, `attempts`, `records`, and `inputs` are arrays of handles of the
@@ -286,11 +288,11 @@ handles. All shared evidence sufficiency and reference rules continue to apply.
 
 The two non-inline alternatives are:
 
-- `finish_reason` plus `artifact`: a committed conclusion artifact handle. Its
+- `finish_artifact` with `finish_reason` plus `artifact`: a committed conclusion artifact handle. Its
   content MUST meet the authoritative assessment format and binding rules; the
   tool MUST NOT require prior conclusion registration. The ordinary path MUST
   never require this alternative merely to avoid argument construction.
-- `finish_reason` plus `unavailable_reason`: no assessment can honestly be
+- `finish_unavailable` with `finish_reason` plus `unavailable_reason`: no assessment can honestly be
   constructed. Allowed reasons remain `context-limit`, `budget-limit`,
   `local-error`, `serialization-failed`, `invalid-call-limit`, `deadline`,
   `provider-failure`, and `target-failure`.
@@ -304,15 +306,15 @@ interrupted or uncertain finalization MUST not cause campaign replay.
 
 ### Optional historical records
 
-`record_append` MUST flatten `record_kind`/`record` into `kind` and the fields
-below. It MUST remain optional and MUST NOT become a staging API for finish.
+The four distinct record tools MUST map to native `engine.record_append`.
+They MUST NOT accept kind or unrelated fields, and MUST NOT be prerequisites for finish.
 
-| `kind` | Required fields | Optional fields |
+| Record tool | Required fields | Optional fields |
 | --- | --- | --- |
-| `hypothesis` | `origin`, `statement`; `scenario_id` for scenario origin | `parent`, `objective_refs`, `assumptions`, `predicted_observations`, `surface_ref`, `records` |
-| `progress` | `summary` | `decision`, `objective_refs`, `hypotheses`, `attempts`, `observations`, `records`, `interpretation`, `confidence`, `assurance`, `assessment_summary`, `gaps` |
-| `lineage` | `hypothesis`, `attempt`, `mutation_summary` | `parent`, `records` |
-| `coverage` | `entries` | `records` |
+| `record_hypothesis` | `origin`, `statement`; `scenario_id` for scenario origin | `parent`, `objective_refs`, `assumptions`, `predicted_observations`, `surface_ref`, `records` |
+| `record_progress` | `summary` | `decision`, `objective_refs`, `hypotheses`, `attempts`, `observations`, `records`, `assessment` |
+| `record_lineage` | `hypothesis`, `attempt`, `mutation_summary` | `parent`, `records` |
+| `record_coverage` | `entries` | `records` |
 
 Hypothesis records receive generated hypothesis IDs and return hypothesis handles.
 Their `parent` is a known hypothesis handle; lineage `parent` is an execution
@@ -322,12 +324,9 @@ reference/list fields resolve to empty arrays. Surface and objective IDs retain
 their existing meaning; `assumptions` and `predicted_observations` retain their
 current bounded semantic types.
 
-Progress assessment fields `interpretation`, `confidence`, `assurance`, and
-`assessment_summary` MUST either all be absent or all be supplied. When supplied,
-`gaps` is optional and defaults to the existing empty collection; `gaps` without
-the assessment fields is invalid. Product code constructs the existing nested
-assessment. This preserves optional analysis without obligating it in every
-progress record. Observation-selected receipts are derived as for finish.
+The optional progress `assessment` object MUST require interpretation, confidence,
+assurance and summary together. Optional gaps belongs inside it. Supported progress
+MUST cite inspected observations. Summary-only progress MUST remain valid.
 
 ## Ordinary example and reduction in burden
 

@@ -43,7 +43,7 @@ class LoadingHost(ScenarioHost):
         if desired and desired not in loaded:
             reference = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
             self.selection_requests += 1
-            calls = [(f'select-{turn}', 'reference_read', {'reference': reference, 'max_bytes': 1})]
+            calls = [(f'select-{turn}', 'scenario_select', {'reference': reference})]
             if self.same_batch and self.step == 0:
                 calls.append(('premature', 'attempt_execute', dict(origin='scenario', scenario_id=desired,
                     operation_id='invoke', json={'query':'must not execute'})))
@@ -62,7 +62,7 @@ class LoadingHost(ScenarioHost):
             # execution still waits until both results and full instructions are delivered.
             if desired not in loaded:
                 ref = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
-                calls.append((f'select-{turn}', 'reference_read', {'reference': ref}))
+                calls.append((f'select-{turn}', 'scenario_select', {'reference': ref}))
                 self.selection_requests += 1
             return calls
         if self.step == 7:
@@ -77,7 +77,7 @@ class LoadingHost(ScenarioHost):
             calls = []
             if 'scenario_index' in task:
                 ref = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == 'refund')
-                calls.append(('revisit', 'reference_read', {'reference': ref}))
+                calls.append(('revisit', 'scenario_select', {'reference': ref}))
                 self.selection_requests += 1
             return calls + [('blocked', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'text': 'new action'})]
         if self.step == 10:
