@@ -51,7 +51,7 @@ both the findings and the limits of the evidence.
 ## Installation and usage
 
 Install and run Attack Harness through **Operator Sandbox**. Start with
-[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/README.md#getting-started)
+[Operator's setup and usage guide](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/README.md#getting-started)
 for host installation, model credentials, target configuration, and campaign
 commands.
 
@@ -69,10 +69,10 @@ image selection steps, tool examples, and compatibility checks.
 
 - [Runtime behavior and architecture](CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md)
 - [Container image and artifact layout](GUEST_ARTIFACT_LAYOUT_SPEC.md)
-- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SHARED_CONTRACT.md)
-- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/docs/SKILLS.md)
-- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/HOST_RUNTIME_PROFILES.md)
+- [Shared Operator–Attack Harness contract](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/SHARED_CONTRACT.md)
+- [Objectives and scenarios format](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Custom skills](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/docs/SKILLS.md)
+- [Host runtime requirements](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/HOST_RUNTIME_PROFILES.md)
 
 ## Development
 

@@ -1,8 +1,8 @@
 # Model declarations and accepted arguments
 
 The Operator-owned catalog MUST define both runtime argument schemas and model
-projections. This breaking 0.12.0 interface supersedes the former flattened
-historical-record and multi-format finish declarations. An old model-tool alias
+projections. The interface identified in `build/contract-lock.json` supersedes the
+former flattened historical-record and multi-format finish declarations. An old model-tool alias
 MUST NOT be advertised or accepted. Native engine operations remain unchanged.
 
 ## Tools
@@ -33,9 +33,12 @@ inspected citations, execution/hypothesis/snapshot/session handles and UTF-8
 byte limits MUST have concise adjacent descriptions. Resource-state validation
 MUST remain authoritative; declarations do not grant permission or prove evidence.
 Provider projections MUST be tested independently, with any unsupported schema
-condition documented beside its arguments. OpenAI MUST omit unsupported root
-combinators only; the common projection MUST retain them. The catalog MUST stay frozen during
-an admitted conversation. No existing signed history may be rewritten.
+condition documented beside its arguments. OpenAI and Anthropic MUST consume
+Operator's shared object-root projection without
+root `oneOf`, `allOf` or `anyOf`. Nested rules and adjacent guidance for omitted
+root conditions MUST remain. Bedrock Converse and Gemini MUST retain the common
+projection with root rules. Harness MUST NOT maintain a separate schema
+workaround. The catalog MUST stay frozen during an admitted conversation. No existing signed history may be rewritten.
 
 ## Harness and verification
 
@@ -49,3 +52,10 @@ Tests MUST exercise all five codecs, archived invalid combinations and corrected
 first-attempt calls. Controlled multi-scenario processes MUST cover progress,
 selection, execution, evidence inspection, snapshot/restore and accepted finish.
 These checks MUST NOT be described as live-provider qualification.
+
+Contract adoption MUST update the version and exact document hash in
+`build/contract-lock.json`, use the matching shared Python implementation in the
+existing package build, and update CI source selection. Package-loader tests MUST
+check the entire Anthropic catalog and rejection by the authoritative runtime
+validator of combinations omitted from the provider projection. Existing
+controlled conversation tests MUST preserve correction without target replay.

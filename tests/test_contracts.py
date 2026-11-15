@@ -33,6 +33,35 @@ class ContractLoaderTest(unittest.TestCase):
         self.assertEqual(loaded.registry_digests(),before)
         with self.assertRaises(ContractError):load_contract(self.root,self.pin)
 
+    def test_installed_anthropic_catalog_and_authoritative_constraints(self):
+        loaded = load_contract(self.root, self.pin)
+        operations = sorted(op['name'] for op in loaded.operations())
+        tools = json.loads(loaded.model_tools('anthropic-messages-text-tools-v1', operations))
+        self.assertEqual(len(tools), 17)
+        arguments = {tool['name']: tool['input_schema'] for tool in tools}
+        for name, schema in arguments.items():
+            with self.subTest(tool=name):
+                self.assertEqual(schema['type'], 'object')
+                self.assertFalse(set(schema) & {'oneOf', 'allOf', 'anyOf'})
+        self.assertIn('allOf', arguments['finish']['properties']['claims']['items'])
+        self.assertIn('oneOf', arguments['attempt_execute']['properties']['injection'])
+        self.assertNotIn('record_append', arguments)
+        for name in ('finish', 'finish_artifact', 'finish_unavailable',
+                     'record_hypothesis', 'record_progress', 'record_lineage', 'record_coverage'):
+            self.assertIn(name, arguments)
+        # Provider declarations do not authorize these invalid cross-field choices.
+        for tool, value in (
+            ('artifact_publish', {'purpose':'payload','media_type':'application/json','json':{},'text':'extra'}),
+            ('attempt_execute', {'origin':'scenario','operation_id':'invoke','json':{}}),
+            ('record_hypothesis', {'origin':'scenario','statement':'Maybe.'}),
+            ('record_progress', {'summary':'Observed.','assessment':{'interpretation':'supported',
+                'confidence':'high','assurance':'Observed','summary':'Observed.'}}),
+            ('finish', {'finish_reason':'budget-limit','summary':'Untested.','objectives':[],
+                'status':'completed','uncertainties':[{'kind':'coverage-limit','description':'Untested.'}]})):
+            with self.subTest(tool=tool):
+                with self.assertRaises(ContractError):
+                    loaded.validate_tool_arguments(tool, json.dumps(value).encode())
+
     def test_pin_failure_precedes_payload_read(self):
         (self.root/"catalog.json").unlink()
         with self.assertRaises(ContractError):load_contract(self.root,{**self.pin,"package_digest":"sha256:"+"0"*64})

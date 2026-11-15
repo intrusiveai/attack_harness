@@ -18,6 +18,13 @@ The native adapters interpret only completion and tool-call fields they need.
 Additional provider metadata does not require a contract change. Native assistant
 content, reasoning blocks and signatures are preserved in continuations. Actual
 Operator tools still undergo schema, handle, policy and execution-state validation.
+The shared catalog supplies object-root declarations for OpenAI and Anthropic,
+without unsupported root combinators. Nested constraints remain, and concise
+argument descriptions explain cross-field conditions enforced by runtime
+validation. Separate finish and historical-record tools remain distinct. Harness
+uses this same projection for context estimates; it does not strip schema rules
+or translate tool declarations itself.
+
 Unknown completion states fail explicitly; no automatic replay or argument repair
 is performed. Assessment repair and inspected-evidence rules remain in effect.
 
