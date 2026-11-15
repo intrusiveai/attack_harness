@@ -1,4 +1,4 @@
-"""First-attempt controlled calls using the shared 0.12 model interface."""
+"""First-attempt controlled calls using the approved shared model interface."""
 from copy import deepcopy
 import json
 import os
@@ -82,3 +82,23 @@ class CompletionFormTest(unittest.TestCase):
                 self.assertEqual(result['finalization_status'],'pending')
                 self.assertEqual(len(fixture.host.events),1)
                 self.assertEqual(fixture.host.events[0][0],'engine.finish')
+
+
+class ObjectRootCorrectionTest(unittest.TestCase):
+    def test_runtime_rejects_omitted_root_conditions_without_replaying_attempt(self):
+        fixture=test_model_tools.ModelToolsTest();fixture.setUpClass();fixture.setUp()
+        rejected=fixture.call('attempt_execute',dict(origin='scenario',operation_id='invoke',json={}))
+        self.assertEqual(rejected['diagnostic']['execution_occurred'],'no')
+        self.assertTrue(rejected['diagnostic']['resubmission_safe'])
+        self.assertEqual(fixture.host.attempt_ids,[])
+        executed=fixture.execute()
+        observed=fixture.call('observation_read',{'observation':executed['observations'][0]['observation']})
+        assessment=fixture.finish(observed['citation'])
+        invalid=dict(assessment,status='completed',uncertainties=[{'kind':'coverage-limit','description':'Untested.'}])
+        rejected=fixture.call('finish',invalid)
+        self.assertIn('diagnostic',rejected)
+        self.assertFalse(any(op=='engine.finish' for op,_,_ in fixture.host.events))
+        accepted=fixture.call('finish',assessment)
+        self.assertEqual(accepted['assessment_state'],'committed')
+        self.assertEqual(len(fixture.host.attempt_ids),1)
+        self.assertEqual(sum(op=='engine.finish' for op,_,_ in fixture.host.events),1)

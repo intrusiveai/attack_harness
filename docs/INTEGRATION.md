@@ -37,12 +37,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/30ea9ac082851b5e0520a4e4827ba6f5290e8316/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -51,7 +51,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -339,7 +339,7 @@ in verified runtime context.
 restore use `snapshot`; deletion uses `injection`; reads use `reference` or
 `observation`. Snapshot creation keeps optional `label` and `description`.
 See the exact shared
-[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/MODEL_TOOL_NORMALIZATION.md)
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/schemas/MODEL_TOOL_NORMALIZATION.md)
 for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
@@ -419,7 +419,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -443,7 +443,7 @@ supported. Missing pointers and incompatible placements remain unapplied outcome
 An `applied` result establishes mutation, and `response_written` establishes bytes
 written; neither proves SDK acceptance or target tool execution. Inspect permitted
 observations for those outcomes. Black-box feedback does not reveal private
-delivery details. See [Operator's model-response injection guide](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/docs/MODEL_RESPONSE_INJECTION.md).
+delivery details. See [Operator's model-response injection guide](https://github.com/intrusiveai/operator_sandbox/blob/30ea9ac082851b5e0520a4e4827ba6f5290e8316/docs/MODEL_RESPONSE_INJECTION.md).
 
 ## Build and verify an integration
 
@@ -656,7 +656,7 @@ using Operator's validated accounting. Provider metadata is not a shared-schema
 compatibility gate. The direct-input, evidence-read, and single-finish workflow,
 assessment repair, and budget/no-progress diagnostics remain unchanged.
 
-The model tool interface is version 0.12.0. `finish` requires inline finish_reason,
+The model tool interface is identified in [the contract lock](../build/contract-lock.json). `finish` requires inline finish_reason,
 summary and objectives. `finish_artifact` takes a committed conclusion artifact;
 `finish_unavailable` gives the specific reason no assessment can be supplied.
 Each accepted form ends the whole campaign; cleanup and objective success remain
