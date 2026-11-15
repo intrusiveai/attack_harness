@@ -66,7 +66,7 @@ func scenarioSelectionCall(q map[string]any, id string) (any, error) {
 	for _, value := range task["scenario_index"].([]any) {
 		r := value.(map[string]any)
 		if r["scenario_id"] == id {
-			return modelCall("select-"+id, "reference_read", map[string]any{"reference": r["reference_id"]}), nil
+			return modelCall("select-"+id, "scenario_select", map[string]any{"reference": r["reference_id"]}), nil
 		}
 	}
 	return nil, fmt.Errorf("scenario %s missing from index", id)
@@ -135,7 +135,7 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 					}
 					if continuity && turn == 4 {
 						return processResponse([]any{
-							modelCall("oversized-progress", "record_append", map[string]any{"kind": "progress", "summary": strings.Repeat("Repeated narration. ", 150) + "Independent effects unresolved.", "decision": "Review remaining evidence.", "observations": []any{"observation-1"}}),
+							modelCall("oversized-progress", "record_progress", map[string]any{"summary": strings.Repeat("Repeated narration. ", 150) + "Independent effects unresolved.", "decision": "Review remaining evidence.", "observations": []any{"observation-1"}}),
 							selectCall("second-scenario"),
 						}), nil
 					}
@@ -148,7 +148,7 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 							return nil, fmt.Errorf("handoff rejection lost correction context: %v", result)
 						}
 						return processResponse([]any{
-							modelCall("corrected-progress", "record_append", map[string]any{"kind": "progress", "summary": "First output inspected; independent effects unresolved.", "decision": "Do not replay; assess remaining evidence gaps at finish.", "observations": []any{"observation-1"}}),
+							modelCall("corrected-progress", "record_progress", map[string]any{"summary": "First output inspected; independent effects unresolved.", "decision": "Do not replay; assess remaining evidence gaps at finish.", "observations": []any{"observation-1"}}),
 							selectCall("second-scenario"),
 						}), nil
 					}
@@ -205,7 +205,7 @@ func TestHarnessScenarioLoadingProcess(t *testing.T) {
 						snapshot = result["snapshot"].(string)
 						calls := []any{modelCall("read-first", "observation_read", map[string]any{"observation": "observation-1"})}
 						if continuity {
-							calls = append(calls, modelCall("progress", "record_append", map[string]any{"kind": "progress", "summary": "First output inspected.", "decision": "Do not replay; assess remaining evidence gaps at finish.", "attempts": []any{"execution-1"}, "observations": []any{"observation-1"}}))
+							calls = append(calls, modelCall("progress", "record_progress", map[string]any{"summary": "First output inspected.", "assessment": map[string]any{"interpretation": "supported", "confidence": "high", "assurance": "Observed response", "summary": "Inspected first output."}, "decision": "Do not replay; assess remaining evidence gaps at finish.", "attempts": []any{"execution-1"}, "observations": []any{"observation-1"}}))
 						}
 						if !continuity {
 							calls = append(calls, selectCall("second-scenario"))

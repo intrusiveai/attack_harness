@@ -131,7 +131,7 @@ class ScriptedHost:
         def publish(query):
             return {"purpose": "payload", "media_type": "application/json", "json": {"query": query}}
         if turn == 1:
-            return [("hypothesis", "record_append", {"kind": "hypothesis", "origin": "scenario",
+            return [("hypothesis", "record_hypothesis", {"origin": "scenario",
                 "scenario_id": "scenario-marker", "objective_refs": ["objective-marker"],
                 "statement": "A changed benign instruction may influence the target output.",
                 "assumptions": ["Only external response evidence is available."],
@@ -145,7 +145,7 @@ class ScriptedHost:
                 ("attempt-2", "attempt_execute", attempt("artifact-2", "execution-1"))]
         if turn == 4:
             return [("observe-2", "observation_read", {"observation": "observation-2"}),
-                ("coverage", "record_append", {"kind": "coverage", "entries": [{
+                ("coverage", "record_coverage", {"entries": [{
                     "objective_id": "objective-marker", "hypothesis": "hypothesis-1", "status": "tested",
                     "reason": "Two completed variants were compared.", "attempts": ["execution-1", "execution-2"]}],
                     "records": ["record-1"]})]

@@ -75,3 +75,10 @@ from estimates and leave actual provider usage unset. Checkpoint metadata can
 increase the first request while reducing accumulated history later; large omitted
 pages may cost an additional read. The checked-in [comparison](../specs/measurements/append-only-conversations.json)
 includes those costs and the reproduction inputs.
+
+The authoritative contract supplies separate record tools, inline `finish`,
+`finish_artifact`, `finish_unavailable`, and `scenario_select`. Scenario selection
+replaces instructions only at a fresh checkpoint; byte reads remain reference_read.
+Progress records may omit their assessment. Conditional evidence requirements and
+handle meanings are included in the native declarations. Runtime validates every
+call; a declaration is neither authorization nor proof of inspected evidence.

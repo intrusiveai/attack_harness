@@ -214,7 +214,7 @@ class AssessmentRepairTest(unittest.TestCase):
                         ('snapshot_inspect', {'snapshot': 'unknown'}),
                         ('restore_request', {'snapshot': 'unknown'}),
                         ('injection_delete', {'injection': 'unknown'}),
-                        ('record_append', {'kind': 'hypothesis'}),
+                        ('record_hypothesis', {}),
                         ('artifact_publish', {'purpose': 'payload', 'media_type': 'text/plain', 'text': 'new input'})]:
             with self.subTest(tool=blocked[0]):
                 host, _, _, result, _ = self.campaign(blocked=blocked, artifact=True)
@@ -223,7 +223,7 @@ class AssessmentRepairTest(unittest.TestCase):
                 uploads = [b for op, b, _ in host.events if op == 'engine.artifact_begin']
                 self.assertEqual([u['purpose'] for u in uploads], ['conclusion'])
                 self.assertFalse(any(op in ('engine.' + name for name in
-                    ('snapshot_request', 'snapshot_list', 'snapshot_inspect', 'restore_request', 'injection_delete', 'record_append'))
+                    ('snapshot_request', 'snapshot_list', 'snapshot_inspect', 'restore_request', 'injection_delete', 'record_hypothesis'))
                     for op, _, _ in host.events))
 
     def test_termination_separates_stopping_cause_and_unresolved_repair(self):

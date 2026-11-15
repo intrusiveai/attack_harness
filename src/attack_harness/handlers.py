@@ -4,6 +4,7 @@ import base64
 
 from operator_contracts import ContractError
 from operator_contracts.startup import require
+from operator_contracts.tool_normalization import RECORD_KINDS, FINISH_TOOLS
 
 from .artifacts import ArtifactPublisher, ArtifactRejected
 from .observations import ObservationReader, ObservationRejected
@@ -64,6 +65,7 @@ class FixedHandlers:
             "observation_read": self.observation_read,
             "record_append": self.record_append,
             "reference_read": self.reference_read,
+            "scenario_select": self.scenario_select,
             "finish": self.finish,
             "restore_request": self.restore_request,
             "snapshot_inspect": self.snapshot_inspect,
@@ -73,7 +75,7 @@ class FixedHandlers:
         available = self.client.operations
         return {
             name: handler for name, handler in candidates.items()
-            if ((name == "reference_read" or _DEPENDENCIES[name] <= available)
+            if ((name in ("reference_read", "scenario_select") or _DEPENDENCIES[name] <= available)
                 and (name != "finish" or self.finalizer is not None))
         }
 
@@ -82,30 +84,33 @@ class FixedHandlers:
         if not hasattr(self, "model_tools"):
             self.model_tools = ModelTools(self)
         names = set(self.canonical_handlers())
+        if 'record_append' in names:
+            names.remove('record_append'); names.update(RECORD_KINDS)
+        if 'finish' in names: names.update(FINISH_TOOLS)
         if self.attempts is not None and _DEPENDENCIES["attempt_execute"] <= self.client.operations:
             names.add("attempt_execute")
         return {name: self.model_tools.dispatch for name in names}
 
-    def reference_read(self, arguments):
-        task = None
+    def scenario_select(self, arguments):
+        if self.scenario_delivery is None or arguments['reference_id'] not in self.scenario_delivery.references:
+            raise ToolError('invalid_reference', 'Expected a scenario reference from the campaign index.', path='/reference', correction='Use scenario_select with the exact scenario reference; use reference_read for ordinary resources.')
         try:
-            if self.scenario_delivery is not None and arguments["reference_id"] in self.scenario_delivery.references:
-                source, content, task = self.scenario_delivery.reference(arguments["reference_id"])
-            else:
-                source, content = self.inputs.entry(arguments["reference_id"])
+            source, content, task = self.scenario_delivery.reference(arguments['reference_id'])
         except ContractError as error:
-            if error.reason in ("scenario_context_limit", "task_context_limit"):
-                raise ToolError.from_contract(error) from None
-            raise ToolError("invalid_reference", "Unknown reference.", path="/reference", correction="Use a reference from the input reference index or tool-guide:<advertised tool name>; do not invent a reference.") from None
-        offset = arguments["offset"]
-        if task is not None:
-            if offset != 0:
-                raise ToolError("range_exceeded", "Scenario selection is not a paginated read.",
-                    path="/offset", correction="Use offset 0 to load the complete scenario in the next task message.")
-            self.scenario_delivery.activate(content, task)
-            return HandlerResult({"status": "scenario-selected", "reference": source["entry_id"],
-                "scenario_id": source["scenario_id"],
-                "message": "The selected scenario is now active. Its complete instructions are in the current task. Act on them; no acknowledgment or pagination is needed."})
+            raise ToolError.from_contract(error) from None
+        self.scenario_delivery.activate(content, task)
+        return HandlerResult({'status':'scenario-selected','reference':source['entry_id'],
+            'scenario_id':source['scenario_id'],
+            'message':'The selected scenario is now active. Its complete instructions are in the current task. Act on them; no acknowledgment or pagination is needed.'})
+
+    def reference_read(self, arguments):
+        if self.scenario_delivery and arguments['reference_id'] in self.scenario_delivery.references:
+            raise ToolError('scenario_selection_required', 'Scenario references select instructions, not byte ranges.', path='/reference', correction='Use scenario_select with this scenario reference and no pagination arguments.')
+        try:
+            source, content = self.inputs.entry(arguments['reference_id'])
+        except ContractError as error:
+            raise ToolError('invalid_reference', 'Unknown reference.', path='/reference', correction='Use an existing reference or tool-guide:<advertised tool name>.') from None
+        offset = arguments['offset']
         if offset > len(content):
             raise ToolError("range_exceeded", "Reference offset exceeds content size.", path="/offset", correction=f"Use an offset from 0 through {len(content)} for this reference, or start at 0. An offset equal to size returns EOF.")
         selected = content[offset:offset + arguments.get("max_bytes",4096)]

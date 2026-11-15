@@ -37,12 +37,12 @@ admission still checks the exact embedded package identity.
 
 Operator's immutable source defines the integration interface:
 
-- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/schemas/SHARED_CONTRACT.md)
-- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/schemas/FEEDBACK_CONTRACT.md)
-- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/schemas/SCENARIO_BUNDLE_CONTRACT.md)
-- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/schemas/ENGINE_RELEASE_CONTRACT.md)
-- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/schemas)
-- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/contracts/python)
+- [Shared protocol and startup](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/SHARED_CONTRACT.md)
+- [Attempt execution and permitted feedback](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/FEEDBACK_CONTRACT.md)
+- [Objectives and scenarios](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/SCENARIO_BUNDLE_CONTRACT.md)
+- [Embedded image compatibility](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/ENGINE_RELEASE_CONTRACT.md)
+- [Schemas, semantic rules, and fixtures](https://github.com/intrusiveai/operator_sandbox/tree/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas)
+- [Shared Python validators and provider projections](https://github.com/intrusiveai/operator_sandbox/tree/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/contracts/python)
 
 These sources and the checked-in locks govern field names, validation, defaults,
 and limits. Do not substitute a floating branch, recreate a local schema, or
@@ -51,7 +51,7 @@ silently fall back to an older protocol.
 ## Install and select the image
 
 1. Install Operator and configure its model provider and target according to
-   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/README.md).
+   [Operator's guide](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/README.md).
 2. Pull `ghcr.io/intrusiveai/attack_harness:v0.1.4` into the Docker daemon used by
    Operator. For an immutable deployment, use the image index digest recorded in
    the GitHub release or release catalog.
@@ -96,11 +96,10 @@ amend requirements, permissions, or assessment-repair state. Controlled tests ve
 and repair dispatch restrictions across native conversation formats; they do not
 prove that a live model will always resist task drift.
 
-For every bundle size, `reference_read` with a `scenario_index` reference handle and
-offset zero activates the complete scenario. The request delivering its confirmation
+For every bundle size, `scenario_select` with a `scenario_index` reference handle activates the complete scenario. The request delivering its confirmation
 already contains those instructions in `active_scenario`; no acknowledgment is required. The tool
 returns a short selection confirmation, not a second copy or a paginated chunk;
-`max_bytes` does not truncate scenario instructions. Switching starts a fresh
+Scenario selection has no pagination arguments. Switching starts a fresh
 model conversation containing the new active section, after the current tool batch
 is resolved. Earlier native messages and thinking blocks are not carried into it. The original verified bundle is unchanged and remains readable through
 its original handle, but is not another required read. Other references retain
@@ -146,7 +145,7 @@ available during assessment repair; new target actions remain blocked.
 
 Checkpoints also carry recent scenario navigation, selection counts, the current
 no-progress count and deliberately submitted assessment handoffs. Use
-`record_append` with `kind: progress`: `summary` identifies assessed requirements,
+`record_progress`: `summary` identifies assessed requirements,
 findings and unresolved obligations; `decision` states the next step or revisit
 purpose. Supply evidence in the existing validated `attempts`, `observations` and
 `records` fields. These remain model interpretations, separate from verified
@@ -283,8 +282,9 @@ Normalization is supplied by the exact shared contract. Before submission,
 Harness retains observation selections for objectives, hypotheses and coverage
 through bounded diagnostic batches; retention failure prevents submission.
 
-Alternatively, supply `finish_reason` with a committed conclusion `artifact`
-handle or an explicit `unavailable_reason`, excluding inline assessment fields. The
+Alternatively, call `finish_artifact` with `finish_reason` and a committed conclusion
+`artifact`, or `finish_unavailable` with `finish_reason` and `unavailable_reason`.
+These distinct tools exclude inline assessment fields. The
 ordinary assessment contains a summary and objective outcomes; hypotheses,
 claims, historical records, and other optional collections are not prerequisites.
 Local hypotheses may be defined in the assessment without registration. Unknown
@@ -335,11 +335,11 @@ action ID/type wrapper; `injection` carries its content choice. Database row key
 are native objects; existing state-collection record keys are strings. Harness
 uses shared normalization for the host encoding and keeps database key policies
 in verified runtime context.
-`record_append` uses `kind` and flat kind-specific fields. Snapshot inspection and
+`record_hypothesis`, `record_progress`, `record_lineage`, and `record_coverage` expose only the fields for that record kind. No kind selector is accepted. Progress requires summary; decision is optional. Its optional assessment object requires interpretation, confidence, assurance and summary, with optional gaps. Supported progress requires inspected observation citations. Snapshot inspection and
 restore use `snapshot`; deletion uses `injection`; reads use `reference` or
 `observation`. Snapshot creation keeps optional `label` and `description`.
 See the exact shared
-[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/schemas/MODEL_TOOL_NORMALIZATION.md)
+[tool normalization contract](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/schemas/MODEL_TOOL_NORMALIZATION.md)
 for all fields, defaults, and handle categories.
 
 Artifacts, retained injections and their deletion, snapshots, restores, and
@@ -419,7 +419,7 @@ evidence may contain additional historical outcomes and must not be treated as
 a fresh attempt verdict.
 
 For the controlled native database workflow, use the matching Operator checkout
-and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/docs/POSTGRESQL.md#local-integration-verification).
+and its [PostgreSQL guide](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/docs/POSTGRESQL.md#local-integration-verification).
 It runs this Harness's production Python entrypoint over spool against real local
 Interceptor/PostgreSQL with deterministic model responses, then checks response
 and state injection, live oracle inspection, snapshot restore, accepted finish,
@@ -443,7 +443,7 @@ supported. Missing pointers and incompatible placements remain unapplied outcome
 An `applied` result establishes mutation, and `response_written` establishes bytes
 written; neither proves SDK acceptance or target tool execution. Inspect permitted
 observations for those outcomes. Black-box feedback does not reveal private
-delivery details. See [Operator's model-response injection guide](https://github.com/intrusiveai/operator_sandbox/blob/5504e7dc7288e2629de9c34b8cea4c2391fd8e5f/docs/MODEL_RESPONSE_INJECTION.md).
+delivery details. See [Operator's model-response injection guide](https://github.com/intrusiveai/operator_sandbox/blob/da8365325c47a8bde767d5d1f127d6ef3b41b6ec/docs/MODEL_RESPONSE_INJECTION.md).
 
 ## Build and verify an integration
 
@@ -550,8 +550,8 @@ not another charge against Operator's accounting; both host allowances and local
 model-call limits remain in force. The adaptive loop does not purchase model-generated summaries.
 
 Protected finalization uses the same dispatch restriction as assessment repair:
-only finish, retained observation/reference reads, and conclusion-purpose artifact
-publication are allowed. Budget pressure does not invent a rejected assessment.
+only completion tools, retained observation/reference reads, scenario selection,
+progress handoffs, and conclusion-purpose artifact publication are allowed. Budget pressure does not invent a rejected assessment.
 A later real rejection retains its request and stronger repair guidance. Finalization
 requests may use the protected capacity whenever the ordinary limits can fund
 one request; they do not have to leave another reserve behind.
@@ -655,3 +655,13 @@ and native conversation history, then interprets the returned native response
 using Operator's validated accounting. Provider metadata is not a shared-schema
 compatibility gate. The direct-input, evidence-read, and single-finish workflow,
 assessment repair, and budget/no-progress diagnostics remain unchanged.
+
+The model tool interface is version 0.12.0. `finish` requires inline finish_reason,
+summary and objectives. `finish_artifact` takes a committed conclusion artifact;
+`finish_unavailable` gives the specific reason no assessment can be supplied.
+Each accepted form ends the whole campaign; cleanup and objective success remain
+separate. The declarations retain content-choice and conditional evidence rules,
+while runtime independently enforces ownership, inspection, permissions and size.
+Snapshot descriptions are limited to 4096 UTF-8 bytes as well as characters.
+Tool declarations are frozen at admission; new contract versions require a new
+campaign and never rewrite existing conversation prefixes.

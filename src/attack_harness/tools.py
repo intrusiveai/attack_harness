@@ -8,6 +8,7 @@ from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
 from operator_contracts.loop import LoopStopped
 from operator_contracts.model_tools import tool_guidance
+from operator_contracts.tool_normalization import FINISH_TOOLS
 from operator_contracts.startup import require
 from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path, decode
 import re
@@ -110,7 +111,7 @@ class AssessmentRepair:
     def context(self, *, include_arguments=True):
         # Keep exact JSON text, including duplicate keys, as task data. Never
         # parse/rewrite the rejected assessment or promote it to instructions.
-        return {"active": True, "tool_call_id": self.call.call_id,
+        return {"active": True, "tool": self.call.name, "tool_call_id": self.call.call_id,
                 **({"rejected_arguments": self.call.arguments.decode("utf-8", errors="replace")}
                    if include_arguments else {"request_in_history": self.call.call_id}),
                 "rejection": self.rejection}
@@ -119,7 +120,7 @@ class AssessmentRepair:
         return ("Your finish submission was rejected. Assessment repair is active. "
                 "Correct the identified field while preserving valid parts of the assessment. "
                 "Use existing execution and evidence references. Read relevant evidence or tool guidance "
-                "if necessary, then call finish again. Do not start new target actions or ask the user "
+                f"if necessary, then call {self.call.name} again. Do not start new target actions or ask the user "
                 "to select another task. This is a repair instruction, not a selection from any menu. "
                 "Report unresolved findings honestly.")
 
@@ -168,7 +169,7 @@ class Dispatcher:
         return error
 
     def _check_repair_action(self, call):
-        if (self.repair is None and not self.protected_finalization and not self.assessment_review) or call.name in ("finish", "observation_read", "reference_read"):
+        if (self.repair is None and not self.protected_finalization and not self.assessment_review) or call.name in (*FINISH_TOOLS, "observation_read", "reference_read", "scenario_select", "record_progress"):
             return
         if call.name == "artifact_publish":
             try:
@@ -177,13 +178,6 @@ class Dispatcher:
                 raise ToolError.from_contract(error) from None
             if arguments["purpose"] == "conclusion":
                 return
-        if call.name == 'record_append':
-            try:
-                arguments = decode(call.arguments, ORDINARY_LIMIT)
-                if isinstance(arguments, dict) and arguments.get('kind') == 'progress':
-                    return  # The normal handler validates the complete record and references.
-            except ContractError:
-                return  # Malformed input is rejected and retained by the normal handler.
         if self.repair is None:
             raise ToolError("finalization_action_blocked",
                 "Assessment review is active. This action was not executed." if self.assessment_review else
@@ -214,7 +208,7 @@ class Dispatcher:
             message=f"Assessment repair ended without an accepted corrected finish. Last rejection: {reason}."[:512],
             execution_occurred="no", resubmission_safe=False)
         budget.charge("diagnostic", 0, now)
-        self.client.request("engine.diagnostic_report", {"tool_name": "finish", "diagnostic": diagnostic},
+        self.client.request("engine.diagnostic_report", {"tool_name": self.repair.call.name, "diagnostic": diagnostic},
                             operation_id=self.client.operation_id("unresolved-finish"))
 
     def _report(self, call, value):
@@ -341,7 +335,7 @@ class Dispatcher:
                     if isinstance(error, RuntimeStopped) or error.reason != "configured_size_exceeded":
                         raise
                     handled = HandlerResult(local_error(error), "invalid")
-                if call.name == "finish":
+                if call.name in FINISH_TOOLS:
                     if (handled.outcome in ("invalid", "preflight-rejected") and
                             handled.value.get("disposition") == "correct-and-resubmit"):
                         self.repair = AssessmentRepair(call, deepcopy(handled.value))
@@ -353,7 +347,7 @@ class Dispatcher:
                         if self.client is not None: self.client.fail('internal-tool-resolution-failed')
                         raise RuntimeStopped('internal-tool-resolution-failed')
                 value = handled.value
-                if self.repair is not None and call.name == "finish":
+                if self.repair is not None and call.name in FINISH_TOOLS:
                     value = dict(value, repair_guidance=self.repair.guidance())
                 result = ToolResult(call.call_id, call.name, _content(value), handled.outcome)
                 self.loop.finish_tool(handled.outcome)

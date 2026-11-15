@@ -145,7 +145,7 @@ class ScenarioHost(ScriptedHost):
         desired = {1: 'baseline', 3: 'refund', 7: 'malformed'}.get(turn)
         if desired and (task['active_scenario'] or {}).get('scenario_id') != desired:
             reference = next(r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == desired)
-            return [(f'select-{turn}', 'reference_read', {'reference': reference})]
+            return [(f'select-{turn}', 'scenario_select', {'reference': reference})]
         self.scenario_step = turn
         scenarios = {s['scenario_id']: s for s in ([task['active_scenario']] if task['active_scenario'] else [])}
 
@@ -303,7 +303,7 @@ class ScenarioDeliveryTest(unittest.TestCase):
                     self.initial_task = deepcopy(task)
                     if use_reference:
                         reference = next((r['reference_id'] for r in task['scenario_index'] if r['scenario_id'] == 'refund'))
-                        return [('select', 'reference_read', {'offset': 0, 'max_bytes': 1, 'reference': reference}), ('same-batch', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}})]
+                        return [('select', 'scenario_select', {'reference': reference}), ('same-batch', 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}})]
                     return [(identifier, 'attempt_execute', {'origin': 'scenario', 'scenario_id': 'refund', 'operation_id': 'invoke', 'json': {'query': 'premature'}}) for identifier in ('switch', 'same-batch')]
                 if turn == 2:
                     self.active_task = deepcopy(task)
@@ -353,8 +353,8 @@ class ScenarioDeliveryTest(unittest.TestCase):
             ToolCall("raw-bundle", "reference_read", b'{"reference":"bundle","offset":0,"max_bytes":1}'),
         ])
         rejected, ordinary = [json.loads(r.content) for r in results]
-        self.assertEqual(rejected["diagnostic"]["field_path"], "/offset")
-        self.assertIn("Use offset 0", rejected["diagnostic"]["correction"])
+        self.assertEqual(rejected["diagnostic"]["field_path"], "/reference")
+        self.assertIn("Use scenario_select", rejected["diagnostic"]["correction"])
         self.assertEqual(ordinary["content"], inputs.bundle_raw[:1].decode())
         self.assertEqual(ordinary["raw_length"], 1)
         self.assertFalse(ordinary["eof"])

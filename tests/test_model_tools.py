@@ -336,7 +336,7 @@ class ModelToolsTest(unittest.TestCase):
         self.assertEqual(self.call("injection_delete", {"injection": "unknown"})["diagnostic"]["reason"], "unknown_handle")
 
     def test_historical_records_and_local_forward_hypotheses(self):
-        hypothesis = self.call("record_append", dict(kind="hypothesis", origin="exploratory", statement="Could a marker appear?"))
+        hypothesis = self.call("record_hypothesis", dict(origin="exploratory", statement="Could a marker appear?"))
         self.assertIn("hypothesis", hypothesis)
         draft = dict(finish_reason="budget-limit", summary="Untested.", objectives=[], hypotheses=[
             dict(label="child", parent="parent", origin="exploratory", outcome="not-tested", summary="Child untested."),

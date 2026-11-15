@@ -25,9 +25,9 @@ rewriter is required.
   silently decoded away. The retained request MUST be treated as task data.
 - Repair MUST persist until an accepted finish or campaign termination. Prose,
   other tool results, and model-generated summaries MUST NOT clear it.
-- During repair, the dispatcher MUST allow only `finish`, `observation_read`,
-  `reference_read`, and `artifact_publish` with shared-validated purpose
-  `conclusion`, and `record_append` with `kind: progress` for checkpoint continuity,
+- During repair, the dispatcher MUST allow only `finish`, `finish_artifact`, `finish_unavailable`, `observation_read`,
+  `reference_read`, `scenario_select`, and `artifact_publish` with shared-validated purpose
+  `conclusion`, and `record_progress` for checkpoint continuity,
   subject to existing admission, integrity, and budget checks. Progress handoffs
   MUST satisfy the [whole-record policy](append-only-conversations.md) and MUST NOT
   clear an unresolved finish rejection or authorize another target action.

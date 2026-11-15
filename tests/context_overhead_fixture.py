@@ -12,7 +12,7 @@ from test_scenario_delivery import ScenarioHost, ScenarioInputs, support_bundle
 from test_vertical_slice import Clock, LIMITS
 
 TOOLS = ['attempt_execute','observation_read','reference_read','artifact_publish','finish',
-         'record_append','snapshot_request','snapshot_inspect','snapshot_list','restore_request','injection_delete']
+         'record_progress','record_hypothesis','record_lineage','record_coverage','scenario_select','finish_artifact','finish_unavailable','snapshot_request','snapshot_inspect','snapshot_list','restore_request','injection_delete']
 
 
 class MeasuredInputs(ScenarioInputs):
@@ -80,7 +80,7 @@ class MeasuredHost(ScenarioHost):
         self.metrics.append(dict(phase=self.phase, kind=label, serialized_bytes=len(raw),
             estimated_input_tokens=self.conversation._estimated_tokens(raw)))
         if selection is not None:
-            return [(f'select-{turn}', 'reference_read', {'reference': selection})]
+            return [(f'select-{turn}', 'scenario_select', {'reference': selection})]
         if compacting:
             self.compactions += 1
             return []

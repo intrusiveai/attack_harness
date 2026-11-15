@@ -46,7 +46,7 @@ class BoundaryHost(ScenarioHost):
     def _calls(self, turn):
         task = self._task()
         if (task['active_scenario'] or {}).get('scenario_id') is None:
-            return [('select', 'reference_read', {'reference': task['scenario_index'][0]['reference_id']})]
+            return [('select', 'scenario_select', {'reference': task['scenario_index'][0]['reference_id']})]
         turn -= 1
         if turn in (1, 4):
             # The controlled model supplies a campaign-grounded follow-up. The

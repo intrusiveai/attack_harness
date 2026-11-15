@@ -128,7 +128,7 @@ def build_task(inputs, *, active_scenario=None):
                               for skill in inputs.skills]
     # Navigation is Harness presentation, not a local replacement tool catalog.
     document["navigation"] = (
-        "Select or revisit a scenario with reference_read using its reference_id and offset 0. "
+        "Select or revisit a scenario with scenario_select using its reference_id. "
         "Its complete instructions replace active_scenario; the result confirms activation, "
         "not a paginated read. Construct attempts only after receiving those instructions. "
         "Progress snapshots describe instruction delivery and execution at conversation start; "
@@ -189,10 +189,6 @@ class ScenarioDelivery:
         self.response_generation = self.conversation.task_generation
 
     def validate_handoff(self, arguments):
-        if not arguments.get('summary', '').strip() or not arguments.get('decision', '').strip():
-            raise ToolError('invalid_arguments', 'A checkpoint handoff needs a summary and next-step decision.',
-                path='/decision' if not arguments.get('decision', '').strip() else '/summary',
-                correction='Use summary for assessed requirements and unresolved findings; use decision for the next step or revisit purpose. Keep evidence handles in the existing reference fields.')
         size = len(_canonical_value(arguments, ORDINARY_LIMIT))
         if size > self.handoff_limit:
             raise ToolError('configured_size_exceeded', f'Checkpoint handoff is {size} bytes; allowance is {self.handoff_limit} bytes. No progress record was accepted.',
@@ -239,7 +235,7 @@ class ScenarioDelivery:
     def record_navigation_batch(self, calls, results):
         turn = self.loop.snapshot()['model_turns']
         if calls and len(calls) == len(results) and all(
-                call.name == 'reference_read' and result.outcome == 'success'
+                call.name == 'scenario_select' and result.outcome == 'success'
                 and json.loads(result.content).get('status') == 'scenario-selected'
                 for call, result in zip(calls, results)):
             self.navigation_only_turns = self.navigation_only_turns + 1 if self.last_navigation_turn == turn - 1 else 1
@@ -282,7 +278,7 @@ class ScenarioDelivery:
             no_progress_limit=self.conversation.no_progress_limit,
             assessment_handoffs=dict(provenance='model-interpretation-not-evidence',
                 entries=list(self.handoffs.values()), maximum_argument_bytes=self.handoff_limit),
-            guidance=('Use record_append(kind=progress) for a checkpoint handoff: summary states requirements assessed, '
+            guidance=('Use record_progress for a checkpoint handoff: summary states requirements assessed, '
                 'findings and unresolved obligations; decision states the next step or revisit purpose. Supply existing '
                 'attempts/observations/records fields for validated references. Carry forward unresolved work when '
                 'replacing a handoff. Submit the record before scenario selection; independent calls may share a response. '

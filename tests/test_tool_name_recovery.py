@@ -34,7 +34,7 @@ class NameRecoveryHost(LoadingHost):
         self.dispatched_at_request.append(len(self.attempt_ids))
         task = self._task()
         if task['active_scenario'] is None:
-            return [('select', 'reference_read', {'reference': task['scenario_index'][0]['reference_id']})]
+            return [('select', 'scenario_select', {'reference': task['scenario_index'][0]['reference_id']})]
         self.step += 1
         if self.step == 1 or self.exhausted:
             return [(ARCHIVED_CALL['toolUseId'] + (str(self.step) if self.exhausted else ''),
