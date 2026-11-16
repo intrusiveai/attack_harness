@@ -33,7 +33,7 @@ def version_for(branch):
 
 
 def context(event, name, ref, sha, repository):
-    result = dict(mode="verify", version="", branch="", source=sha, pr="")
+    result = dict(mode="ignore", version="", branch="", source=sha, pr="")
     if name == "pull_request" and event["action"] == "closed":
         result["mode"] = "ignore"
         pr = event["pull_request"]
@@ -42,12 +42,16 @@ def context(event, name, ref, sha, repository):
                 and pr["head"]["repo"]["full_name"] == repository == REPOSITORY):
             result.update(mode="promote", version=version_for(pr["head"]["ref"]),
                           branch=pr["head"]["ref"], source=pr["head"]["sha"], pr=str(pr["number"]))
+    elif name == "pull_request" and event["action"] in ("opened", "synchronize", "reopened"):
+        result["mode"] = "verify"
     elif name in ("push", "workflow_dispatch") and ref.startswith("refs/heads/candidate-v"):
         if event.get("deleted"):
             result["mode"] = "ignore"
         elif repository == REPOSITORY:
             branch = ref.removeprefix("refs/heads/")
             result.update(mode="publish", version=version_for(branch), branch=branch)
+    elif name == "workflow_dispatch":
+        result["mode"] = "verify"
     return result
 
 
@@ -131,9 +135,6 @@ class Registry:
 
 def check_reports(directory):
     """Re-inspect the archives that will be uploaded; bind the other gates to them."""
-    operator_commit = Path("build/operator-runtime-commit.txt").read_text().strip()
-    if not re.fullmatch(r"[0-9a-f]{40}", operator_commit):
-        raise ValueError("invalid pinned Operator runtime commit")
     reports, files = [], []
     for platform in PLATFORMS:
         prefix = directory / ("attack-harness-" + platform.replace("/", "-"))
@@ -156,9 +157,8 @@ def check_reports(directory):
                 or rebuild["runtime_comparisons"] != {
                     "image_digest": True, "manifest_digest": True, "layer_digests": True}):
             raise ValueError("runtime reproducibility gate failed")
-        if inspection["operator_commit"] != operator_commit:
-            raise ValueError(f"inspection used an unpinned Operator runtime for {platform}; "
-                             f"expected {operator_commit}")
+        if inspection["contract"] != report["contract"]:
+            raise ValueError("inspection used a different approved interface")
         reports.append(report)
         files.extend(paths)
     if reports[0]["contract"] != reports[1]["contract"]:

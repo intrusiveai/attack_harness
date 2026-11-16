@@ -28,15 +28,13 @@ class SimpleHost(ScriptedHost):
             return [(f"bad-{turn}", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke"})]
         turn -= self.mode == "corrected"
         if turn == 1:
-            return [("invoke", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke", "input": {
-                "encoding": "json", "value": {"query": "return MARKER"}}})]
+            return [("invoke", "attempt_execute", {"origin": "exploratory", "operation_id": "invoke", "json": {"query": "return MARKER"}})]
         if turn == 2:
-            return [("read", "observation_read", {"receipt_id": "attempt-receipt-1",
-                "entry_id": "target-output", "offset": 0, "max_bytes": 1024})]
+            return [("read", "observation_read", {"observation": "observation-1", "max_bytes": 1024})]
         return [("finish", "finish", {"finish_reason": "objectives-addressed",
-            "assessment": {"summary": "Marker observed.", "objectives": [{
+            "summary": "Marker observed.", "objectives": [{
                 "objective_id": "objective-marker", "outcome": "supported", "summary": "Marker returned.",
-                "attempt_receipt_refs": ["attempt-receipt-1"]}]}})]
+                "observations": ["observation-1"]}]})]
 
     def request(self, operation, body, *, operation_id):
         if operation == "engine.diagnostic_report":
@@ -74,7 +72,7 @@ class SimpleCampaignTest(unittest.TestCase):
         policy = {"codec_id": "openai-chat-text-tools-v1", "profile_id": "vertical-slice-profile",
             "profile_digest": "sha256:" + "9" * 64, "request_model": "fixture-model",
             "response_models": ["fixture-model-2026"], "instruction_role": "developer",
-            "prompt": "Controlled test.", "max_completion_tokens": 4096,
+            "prompt": "Controlled test.", "max_completion_tokens": 4096,"context_limits":{"maximum_prompt_tokens":32768,"maximum_completion_tokens":4096,"warning_threshold_tokens":26214},
             "tools": json.loads(self.protocol.model_tools("openai-chat-text-tools-v1", sorted(host.operations)))}
         conversation = NativeConversation(self.protocol, _canonical_value(policy, 4 << 20), "Run campaign.")
         result = AdaptiveHarness(self.protocol, host, loop, dispatcher, conversation, finalizer, limits=limits).run()
@@ -83,13 +81,13 @@ class SimpleCampaignTest(unittest.TestCase):
     def test_basic_direct_workflow_has_three_host_calls(self):
         host, _, _, result = self.run_campaign("direct")
         self.assertEqual([op for op, _, _ in host.events if op != "engine.model_generate"],
-            ["engine.attempt_execute", "engine.observation_read", "engine.finish"])
+            ["engine.attempt_execute", "engine.observation_read", "engine.diagnostic_report", "engine.finish"])
         self.assertEqual(result["finalization_status"], "pending")
 
     def test_model_corrects_missing_input_then_completes(self):
         host, loop, _, result = self.run_campaign("corrected")
         feedback = json.dumps(host.model_requests[1])
-        self.assertIn("/input", feedback)
+        self.assertIn("content_choice", feedback)
         self.assertIn("harness-local", feedback)
         self.assertEqual(len(host.attempt_ids), 1)
         self.assertEqual(loop.snapshot()["invalid_tool_calls"], 1)
@@ -102,7 +100,8 @@ class SimpleCampaignTest(unittest.TestCase):
         self.assertEqual(len(reports), 6)
         self.assertEqual(reports[-1]["stopping"], {"condition": "invalid-call-limit",
             "observed_count": 5, "configured_limit": 5})
-        self.assertEqual(reports[-1]["tool_call_id"], "bad-5")
+        self.assertNotIn("tool_call_id", reports[-1])
+        self.assertEqual(reports[-2]["tool_call_id"], "bad-5")
         self.assertIn("bad-5", str(conversation._request))
         self.assertEqual(host.events[-1][1]["unavailable"]["reason"], "invalid-call-limit")
         self.assertEqual(result["assessment_state"], "unavailable")
@@ -112,17 +111,16 @@ class SimpleCampaignTest(unittest.TestCase):
         self.assertEqual(result["assessment_state"], "unavailable")
         self.assertEqual(host.events[-1][1]["unavailable"]["reason"], "budget-limit")
         report = next(body for operation, body, _ in reversed(host.events) if operation == "engine.diagnostic_report")
-        self.assertEqual(report["stopping"]["configured_limit"], 1)
+        self.assertEqual(report["diagnostic"]["reason"], "budget-limit")
+        self.assertNotIn("stopping", report)  # The failed read was never charged.
         self.assertEqual(len(host.attempt_ids), 1)
 
-    def test_duplicate_keys_and_missing_range_have_safe_actionable_paths(self):
+    def test_duplicate_keys_and_obsolete_wrapper_have_actionable_paths(self):
         for tool, raw, path, correction in (
-            ("attempt_execute", b'{"operation_id":"invoke","input":{"encoding":"json","encoding":"utf8","text":"secret"}}',
-             "/input/encoding", "each JSON key once"),
-            ("finish", json.dumps({"finish_reason": "objectives-addressed", "assessment": {
-                "summary": "Untested", "objectives": [], "uncertainties": [{"gap_id": "gap",
-                "kind": "evidence-gap", "description": "missing", "input_refs": [{"entry_id": "entry", "range": {}}]}]}}).encode(),
-             "/assessment/uncertainties/0/input_refs/0/range/length", "offset and length"),
+            ("finish", b'{"finish_reason":"budget-limit","summary":"one","summary":"secret","objectives":[]}',
+             "/summary", "each JSON key once"),
+            ("finish", b'{"finish_reason":"budget-limit","assessment":{}}',
+             "/assessment", "omit the assessment wrapper"),
         ):
             loop = HarnessLoop(LIMITS); loop.begin_model()
             dispatcher = Dispatcher(self.protocol, loop, {tool: lambda _: self.fail("invalid call executed")})

@@ -6,7 +6,6 @@ package preparation_test
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,27 +22,26 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 	if os.Getenv("OPERATOR_HARNESS_INTEGRATION") != "1" {
 		t.Skip("controlled production Harness gate")
 	}
-	binary := filepath.Join(t.TempDir(), "operatorctl")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/operatorctl")
-	build.Dir = "../.."
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatal(err, string(out))
-	}
+	binary := processCLI(t)
 	for _, transport := range []string{"fifo", "spool"} {
 		for _, mode := range []string{"direct", "artifact", "corrected", "exhausted", "zero-attempt", "hypothesis-correction"} {
+			// Business-rule variants run on FIFO; direct execution/observation/finish also runs on spool.
+			if transport == "spool" && mode != "direct" {
+				continue
+			}
 			t.Run(transport+"/"+mode, func(t *testing.T) {
-				var receipt string
+				var observation string
 				assessment := func() map[string]any {
 					refs := []string{}
 					outcome := "not-tested"
-					if receipt != "" {
-						refs = append(refs, receipt)
+					if observation != "" {
+						refs = append(refs, observation)
 						outcome = "inconclusive"
 					}
-					return map[string]any{"finish_reason": "no-useful-next-experiment", "assessment": map[string]any{
+					return map[string]any{"finish_reason": "no-useful-next-experiment",
 						"summary": "Honest controlled assessment.", "objectives": []any{map[string]any{
-							"objective_id": "objective-marker", "outcome": outcome, "summary": "Report only observed evidence.", "attempt_receipt_refs": refs}},
-					}}
+							"objective_id": "objective-marker", "outcome": outcome, "summary": "Report only observed evidence.", "observations": refs}},
+					}
 				}
 				r := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: func(turn int, q map[string]any) ([]byte, error) {
 					if mode == "exhausted" || mode == "corrected" && turn == 1 {
@@ -57,21 +55,20 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 					}
 					if mode == "hypothesis-correction" {
 						draft := assessment()
-						a := draft["assessment"].(map[string]any)
-						h := localHypothesis("local-child", "local-parent")
+						a := draft
+						h := map[string]any{"label": "local-child", "parent": "local-parent", "origin": "exploratory", "outcome": "not-tested", "summary": "Untested hypothesis."}
 						h["objective_refs"] = []string{"objective-marker"}
-						h["provenance"].(map[string]any)["origin"] = "exploratory"
-						delete(h["provenance"].(map[string]any), "scenario_id")
+
 						if turn == 1 {
 							a["hypotheses"] = []any{h}
 						} else if turn == 2 {
-							rejected, e := modelToolResult(q, "finish-bad")
+							rejected, e := modelRepairRejection(q, "finish-bad")
 							if e != nil || rejected["status"] != "error" {
 								return nil, fmt.Errorf("invalid assessment falsely accepted: %v %v", rejected, e)
 							}
-							parent := localHypothesis("local-parent", "")
+							parent := map[string]any{"label": "local-parent", "origin": "exploratory", "outcome": "not-tested", "summary": "Untested parent."}
 							parent["objective_refs"] = []string{"objective-marker"}
-							parent["provenance"] = map[string]any{"origin": "exploratory"}
+
 							a["hypotheses"] = []any{h, parent}
 						} else {
 							return nil, fmt.Errorf("assessment correction did not finish")
@@ -100,32 +97,34 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 					}
 					switch step {
 					case 1:
-						input := map[string]any{"encoding": "json", "value": map[string]any{"query": "baseline"}}
+						input := map[string]any{"origin": "exploratory", "operation_id": "invoke", "json": map[string]any{"query": "baseline"}}
 						if mode == "artifact" {
 							a, e := modelToolResult(q, "payload")
 							if e != nil {
 								return nil, e
 							}
-							input = map[string]any{"artifact_receipt": a["artifact_receipt"]}
+							delete(input, "json")
+							input["artifact"] = a["artifact"]
 						}
-						return processResponse([]any{modelCall("invoke", "attempt_execute", map[string]any{"origin": "exploratory", "operation_id": "invoke", "input": input})}), nil
+						return processResponse([]any{modelCall("invoke", "attempt_execute", input)}), nil
 					case 2:
 						a, e := modelToolResult(q, "invoke")
 						if e != nil || a["status"] != "completed" {
 							return nil, fmt.Errorf("execution: %v %v", a, e)
 						}
-						receipt = a["receipt_id"].(string)
-						entries := a["feedback"].(map[string]any)["entries"].([]any)
+
+						entries := a["observations"].([]any)
 						if len(entries) != 1 {
-							return nil, fmt.Errorf("missing feedback")
+							return nil, fmt.Errorf("missing feedback: %v", a)
 						}
-						return processResponse([]any{modelCall("read", "observation_read", map[string]any{"receipt_id": receipt, "entry_id": entries[0].(map[string]any)["entry_id"], "offset": 0, "max_bytes": 4096})}), nil
+						return processResponse([]any{modelCall("read", "observation_read", map[string]any{"observation": entries[0].(map[string]any)["observation"]})}), nil
 					case 3:
 						evidence, e := modelToolResult(q, "read")
 						if e != nil {
 							return nil, e
 						}
-						raw, e := base64.StdEncoding.DecodeString(fmt.Sprint(evidence["content"]))
+						observation = evidence["citation"].(string)
+						raw, e := modelContent(evidence)
 						if e != nil || string(raw) != `{"answer":"test"}` {
 							return nil, fmt.Errorf("wrong evidence: %v", evidence)
 						}
@@ -193,7 +192,7 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						var info struct {
 							Diagnostic *campaign.WorkflowDiagnostic `json:"workflow_diagnostic"`
 						}
-						if json.Unmarshal(raw, &info) != nil || info.Diagnostic == nil || info.Diagnostic.Stopping != "invalid-call-limit" || info.Diagnostic.Observed != 5 || info.Diagnostic.Limit != 5 || info.Diagnostic.FieldPath != "/input" {
+						if json.Unmarshal(raw, &info) != nil || info.Diagnostic == nil || info.Diagnostic.Stopping != "invalid-call-limit" || info.Diagnostic.Observed != 5 || info.Diagnostic.Limit != 5 || info.Diagnostic.Reason != "invalid_call_limit" || info.Diagnostic.Stage != "termination" || info.Diagnostic.Tool != "" || info.Diagnostic.CallID != "" || info.Diagnostic.FieldPath != "" {
 							t.Fatal(string(raw))
 						}
 						t.Log("user-visible stopping reason:", info.Diagnostic.Message())
@@ -210,10 +209,30 @@ func TestHarnessSimpleCampaignProcess(t *testing.T) {
 						if mode != "exhausted" && report.HarnessClaims != 1 {
 							t.Fatal("missing accepted assessment", report)
 						}
-						if mode == "exhausted" && len(report.WorkflowDiagnostics) < 6 {
-							t.Fatal("missing rejection/stopping history", report.WorkflowDiagnostics)
+						if mode == "exhausted" {
+							if report.HarnessClaims != 0 || len(report.WorkflowDiagnostics) != 6 {
+								t.Fatal("incorrect assessment or rejection history", report)
+							}
+							for _, d := range report.WorkflowDiagnostics[:5] {
+								if d.Reason != "content_choice" || d.Stopping != "" {
+									t.Fatal("rejection conflated with termination", d)
+								}
+							}
+							terminal := report.WorkflowDiagnostics[5]
+							if terminal.Reason != "invalid_call_limit" || terminal.Stopping != "invalid-call-limit" || terminal.Observed != 5 || terminal.Limit != 5 || terminal.Stage != "termination" {
+								t.Fatal("stopping cause lost", terminal)
+							}
 						}
 						if verb == "export" && mode == "exhausted" {
+							markdown, e := os.ReadFile(filepath.Join(destination, "report.md"))
+							if e != nil {
+								t.Fatal(e)
+							}
+							for _, text := range []string{"5 invalid tool calls (configured limit 5)", "No final assessment was committed", "Preceding tool rejection (separate from the stopping cause)"} {
+								if !bytes.Contains(markdown, []byte(text)) {
+									t.Fatalf("report missing %q: %s", text, markdown)
+								}
+							}
 							data, e := os.ReadFile(filepath.Join(destination, "result-manifest.json"))
 							if e != nil || !bytes.Contains(data, []byte("invalid-call-limit")) {
 								t.Fatal("export lost cause", e)

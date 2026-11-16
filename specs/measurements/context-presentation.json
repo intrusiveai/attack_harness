@@ -1,0 +1,189 @@
+{
+  "baseline_commit": "e8c8f0a",
+  "before": {
+    "method": "Controlled Bedrock reconstruction; serialized UTF-8 bytes, not actual token usage.",
+    "bundle_digest": "sha256:dd44dec20a74e48296dad46ea81559a4d08a9870430431353562f113843a79da",
+    "system_prompt_bytes": 9020,
+    "tool_definitions_bytes": 13403,
+    "model_requests": 12,
+    "target_invocations": 2,
+    "evidence_reads": 4,
+    "evidence_rereads": 2,
+    "model_compactions": 0,
+    "per_request": [
+      {
+        "task_bytes": 10112,
+        "history_bytes": 2,
+        "conversation_bytes": 11079,
+        "provider_request_bytes": 33747
+      },
+      {
+        "task_bytes": 10995,
+        "history_bytes": 607,
+        "conversation_bytes": 12626,
+        "provider_request_bytes": 35294
+      },
+      {
+        "task_bytes": 11356,
+        "history_bytes": 1036,
+        "conversation_bytes": 13472,
+        "provider_request_bytes": 36140
+      },
+      {
+        "task_bytes": 11664,
+        "history_bytes": 2250,
+        "conversation_bytes": 15038,
+        "provider_request_bytes": 37706
+      },
+      {
+        "task_bytes": 11721,
+        "history_bytes": 3372,
+        "conversation_bytes": 16221,
+        "provider_request_bytes": 38889
+      },
+      {
+        "task_bytes": 12038,
+        "history_bytes": 3829,
+        "conversation_bytes": 17043,
+        "provider_request_bytes": 39711
+      },
+      {
+        "task_bytes": 12345,
+        "history_bytes": 5041,
+        "conversation_bytes": 18606,
+        "provider_request_bytes": 41274
+      },
+      {
+        "task_bytes": 12394,
+        "history_bytes": 6166,
+        "conversation_bytes": 19788,
+        "provider_request_bytes": 42456
+      },
+      {
+        "task_bytes": 12541,
+        "history_bytes": 6550,
+        "conversation_bytes": 20335,
+        "provider_request_bytes": 43003
+      },
+      {
+        "task_bytes": 12543,
+        "history_bytes": 2,
+        "conversation_bytes": 15943,
+        "provider_request_bytes": 38611
+      },
+      {
+        "task_bytes": 12547,
+        "history_bytes": 1384,
+        "conversation_bytes": 17328,
+        "provider_request_bytes": 39996
+      },
+      {
+        "task_bytes": 12545,
+        "history_bytes": 2518,
+        "conversation_bytes": 18460,
+        "provider_request_bytes": 41128
+      }
+    ],
+    "cumulative_provider_request_bytes": 467955,
+    "token_estimate_bytes_divided_by_four": 116992,
+    "actual_provider_usage": null
+  },
+  "after": {
+    "method": "Controlled Bedrock reconstruction; serialized UTF-8 bytes, not actual token usage.",
+    "bundle_digest": "sha256:dd44dec20a74e48296dad46ea81559a4d08a9870430431353562f113843a79da",
+    "system_prompt_bytes": 1640,
+    "tool_definitions_bytes": 13403,
+    "model_requests": 12,
+    "target_invocations": 2,
+    "evidence_reads": 4,
+    "evidence_rereads": 2,
+    "model_compactions": 0,
+    "per_request": [
+      {
+        "task_bytes": 3875,
+        "history_bytes": 2,
+        "conversation_bytes": 4256,
+        "provider_request_bytes": 19422
+      },
+      {
+        "task_bytes": 4744,
+        "history_bytes": 614,
+        "conversation_bytes": 5794,
+        "provider_request_bytes": 20960
+      },
+      {
+        "task_bytes": 5080,
+        "history_bytes": 1043,
+        "conversation_bytes": 6613,
+        "provider_request_bytes": 21779
+      },
+      {
+        "task_bytes": 5260,
+        "history_bytes": 1742,
+        "conversation_bytes": 7520,
+        "provider_request_bytes": 22686
+      },
+      {
+        "task_bytes": 5326,
+        "history_bytes": 2989,
+        "conversation_bytes": 8837,
+        "provider_request_bytes": 24003
+      },
+      {
+        "task_bytes": 5555,
+        "history_bytes": 3446,
+        "conversation_bytes": 9561,
+        "provider_request_bytes": 24727
+      },
+      {
+        "task_bytes": 5734,
+        "history_bytes": 4143,
+        "conversation_bytes": 10465,
+        "provider_request_bytes": 25631
+      },
+      {
+        "task_bytes": 5781,
+        "history_bytes": 5393,
+        "conversation_bytes": 11770,
+        "provider_request_bytes": 26936
+      },
+      {
+        "task_bytes": 5850,
+        "history_bytes": 5777,
+        "conversation_bytes": 12231,
+        "provider_request_bytes": 27397
+      },
+      {
+        "task_bytes": 5852,
+        "history_bytes": 2,
+        "conversation_bytes": 8612,
+        "provider_request_bytes": 23778
+      },
+      {
+        "task_bytes": 5858,
+        "history_bytes": 1391,
+        "conversation_bytes": 10006,
+        "provider_request_bytes": 25172
+      },
+      {
+        "task_bytes": 5856,
+        "history_bytes": 2761,
+        "conversation_bytes": 11374,
+        "provider_request_bytes": 26540
+      }
+    ],
+    "cumulative_provider_request_bytes": 289031,
+    "token_estimate_bytes_divided_by_four": 72261,
+    "actual_provider_usage": null,
+    "archive_reconstruction": {
+      "bundle_digest": "sha256:9493e10f6ab444d41329f4385aaefd4e50c9dd31354a20733109932fe00c4564",
+      "scenario_count": 8,
+      "initial_task_bytes": 4926,
+      "active_task_bytes": 6219,
+      "archived_initial_task_bytes": 13760,
+      "archived_tool_definitions_bytes": 14704,
+      "archived_system_prompt_bytes": 9020,
+      "archived_initial_request_bytes": 38959
+    }
+  }
+}

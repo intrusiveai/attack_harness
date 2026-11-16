@@ -4,15 +4,24 @@ PLATFORM ?= linux/arm64
 INSPECTION_FLAGS ?=
 PLATFORM_SLUG := $(subst /,-,$(PLATFORM))
 CONTRACT_PACKAGE := build/context/contracts
-OPERATOR_RUNTIME_COMMIT := $(shell cat build/operator-runtime-commit.txt)
-CONTRACT_COMMIT := 754b7119f49850727c6df506f050eae11d7af915
+CONTRACT_VERSION := $(shell $(PYTHON) -c 'import json; print(json.load(open("build/contract-lock.json"))["package"]["package_version"])')
 
-.PHONY: test test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
-test:
+.PHONY: verify-selected-contract test test-pr test-integration verify-source verify-contracts contract-package image inspect-image inspect-stopped-image
+test: verify-selected-contract
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" OPERATOR_CONTRACT_SOURCE="$(abspath $(OPERATOR_ROOT))/schemas" $(PYTHON) -m unittest discover -s tests -v
 
+# Candidate image builds run the complete suite against packaged code; PRs use
+# this host-side suite without Docker or Go/Python campaign integration.
+test-pr: verify-source test
+	$(PYTHON) -c 'from pathlib import Path; [compile(p.read_bytes(), str(p), "exec") for p in [*Path("src").rglob("*.py"), *Path("build").glob("*.py"), Path("bootstrap.py")]]'
+	PYTHONPATH="$(OPERATOR_ROOT)/contracts/python" $(PYTHON) -m unittest discover -s "$(OPERATOR_ROOT)/contracts/python/tests"
+
 test-integration:
-	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --operator-commit "$(OPERATOR_RUNTIME_COMMIT)" --python "$(PYTHON)"
+	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --python "$(PYTHON)"
+
+# Reject mismatched validator checkouts before importing their implementation.
+verify-selected-contract:
+	$(PYTHON) build/verify_integration.py --operator-root "$(OPERATOR_ROOT)" --python "$(PYTHON)" --check-contract-only
 
 verify-source:
 	$(PYTHON) build/source_lock.py --root . --lock build/source-lock.json
@@ -20,11 +29,10 @@ verify-source:
 contract-package: $(CONTRACT_PACKAGE)/package.json
 
 $(CONTRACT_PACKAGE)/package.json:
-	@test "$$(git -C "$(OPERATOR_ROOT)" rev-parse HEAD)" = "$(CONTRACT_COMMIT)"
 	@mkdir -p build/context
 	@cd "$(OPERATOR_ROOT)" && go run ./cmd/operatorctl contract build \
 		--source "$$(pwd)" --output "$(abspath $(CONTRACT_PACKAGE))" \
-		--package-version 0.2.1
+		--package-version $(CONTRACT_VERSION)
 
 verify-contracts: contract-package
 	PYTHONPATH="$(CURDIR)/src:$(OPERATOR_ROOT)/contracts/python" $(PYTHON) \

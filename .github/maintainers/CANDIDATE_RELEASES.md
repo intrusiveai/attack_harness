@@ -9,7 +9,7 @@ at [Publish and qualify a candidate](#publish-and-qualify-a-candidate).
 
 These workflows publish images and the website's release catalog. Compatibility
 is verified locally from each image using the exact
-[release contract and runtime pins](../../docs/INTEGRATION.md#locked-contract-and-runtime).
+[approved interface and test provenance](../../docs/INTEGRATION.md#locked-contract-and-runtime).
 Catalog publication requires the production reviewer. The guest's execution,
 assessment, and image bindings are described in the integration guide.
 
@@ -18,6 +18,26 @@ together on that candidate branch: publication runs the code at its immutable
 release tag. The dispatchable catalog workflow must already exist on `main`
 (see the one-time setup below). A code fix requires a new candidate run rather
 than rerunning an old tagged workflow.
+
+## Verification schedule
+
+| Event | Checks and release work |
+| --- | --- |
+| PR opened, updated or reopened | `context` tests the publisher; `verify` runs source-lock/syntax checks, Python unit tests and shared-contract fixtures (`make test-pr`). No Docker builds or campaign integration. |
+| Merge or direct push to `candidate-v*` | Both native architectures run the full process integration, packaged Python suite, reproducible image builds and stopped-image inspection before prerelease publication. |
+| Candidate PR merged into `main` | Promotion eligibility and existing-image checks, followed by promotion/catalog publication. No rebuild or test-suite rerun. |
+| Other PR closure or push to `main` | No full verification or publication. |
+
+New commits cancel older active PR-check runs for the same PR. Candidate updates
+and promotion are isolated from PR cancellation; registry publication remains
+queued and serialized. Feature-branch pushes without an open PR do not start
+verification. Manual dispatch on a candidate performs full verification/publication;
+other refs run the fast checks. Promotion still requires a merged candidate PR.
+
+Use `context` and `verify` for required PR status checks, rather than candidate-only
+native matrix jobs. A fast PR pass does not qualify an image. Integration or build
+failures may be found after the candidate merge and MUST block publication;
+correct the candidate and wait for its complete run before promotion.
 
 ## One-time repository setup
 
@@ -116,59 +136,94 @@ identify the repository, environment, tag, and workflow file.
    rg -n 'id-token:|environment:' .github/workflows
    ```
 
-   Every OIDC job must declare an environment with this template. The checked-in
-   workflows grant OIDC only to the catalog publisher.
+   Include GitHub-managed Dependabot and Dependency Graph jobs in this review;
+   they do not appear in the checked-in workflows and have no environment. Use
+   `context` in the subject template: it expands to `environment:production` for
+   the catalog publisher and the applicable ref/event context for other jobs.
+   Requiring `environment` directly prevents managed jobs from starting. This
+   does not grant them release-role access: AWS still requires production,
+   the numeric repository/owner identities, release tags, the publisher workflow,
+   and the `sts.amazonaws.com` audience.
 2. Authenticate `gh` with repository administrator access. Read and retain the
    existing configuration with your change record:
+
+   ```sh
+   gh api repos/intrusiveai/attack_harness/actions/oidc/customization/sub \
+     > oidc-before.json
+   ```
+
+3. After the service administrator confirms the AWS trust from step 4, apply this
+   template if it is not already configured. Preserve the existing immutable
+   subject setting; do not reset it to change the subject format:
+
+   ```sh
+   jq '{use_default:false,
+        include_claim_keys:["repository_id","repository_owner_id","context","ref","workflow_ref"]}
+       + (if has("use_immutable_subject") then
+            {use_immutable_subject:.use_immutable_subject} else {} end)' \
+     oidc-before.json > oidc-request.json
+   gh api --method PUT \
+     repos/intrusiveai/attack_harness/actions/oidc/customization/sub \
+     --input oidc-request.json
+   ```
+
+4. Read the configuration again without overwriting the backup. Confirm
+   `use_default` is `false`, the immutable setting is unchanged, and all five keys
+   appear in exactly that order:
 
    ```sh
    gh api repos/intrusiveai/attack_harness/actions/oidc/customization/sub
    ```
 
-3. After the service administrator confirms the AWS trust from step 4, apply this
-   template if it is not already configured:
-
-   ```sh
-   gh api --method PUT \
-     repos/intrusiveai/attack_harness/actions/oidc/customization/sub \
-     --input - <<'JSON'
-   {"use_default":false,"include_claim_keys":["repository_id","repository_owner_id","environment","ref","workflow_ref"]}
-   JSON
-   ```
-
-4. Repeat the GET command. Confirm `use_default` is `false` and all five keys
-   appear in exactly that order. Ordinary jobs use `workflow_ref`, not
-   `job_workflow_ref`. For catalog publication, AWS must accept this subject:
+   Ordinary jobs use `workflow_ref`, not `job_workflow_ref`. For catalog
+   publication, the custom claims expand to:
 
    ```text
    repository_id:1384026211:repository_owner_id:296295422:environment:production:ref:refs/tags/<TAG>:workflow_ref:intrusiveai/attack_harness/.github/workflows/<FILE>@refs/tags/<TAG>
    ```
 
    Replace `<FILE>` with `publish-catalog.yml`; both `<TAG>` positions contain
-   the same `v*` tag. The subject binds the workflow
+   the same `v*` tag. Verify the complete issued subject against deployed AWS
+   trust, including any repository prefix actually present. Do not infer a
+   prefix from the settings response alone: use a nonpublishing OIDC check or
+   successful AWS role-assumption audit records, without exposing tokens.
+   The subject binds the workflow
    path and ref, not its contents, so review workflow and publisher changes.
-5. Follow the candidate procedure below to confirm a real OIDC exchange and
-   public delivery. Passing local tests alone does not establish live readiness.
+5. Validate role assumption without publishing. Do not dispatch the catalog
+   publisher just to test OIDC. If no nonpublishing check is available under the
+   trusted workflow/tag, report live validation as pending; do not broaden AWS
+   trust or create a release solely for verification. Prior successful audit
+   records establish the previous configuration, not a new exchange.
+6. Confirm a fresh managed dependency job executes. Old managed runs may not
+   support reruns. For security updates, use **Security and quality → Dependabot →
+   affected alert → Try again / Create Dependabot security update**, if offered.
+   For version updates, use **Insights → Dependency graph → Dependabot → Recent
+   update jobs → Check for updates**. If no retry control is available, wait for
+   the next managed job and report verification as pending. Old failures remain
+   in history; a settings update alone is not a passing run. See
+   [GitHub's retry instructions](https://docs.github.com/en/enterprise-cloud%40latest/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/re-run-dependabot-jobs).
 
 ## Verify local compatibility before publication
 
-1. Check out Operator commit `754b7119f49850727c6df506f050eae11d7af915`
-   in a separate clean directory. This is the immutable contract source in
-   `build/contract-lock.json`; its package is `0.2.1`, digest
-   `sha256:6ecefb5354a4fe2d1baf591bace2fb8457d87106f6a8f99ebc9c9abede4a98d9`.
-   Move any older generated `build/context/contracts` aside before rebuilding.
-2. Check out matching Operator runtime commit
-   `d9255aeba9618bd53f4c3344e6f1c4284e99a353` in a second directory for integration
-   and stopped-image inspection. Its shared contracts/schemas are unchanged from
-   the package source; its service and reporting changes enforce explicit origin
-   and distinguish scenario coverage from exploratory execution. CI builds the
-   package first, then checks out this runtime revision in its Operator directory.
-   `build/operator-runtime-commit.txt` is the shared runtime pin for CI checkout,
-   local integration tests, and publication's inspection-report check. When
-   updating Operator, change that pin; keep the contract source lock tied to the
-   exact package bytes. The two revisions may differ only while their shared
-   contracts/schemas remain identical, as verified by the integration gate.
-   Install the locked dependencies, verify the package, and run the tests:
+1. Select an Operator checkout supplying shared validators and the exact AsyncAPI
+   version/hash pair recorded in `package.package_version` and
+   `package.package_digest` in [the contract lock](../../build/contract-lock.json).
+   This file approves the interface identity. Package manifests
+   independently verify every distributed file; their hash is not compatibility.
+   On interface adoption, update both validator checkout revisions in
+   `.github/workflows/verify.yml` to a published compatible Operator commit and
+   review `build/operator-runtime-commit.txt` for the integration selection.
+   Merging Operator does not move these fixed CI selections automatically.
+   `make verify-selected-contract OPERATOR_ROOT=/path/to/operator` checks the
+   selected document's version and exact bytes against the Harness lock before
+   unit tests import the validators. This identity check does not establish
+   functional conformance; the existing tests still run afterward.
+   Move older generated `build/context/contracts` aside before rebuilding.
+2. Use a compatible Operator for integration and stopped-image inspection.
+   `build/operator-runtime-commit.txt` selects CI test provenance. Another revision
+   with the approved interface may be used locally, without comparing whole source
+   trees or requiring commit equality. Inspection reports bind the interface pair
+   and actual image bytes. Install locked dependencies and run the tests:
 
    ```sh
    python3 -m venv .ci-venv
@@ -179,13 +234,38 @@ identify the repository, environment, tag, and workflow file.
    python3 -m unittest discover -s build/tests -v
    ```
 
-   `make test-integration` runs Operator's authoritative explicit-origin and
+   `make test-integration` selects `^Test(Python|Harness)`: Operator's explicit-origin and
    corrected-finish fixtures, plus Harness's additional workflow and exit tests
    through a test-only overlay. Production Harness processes over FIFO/spool
    verify correction without duplicate dispatch, observation inspection, accepted
    finish, exit 0, cleanup and report/export attribution. The overlay does not
    replace Operator's tests or modify runtime/contract bytes. Controlled responses
    do not establish live-model reliability or native container qualification.
+
+   Operator-only unit/service tests run in Operator CI, not again in this job.
+   New cross-component Go tests must use the `TestPython` or `TestHarness` prefix;
+   `build/verify_integration.py --run .` remains available for full host-package
+   diagnosis. The complete Python unit suite runs once per native architecture
+   inside the Docker test stage against packaged code. Fast PR checks use the
+   host-side unit suite without building images. Candidate jobs do not duplicate
+   that suite on the host before building.
+
+   Campaign tests share one freshly built immutable contract package and CLI per
+   test process, with fresh writable state and target/transport peers per campaign.
+   Business-rule variants run on FIFO, with representative scenario, direct-input,
+   rejection/export and accepted-finish workflows also on spool. Startup, large
+   inputs, compaction, restore, disconnects, cancellation and the full Harness
+   exit matrix retain both transports. No unique business-rule input is removed.
+
+   Each Go integration test package has a 20-minute aggregate timeout to allow
+   the cross-component suite to run on native ARM64 runners. Individual operation
+   deadlines remain unchanged; the native-platform job is limited to 90 minutes.
+   Every selected integration test runs afresh (`-count=1`). The workflow caches Go
+   dependencies and compiled packages through `setup-go`, keyed by the platform,
+   toolchain and Operator dependency files. A cold or missing cache is supported;
+   cached test results never substitute for execution. When the contract source
+   and runtime pins match, the existing Operator checkout is reused; differing
+   pins still select the runtime checkout and verify identical contracts/schemas.
 
    In the matching Operator runtime checkout, run `go test ./contracts ./internal/imagerelease
    ./internal/dockercontrol ./cmd/operatorctl`. Run its shared Python fixtures with
@@ -212,7 +292,7 @@ identify the repository, environment, tag, and workflow file.
    independently resolved Docker image ID separately: containerd-backed Docker can
    expose a manifest-based ID while classic Docker exposes the config ID.
 5. Run Operator's process integration suite with this Harness checkout (see its
-   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
+   [process integration guide](https://github.com/intrusiveai/operator_sandbox/blob/009a451d495c96141c88a75f2eb387ba7a7363d9/docs/PROCESS_INTEGRATION.md)). Check frozen startup, attempt-generator and
    conclusion bindings. The release digest hashes the exact compatibility bytes,
    not normalized JSON. Record fixture/cross-platform results separately from
    native runtime and live-provider QA; neither latter activity blocks candidate
@@ -254,7 +334,8 @@ identify the repository, environment, tag, and workflow file.
    contains that unique candidate version with `tags: ["rc"]`, its unique GHCR
    tag, and the same index digest. Confirm `contract_package_version` equals the
    package version in both platform build reports and embedded compatibility
-   files (`0.2.1` for the current contract). It must remain absent from the stable
+   files, matching [the contract lock](../../build/contract-lock.json) from the
+   release checkout. It must remain absent from the stable
    listing on the [releases website](https://releases.intrusive.ai/).
 
 The rolling image `ghcr.io/intrusiveai/attack_harness:v1.2.3` is convenient for QA
@@ -299,7 +380,8 @@ image digests to identify the published bytes; they are not compatibility record
    The unique candidate entry stays labeled `rc`; the final entry is separate.
 6. Reload the releases website. The version is eligible for its stable listing,
    which displays the first two entries labeled exactly `release`. Confirm its
-   **Shared contract: 0.2.1** indicator matches the promoted package version.
+   **Shared contract** indicator matches the promoted package version approved in
+   [the contract lock](../../build/contract-lock.json) for that release.
    No site build or redeployment is needed. Use a new version for further candidate
    work; promotion freezes `v1.2.3` against later candidate writes.
 

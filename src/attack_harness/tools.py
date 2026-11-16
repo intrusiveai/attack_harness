@@ -1,18 +1,22 @@
 """Fixed, serial model-tool dispatch with restore batch boundaries."""
 
 from dataclasses import dataclass
+from copy import deepcopy
+import json
 
 from operator_contracts import ContractError
 from operator_contracts.canonical import _canonical_value
 from operator_contracts.loop import LoopStopped
+from operator_contracts.model_tools import tool_guidance
+from operator_contracts.tool_normalization import FINISH_TOOLS
 from operator_contracts.startup import require
-from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path
+from operator_contracts.validation import ORDINARY_LIMIT, safe_argument_path, decode
 import re
 
 from .runtime import RuntimeStopped
 
 
-ARGUMENT_LIMIT = 256 << 10
+ARGUMENT_LIMIT = ORDINARY_LIMIT
 
 
 @dataclass(frozen=True)
@@ -44,15 +48,15 @@ class ToolResult:
 class ToolError(ContractError):
     """A bounded nonfatal local rejection returned to the model."""
 
-    def __init__(self, code, message, *, outcome="invalid", path="", correction=""):
-        super().__init__(message, reason=code, field_path=path, correction=correction)
+    def __init__(self, code, message, *, outcome="invalid", path="", correction="", constraint=None, unsupported_fields=None, facts=None):
+        super().__init__(message, reason=code, field_path=path, correction=correction, constraint=constraint, unsupported_fields=unsupported_fields, facts=facts)
         require(outcome in ("invalid", "preflight-rejected"))
         self.value = local_error(self)
         self.outcome = outcome
 
     @classmethod
     def from_contract(cls, error):
-        result = cls(error.reason, str(error), path=error.field_path, correction=error.correction)
+        result = cls(error.reason, str(error), path=error.field_path, correction=error.correction, constraint=error.constraint, unsupported_fields=error.unsupported_fields, facts=error.facts)
         return result
 
     @classmethod
@@ -66,23 +70,59 @@ class ToolError(ContractError):
 def local_error(error):
     # Only shared/product-owned diagnostics, never validator repr or input values.
     reason = error.reason if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", error.reason) else "invalid_arguments"
-    correction = error.correction[:512] or "Use the documented tool arguments and exact returned handles."
-    if "/range" in error.field_path and reason == "invalid_structure":
-        correction = "range requires offset and length. Omit range to reference the whole entry."
+    correction = error.correction
+    omissions = []
+    message = str(error)
+    if len(message.encode("utf-8")) > 512:
+        message = "Detailed validation message exceeded its bound; follow the correction."
+        omissions.append(dict(field="message", reason="oversized"))
+    if len(correction.encode('utf-8')) > 4096:
+        correction = "Correction omitted because it exceeds 4096 bytes. Read the indicated tool guidance before resubmitting."
+        omissions.append(dict(field='correction', reason='oversized'))
+    if not correction:
+        correction = "No correction was supplied. Read the indicated tool guidance before resubmitting."
     return {
-        "status": "error", "code": "INVALID_ARGUMENTS", "effect_state": "none",
-        "disposition": "correct-and-resubmit", "message": "Tool arguments were rejected before execution.",
+        "status": "error", "code": "INTERNAL_ERROR" if reason == "invalid_resolution_context" else "INVALID_ARGUMENTS", "effect_state": "none",
+        "disposition": "terminate" if reason == "invalid_resolution_context" else "correct-and-resubmit", "message": "Tool arguments were rejected before execution.",
         "diagnostic": {
-            "source": "harness-local", "stage": "tool-validation", "reason": reason,
-            "message": str(error)[:512], "field_path": safe_argument_path(error.field_path),
+            "source": "harness-local", "stage": "translation" if reason == "invalid_resolution_context" else "arguments", "reason": reason,
+            "message": message, "field_path": safe_argument_path(error.field_path),
             "correction": correction,
-            "execution_occurred": "no", "resubmission_safe": True,
+            "execution_occurred": "no", "resubmission_safe": reason != "invalid_resolution_context",
+            **({"constraint": error.constraint} if error.constraint else {}),
+            **({"unsupported_fields": error.unsupported_fields} if error.unsupported_fields else {}),
+            **({"facts": error.facts} if error.facts else {}),
+            **({"omissions": omissions} if omissions else {}),
         },
     }
 
 
 def _content(value):
     return _canonical_value(value, ORDINARY_LIMIT).decode("utf-8")
+
+
+@dataclass(frozen=True)
+class AssessmentRepair:
+    """Product-owned correction state, independent of execution closure."""
+
+    call: ToolCall
+    rejection: dict
+
+    def context(self, *, include_arguments=True):
+        # Keep exact JSON text, including duplicate keys, as task data. Never
+        # parse/rewrite the rejected assessment or promote it to instructions.
+        return {"active": True, "tool": self.call.name, "tool_call_id": self.call.call_id,
+                **({"rejected_arguments": self.call.arguments.decode("utf-8", errors="replace")}
+                   if include_arguments else {"request_in_history": self.call.call_id}),
+                "rejection": self.rejection}
+
+    def guidance(self):
+        return ("Your finish submission was rejected. Assessment repair is active. "
+                "Correct the identified field while preserving valid parts of the assessment. "
+                "Use existing execution and evidence references. Read relevant evidence or tool guidance "
+                f"if necessary, then call {self.call.name} again. Do not start new target actions or ask the user "
+                "to select another task. This is a repair instruction, not a selection from any menu. "
+                "Report unresolved findings honestly.")
 
 
 class Dispatcher:
@@ -99,10 +139,77 @@ class Dispatcher:
         self.client = client
         self.last_rejection = None
         self.last_results = []
+        self.repair = None
+        self.protected_finalization = False
+        self.assessment_review = False
         self.protocol = protocol
         self.loop = loop
         self._handlers = dict(handlers)
         self._raw_handlers = dict(raw_handlers)
+        # Installed handlers are the admitted subset of the shared catalog.
+        # Descriptions are product-owned; model-supplied names never select a guide.
+        self._tool_choices = [
+            {"name": name, "purpose": json.loads(tool_guidance(protocol, name))["description"].split(". ", 1)[0]}
+            for name in sorted(handlers.keys() | raw_handlers.keys())
+        ]
+
+    def _name_error(self, call):
+        if call.name in self._handlers or call.name in self._raw_handlers:
+            return None
+        reason = ("unknown_tool" if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", call.name)
+                  else "invalid_tool_name")
+        # Quote untrusted data, bound it, and keep it out of trusted identity
+        # fields. The original response remains in the native exchange record.
+        quoted = json.dumps(call.name, ensure_ascii=True)
+        shown = quoted[:160] + (" (truncated)" if len(quoted) > 160 else "")
+        error = ToolError(reason,
+            f"Invalid or unavailable tool name (untrusted JSON text): {shown}. No target operation was executed.",
+            path="/name", correction="Submit a new call using an exact name from available_tools and its documented arguments. Do not infer or repair a name.")
+        error.value["available_tools"] = self._tool_choices
+        return error
+
+    def _check_repair_action(self, call):
+        if (self.repair is None and not self.protected_finalization and not self.assessment_review) or call.name in (*FINISH_TOOLS, "observation_read", "reference_read", "scenario_select", "record_progress"):
+            return
+        if call.name == "artifact_publish":
+            try:
+                arguments = self.protocol.validate_tool_arguments(call.name, call.arguments)
+            except ContractError as error:
+                raise ToolError.from_contract(error) from None
+            if arguments["purpose"] == "conclusion":
+                return
+        if self.repair is None:
+            raise ToolError("finalization_action_blocked",
+                "Assessment review is active. This action was not executed." if self.assessment_review else
+                "Protected finalization is active. This action was not executed.",
+                correction="Submit an assessment using retained evidence; read observations or tool guidance only when necessary.")
+        raise ToolError("assessment_repair_active",
+            "Assessment repair is active. This action was not executed.",
+            correction="Correct the rejected finish submission using retained evidence; read observations or tool guidance if needed.")
+
+    def protect_finalization(self):
+        if self.protected_finalization:
+            return
+        self.protected_finalization = True
+        if self.client is not None:
+            self.client.request("engine.diagnostic_report", {'diagnostic': {
+                'source': 'harness-local', 'stage': 'dispatch', 'reason': 'finalization_capacity_protected',
+                'message': 'Exploration ended to preserve capacity for assessment and correction.',
+                'execution_occurred': 'no', 'resubmission_safe': False,
+            }}, operation_id=self.client.operation_id('protected-finalization'))
+
+    def report_unresolved_repair(self, budget, now):
+        if self.repair is None or self.client is None:
+            return
+        diagnostic = deepcopy(self.repair.rejection.get("diagnostic", {}))
+        reason = diagnostic.get("reason", self.repair.rejection.get("code", "finish_rejected"))
+        diagnostic.update(source="harness-local", stage="termination",
+            reason="finish_repair_unresolved",
+            message=f"Assessment repair ended without an accepted corrected finish. Last rejection: {reason}."[:512],
+            execution_occurred="no", resubmission_safe=False)
+        budget.charge("diagnostic", 0, now)
+        self.client.request("engine.diagnostic_report", {"tool_name": self.repair.call.name, "diagnostic": diagnostic},
+                            operation_id=self.client.operation_id("unresolved-finish"))
 
     def _report(self, call, value):
         diagnostic = value.get("diagnostic", {})
@@ -118,11 +225,39 @@ class Dispatcher:
             self.client.request("engine.diagnostic_report", report,
                                 operation_id=self.client.operation_id("diagnostic-report"))
 
-    def report_stopping(self, condition, observed=None, limit=None, budget=None, now=None):
-        report = dict(self.last_rejection or {
+    def report_stopping(self, condition, observed=None, limit=None, budget=None, now=None,
+                        *, model_budget=None):
+        previous = None  # Earlier rejections remain separate retained events, never the stopping cause.
+        report = dict(previous or {
             "diagnostic": local_error(ContractError("Harness exploration stopped.",
                 reason=condition, correction="Inspect campaign limits and retained diagnostics before starting new work."))["diagnostic"]})
-        if observed is not None and limit is not None:
+        if model_budget is not None:
+            report = {'diagnostic': {
+                'source': 'harness-local', 'stage': 'termination',
+                'reason': 'model_reservation_unavailable',
+                'message': 'Cannot reserve another model request.',
+                'execution_occurred': 'no', 'resubmission_safe': False,
+            }, 'stopping': {'condition': 'budget-limit', 'budget': dict(model_budget)}}
+        elif condition in ('no-progress-limit', 'invalid-call-limit'):
+            report = {'diagnostic': {
+                'source':'harness-local','stage':'termination','reason':condition.replace('-', '_'),
+                'message':('Invalid tool calls reached the configured limit.' if condition == 'invalid-call-limit'
+                    else 'Consecutive turns without recognized progress reached the configured limit.'),
+                'execution_occurred':'no','resubmission_safe':False,
+            },'stopping':{'condition':condition,'observed_count':observed,'configured_limit':limit}}
+        elif condition in ('context-limit', 'model-turn-limit'):
+            report = {'diagnostic': {
+                'source': 'harness-local', 'stage': 'termination',
+                'reason': 'context_limit' if condition == 'context-limit' else 'model_call_limit',
+                'message': 'Mandatory context cannot fit safely.' if condition == 'context-limit' else 'No model calls remain.',
+                'execution_occurred': 'no', 'resubmission_safe': False,
+            }}
+            # The count-form stopping schema requires genuine observed/limit
+            # values. The stable reason identifies context/call exhaustion when
+            # those counts are unavailable; do not invent zero counters.
+            if observed is not None and limit is not None:
+                report['stopping'] = {'condition': condition, 'observed_count': observed, 'configured_limit': limit}
+        elif observed is not None and limit is not None:
             report["stopping"] = {"condition": condition, "observed_count": observed,
                                   "configured_limit": limit}
         elif "stopping" not in report:
@@ -167,16 +302,20 @@ class Dispatcher:
         try:
             self.loop.accept_response(len(calls))
             for index, call in enumerate(calls):
-                self.loop.start_tool(call.name)
+                name_error = self._name_error(call)
+                # This label accounts for a rejected submission only. It is
+                # never used for handler lookup, execution, or provider correlation.
+                # Keep the shared loop's trusted-identity/state assertions intact.
+                self.loop.start_tool("rejected_tool_call" if name_error else call.name)
                 handler = self._handlers.get(call.name)
                 raw_handler = self._raw_handlers.get(call.name)
                 try:
+                    if name_error is not None:
+                        raise name_error
                     if len(call.arguments) > ARGUMENT_LIMIT:
-                        raise ToolError("argument_limit", "Tool arguments exceed the 256 KiB limit.",
+                        raise ToolError("argument_limit", "Tool arguments exceed the ordinary frame safety ceiling.",
                             correction="Reduce this call's size; use bounded artifact publication for reusable content.")
-                    if handler is None and raw_handler is None:
-                        raise ToolError("unknown_tool", "Unknown tool name.",
-                                        correction="Choose one of the advertised tools.")
+                    self._check_repair_action(call)
                     if raw_handler is not None:
                         handled = raw_handler(call)
                     else:
@@ -190,9 +329,27 @@ class Dispatcher:
                                                 "failed", "restored"))
                 except ToolError as error:
                     handled = HandlerResult(error.value, error.outcome)
+                except ContractError as error:
+                    # Shared sizing checks run before any send. Do not turn a
+                    # transport failure or malformed host response into a retry.
+                    if isinstance(error, RuntimeStopped) or error.reason != "configured_size_exceeded":
+                        raise
+                    handled = HandlerResult(local_error(error), "invalid")
+                if call.name in FINISH_TOOLS:
+                    if (handled.outcome in ("invalid", "preflight-rejected") and
+                            handled.value.get("disposition") == "correct-and-resubmit"):
+                        self.repair = AssessmentRepair(call, deepcopy(handled.value))
+                    elif handled.outcome == "success" and handled.value.get("status") == "accepted":
+                        self.repair = None
                 if handled.outcome == "invalid":
                     self._report(call, handled.value)
-                result = ToolResult(call.call_id, call.name, _content(handled.value), handled.outcome)
+                    if handled.value.get('disposition') == 'terminate':
+                        if self.client is not None: self.client.fail('internal-tool-resolution-failed')
+                        raise RuntimeStopped('internal-tool-resolution-failed')
+                value = handled.value
+                if self.repair is not None and call.name in FINISH_TOOLS:
+                    value = dict(value, repair_guidance=self.repair.guidance())
+                result = ToolResult(call.call_id, call.name, _content(value), handled.outcome)
                 self.loop.finish_tool(handled.outcome)
                 results.append(result)
                 if handled.outcome == "restored":

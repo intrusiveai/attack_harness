@@ -55,7 +55,7 @@ class OrdinaryClient:
     def __init__(self, protocol, transport, admission, *,
                  clock=time.monotonic, idle=lambda: time.sleep(.001)):
         require(type(admission) is dict)
-        required = {"campaign_id", "launch_id", "run_revision", "operations"}
+        required = {"campaign_id", "launch_id", "run_revision", "operations", "operation_timeouts_ms", "size_limits"}
         require(required <= admission.keys())
         require(type(admission["operations"]) is list)
         registered = {item["name"]: item for item in protocol.operations()}
@@ -71,6 +71,14 @@ class OrdinaryClient:
         self.launch_id = admission["launch_id"]
         self.run_revision = admission["run_revision"]
         self.operations = frozenset(operations)
+        timeouts = admission["operation_timeouts_ms"]
+        require(type(timeouts) is dict and set(timeouts) == set(operations))
+        require(all(type(value) is int and 0 < value <= MAX_SAFE_INTEGER
+                    for value in timeouts.values()))
+        from operator_contracts.sizes import validate_sizes
+        validate_sizes(admission["size_limits"])
+        self.size_limits = dict(admission["size_limits"])
+        self._timeouts = dict(timeouts)
         self._registry = registered
         self._ordinary_seq = 0
         self._call_index = 0
@@ -161,8 +169,8 @@ class OrdinaryClient:
         require(operation in self.operations and type(body) is dict)
         metadata = self._registry[operation]
         if timeout_ms is None:
-            timeout_ms = metadata["timeout_ms"]
-        require(type(timeout_ms) is int and 0 < timeout_ms <= metadata["timeout_ms"])
+            timeout_ms = self._timeouts[operation]
+        require(type(timeout_ms) is int and 0 < timeout_ms <= self._timeouts[operation])
         if operation_id is None:
             operation_id = self.operation_id(operation.removeprefix("engine.").replace("_", "-"))
         require(type(operation_id) is str)
@@ -190,7 +198,7 @@ class OrdinaryClient:
             "body": body,
         }
         raw = _canonical_value(request, ORDINARY_LIMIT)
-        self.protocol.validate_request(raw)
+        self.protocol.validate_request_sizes(raw, self.size_limits)
         deadline = self.clock() + timeout_ms / 1000
         self._active = True
         try:

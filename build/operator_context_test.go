@@ -1,0 +1,145 @@
+//go:build linux || darwin
+
+// Harness-local overlay: context warnings renew native conversations without
+// purchasing a summarization request; Operator accounting remains authoritative.
+package preparation_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/intrusiveai/operator_sandbox/internal/reporting"
+)
+
+// Checkpoints carry explicit progress handoffs, never arbitrary commentary.
+func checkCheckpointHandoff(q map[string]any, discarded string) error {
+	messages := q["messages"].([]any)
+	if len(messages) != 2 {
+		return fmt.Errorf("checkpoint retained native exchanges")
+	}
+	role := messages[0].(map[string]any)["role"]
+	if (role != "system" && role != "developer") || messages[1].(map[string]any)["role"] != "user" {
+		return fmt.Errorf("checkpoint must contain fixed instructions and a fresh user task")
+	}
+	task, err := scenarioTask(q)
+	if err != nil {
+		return err
+	}
+	handoffs := task["continuity"].(map[string]any)["assessment_handoffs"].(map[string]any)
+	if handoffs["provenance"] != "model-interpretation-not-evidence" || len(handoffs["entries"].([]any)) != 0 {
+		return fmt.Errorf("commentary was promoted to an assessment handoff")
+	}
+	if strings.Contains(string(encode(q)), discarded[:128]) {
+		return fmt.Errorf("arbitrary commentary survived the checkpoint")
+	}
+	return nil
+}
+
+func TestPythonProcessContextWarningAndFinish(t *testing.T) {
+	for _, transport := range []string{"fifo", "spool"} {
+		t.Run(transport, func(t *testing.T) {
+			var first string
+			workingNotes := strings.Repeat("Unverified working notes. ", 800)
+			reply := func(turn int, q map[string]any) ([]byte, error) {
+				if response, err := scenarioSelectionTurn(&turn, q); response != nil || err != nil {
+					return response, err
+				}
+				switch turn {
+				case 1:
+					var task map[string]any
+					if err := json.Unmarshal([]byte(q["messages"].([]any)[1].(map[string]any)["content"].(string)), &task); err != nil {
+						return nil, err
+					}
+					operation := task["target"].(map[string]any)["resources"].([]any)[0].(map[string]any)
+					detail := modelCall("detail", "reference_read", map[string]any{"reference": operation["details_reference"], "offset": 0})
+					var response map[string]any
+					_ = json.Unmarshal(processResponse([]any{detail, modelCall("first", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"baseline"}`), ""))}), &response)
+					// Public commentary is distinct from opaque native thinking.
+					response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"] = workingNotes
+					return encode(response), nil
+				case 2:
+					detail, err := modelToolResult(q, "detail")
+					if err != nil || (detail["encoding"] != "utf8" && detail["encoding"] != "json") || detail["raw_length"] == nil {
+						return nil, fmt.Errorf("resource detail read failed")
+					}
+					attempt, err := modelToolResult(q, "first")
+					if err != nil {
+						return nil, err
+					}
+					first, _ = attempt["execution"].(string)
+					if first == "" {
+						return nil, fmt.Errorf("missing executed receipt")
+					}
+					entries := attempt["observations"].([]any)
+					entry := entries[0].(map[string]any)
+					raw := processResponse([]any{modelCall("observe", "observation_read", map[string]any{"observation": entry["observation"], "offset": 0})})
+					var result map[string]any
+					_ = json.Unmarshal(raw, &result)
+					result["usage"] = map[string]any{"prompt_tokens": 26870, "completion_tokens": 20, "total_tokens": 26890}
+					return encode(result), nil
+				case 3:
+					raw := string(encode(q))
+					if q["tool_choice"] != "auto" || !strings.Contains(raw, "harness-local-checkpoint") || !strings.Contains(raw, "verified_state") || !strings.Contains(raw, first) || !strings.Contains(raw, "scenario-marker") {
+						return nil, fmt.Errorf("warning did not trim locally with verified scenario/execution context")
+					}
+					if err := checkCheckpointHandoff(q, workingNotes); err != nil {
+						return nil, err
+					}
+					return processResponse([]any{modelCall("second", "attempt_execute", processAttempt("scenario", "", []byte(`{"query":"followup"}`), first))}), nil
+				case 4:
+					second, err := modelToolResult(q, "second")
+					if err != nil {
+						return nil, err
+					}
+					receipt, _ := second["execution"].(string)
+					if receipt == "" {
+						return nil, fmt.Errorf("followup rejected")
+					}
+					return processResponse([]any{modelCall("finish", "finish", finishDraft(modelDraft([]string{first, receipt}, "")))}), nil
+				default:
+					return nil, fmt.Errorf("unexpected model call %d", turn)
+				}
+			}
+			run := newProcessRun(t, processCase{transport: transport, prompt: "default", reply: reply, timeout: 90 * time.Second})
+			run.finish(t)
+			assertProcessConversationPrefixes(t, run.provider.requests)
+			if len(run.provider.requests) != 5 {
+				t.Fatal("unexpected model calls", len(run.provider.requests))
+			}
+			if err := run.writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := reporting.Generate(context.Background(), run.root, "campaign-1", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			report := reportResult(t, run.root, receipt)
+			if len(report.Attempts) != 2 || len(report.ModelContexts) != 5 || len(report.ModelRequests) != 5 || !report.ModelContexts[2].Budget.NearPromptLimit || report.ModelContexts[2].Budget.InputTokens != 26870 {
+				t.Fatal("missing correlated context evidence", report.ModelContexts)
+			}
+			if report.Attempts[0].ScenarioID != "scenario-marker" || report.Attempts[1].ReceiptID == report.Attempts[0].ReceiptID {
+				t.Fatal("scenario/replay mismatch")
+			}
+			// Independently generated report files remain readable after execution cleanup.
+			found := false
+			_ = filepath.WalkDir(run.root, func(path string, d os.DirEntry, e error) error {
+				if e == nil && !d.IsDir() && strings.HasSuffix(path, ".md") {
+					b, _ := os.ReadFile(path)
+					if strings.Contains(string(b), "Model context usage") && strings.Contains(string(b), "26870") {
+						found = true
+					}
+				}
+				return nil
+			})
+			if !found {
+				t.Fatal("human-readable context usage missing")
+			}
+		})
+	}
+}

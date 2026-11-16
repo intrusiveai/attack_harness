@@ -30,7 +30,9 @@ class Reply:
 
 
 class Client:
+    run_revision = 1
     operations = frozenset({"engine.attempt_execute"})
+    campaign_id = "campaign-1"
 
     def __init__(self, status="completed"):
         self.status = status

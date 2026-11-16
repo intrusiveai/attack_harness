@@ -12,6 +12,7 @@ from attack_harness.artifacts import ArtifactPublisher, PART_LIMIT
 
 
 class ArtifactClient:
+    size_limits = dict(direct_input_bytes=32768, assessment_bytes=1<<20, artifact_bytes=16<<20, artifact_part_bytes=256<<10, observation_chunk_bytes=256<<10, snapshot_page_items=100)
     def __init__(self):
         self.calls = []
         self.serial = 0
@@ -106,6 +107,17 @@ class ArtifactTest(unittest.TestCase):
             publisher.publish("payload", "application/json", b'{"z":1, "a":2}',
                               canonicalization="jcs-v1")
         self.assertEqual(client.calls, [])
+
+    def test_configured_part_and_object_allowances(self):
+        client = ArtifactClient()
+        client.size_limits = dict(client.size_limits, artifact_part_bytes=3, artifact_bytes=7)
+        publisher = ArtifactPublisher(self.protocol, client)
+        publisher.publish("payload", "text/plain", b"1234567")
+        parts = [base64.b64decode(body["content"]) for op,body,_ in client.calls if op=="engine.artifact_put_part"]
+        self.assertEqual(parts, [b"123",b"456",b"7"])
+        before=len(client.calls)
+        with self.assertRaises(ContractError): publisher.publish("payload","text/plain",b"12345678")
+        self.assertEqual(len(client.calls),before)
 
 
 if __name__ == "__main__":

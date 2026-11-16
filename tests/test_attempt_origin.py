@@ -9,6 +9,8 @@ from jsonschema import Draft202012Validator
 from operator_contracts import Protocol
 from operator_contracts.loop import HarnessLoop
 from attack_harness.attempts import AttemptExecutor
+from attack_harness.handlers import FixedHandlers
+from test_vertical_slice import Inputs
 from attack_harness.tools import Dispatcher, ToolCall
 from test_attempts import Client, LIMITS, Reply
 
@@ -25,12 +27,13 @@ class AttemptOriginTest(unittest.TestCase):
         loop = HarnessLoop(LIMITS)
         bundle = {'scenarios': [{'scenario_id': name} for name in self.fixture['scenarios']]}
         executor = AttemptExecutor(self.protocol, client, None, {}, bundle, loop)
-        dispatcher = Dispatcher(self.protocol, loop, {}, raw_handlers={'attempt_execute': executor})
+        handlers = FixedHandlers(self.protocol, Inputs(bundle), client, loop, attempts=executor)
+        dispatcher = Dispatcher(self.protocol, loop, {}, raw_handlers=handlers.raw_handlers())
         return client, loop, executor, dispatcher
 
     def body(self, origin):
         return {**deepcopy(origin), 'operation_id': 'invoke',
-                'input': {'encoding': 'json', 'value': {'prompt': 'Reply exactly QA_CONFIG_OK. Do not call tools.'}}}
+                'json': {'prompt': 'Reply exactly QA_CONFIG_OK. Do not call tools.'}}
 
     def dispatch(self, loop, dispatcher, body, call_id='invoke'):
         loop.begin_model()
@@ -45,7 +48,8 @@ class AttemptOriginTest(unittest.TestCase):
                 value = json.loads(result.content)
                 if case.get('valid'):
                     self.assertEqual(result.outcome, 'success')
-                    self.assertEqual(client.requests[0][1], body)
+                    self.assertEqual(client.requests[0][1]['input']['value'], body['json'])
+                    self.assertEqual(client.requests[0][1]['origin'], body['origin'])
                     self.assertEqual(len(client.requests), 1)
                 else:
                     self.assertEqual(result.outcome, 'invalid')
@@ -71,7 +75,8 @@ class AttemptOriginTest(unittest.TestCase):
         body['origin'] = 'scenario'
         accepted = self.dispatch(loop, dispatcher, body, 'corrected')
         self.assertEqual(accepted.outcome, 'success')
-        self.assertEqual(client.requests[0][1], body)
+        self.assertEqual(client.requests[0][1]['input']['value'], body['json'])
+        self.assertEqual(client.requests[0][1]['origin'], body['origin'])
         self.assertEqual(len(client.requests), 1)
         self.assertFalse(executor.reference_category('bad') == 'execution receipt')
 
@@ -122,12 +127,12 @@ class AttemptOriginTest(unittest.TestCase):
                     validator.validate(self.body(origin))
                 self.assertFalse(validator.is_valid(self.body({})))
 
-    def test_trusted_prompt_example_is_valid_and_does_not_infer_origin(self):
+    def test_system_prompt_leaves_argument_examples_to_shared_tools(self):
         prompt = (Path(__file__).resolve().parents[1] / 'assets/default-system-prompt.txt').read_text()
-        example = next(line.removeprefix('Example: ') for line in prompt.splitlines() if line.startswith('Example: '))
-        arguments = self.protocol.validate_tool_arguments('attempt_execute', example.encode())
-        self.assertEqual((arguments['origin'], arguments['scenario_id']), ('scenario', 'configuration'))
-        self.assertIn('linking their evidence to an objective at finish does not change origin', prompt)
+        self.assertNotIn('QA_CONFIG_OK', prompt)
+        self.assertNotIn('Example:', prompt)
+        self.assertIn('complete active scenario before acting', prompt)
+        self.assertIn('end the entire campaign', prompt)
 
 
 if __name__ == '__main__': unittest.main()

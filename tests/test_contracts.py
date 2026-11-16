@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,10 +14,11 @@ class ContractLoaderTest(unittest.TestCase):
         source=Path(os.environ["OPERATOR_CONTRACT_SOURCE"])
         cls.protocol=Protocol(source)
         cls.files={p.name:p.read_bytes() for p in source.glob("*.schema.json")}
-        cls.files.update({name:(source/name).read_bytes() for name in ("catalog.json","operations.json")})
+        cls.files.update({name:(source/name).read_bytes() for name in ("catalog.json","operations.json","asyncapi.json")})
         profiles={"jcs-v1":"semantics/digests.md","manifest-paths-v1":"semantics/paths.md","harness-loop-v1":"semantics/limits.md"}
         cls.files.update({name:b"Test-only semantic profile.\n" for name in profiles.values()})
-        cls.manifest,cls.pin=cls.protocol.build_package_manifest("0.0.0",cls.files,profiles)
+        cls.version = json.loads(cls.files["asyncapi.json"])["info"]["version"]
+        cls.manifest,cls.pin=cls.protocol.build_package_manifest(cls.version,cls.files,profiles)
 
     def setUp(self):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);self.root=Path(tmp.name)
@@ -31,9 +33,63 @@ class ContractLoaderTest(unittest.TestCase):
         self.assertEqual(loaded.registry_digests(),before)
         with self.assertRaises(ContractError):load_contract(self.root,self.pin)
 
+    def test_installed_anthropic_catalog_and_authoritative_constraints(self):
+        loaded = load_contract(self.root, self.pin)
+        operations = sorted(op['name'] for op in loaded.operations())
+        tools = json.loads(loaded.model_tools('anthropic-messages-text-tools-v1', operations))
+        self.assertEqual(len(tools), 17)
+        arguments = {tool['name']: tool['input_schema'] for tool in tools}
+        for name, schema in arguments.items():
+            with self.subTest(tool=name):
+                self.assertEqual(schema['type'], 'object')
+                self.assertFalse(set(schema) & {'oneOf', 'allOf', 'anyOf'})
+        self.assertIn('allOf', arguments['finish']['properties']['claims']['items'])
+        self.assertIn('oneOf', arguments['attempt_execute']['properties']['injection'])
+        self.assertNotIn('record_append', arguments)
+        for name in ('finish', 'finish_artifact', 'finish_unavailable',
+                     'record_hypothesis', 'record_progress', 'record_lineage', 'record_coverage'):
+            self.assertIn(name, arguments)
+        # Provider declarations do not authorize these invalid cross-field choices.
+        for tool, value in (
+            ('artifact_publish', {'purpose':'payload','media_type':'application/json','json':{},'text':'extra'}),
+            ('attempt_execute', {'origin':'scenario','operation_id':'invoke','json':{}}),
+            ('record_hypothesis', {'origin':'scenario','statement':'Maybe.'}),
+            ('record_progress', {'summary':'Observed.','assessment':{'interpretation':'supported',
+                'confidence':'high','assurance':'Observed','summary':'Observed.'}}),
+            ('finish', {'finish_reason':'budget-limit','summary':'Untested.','objectives':[],
+                'status':'completed','uncertainties':[{'kind':'coverage-limit','description':'Untested.'}]})):
+            with self.subTest(tool=tool):
+                with self.assertRaises(ContractError):
+                    loaded.validate_tool_arguments(tool, json.dumps(value).encode())
+
     def test_pin_failure_precedes_payload_read(self):
         (self.root/"catalog.json").unlink()
         with self.assertRaises(ContractError):load_contract(self.root,{**self.pin,"package_digest":"sha256:"+"0"*64})
+
+    def test_exact_document_bytes_and_version_are_required(self):
+        path = self.root / 'asyncapi.json'
+        path.write_bytes(path.read_bytes().rstrip(b'\n'))
+        with self.assertRaises(ContractError):
+            load_contract(self.root, self.pin)
+        path.write_bytes(self.files['asyncapi.json'])
+        with self.assertRaises(ContractError):
+            load_contract(self.root, dict(self.pin, package_version='0.6.1'))
+
+    def test_distribution_change_keeps_identity_but_requires_valid_inventory(self):
+        files = dict(self.files, **{'source/implementation.py': b'# implementation-only change\n'})
+        manifest = json.loads(self.manifest)
+        profiles = {p['profile_id']: p['path'] for p in manifest['semantic_profiles']}
+        raw, pin = self.protocol.build_package_manifest(self.version, files, profiles)
+        self.assertEqual(pin, self.pin)
+        self.assertNotEqual(raw, self.manifest)
+        (self.root / 'source').mkdir()
+        implementation = self.root / 'source/implementation.py'
+        implementation.write_bytes(files['source/implementation.py'])
+        (self.root / 'package.json').write_bytes(raw)
+        self.assertEqual(load_contract(self.root, self.pin).package_identity(), pin)
+        implementation.write_bytes(b'# unrecorded corruption\n')
+        with self.assertRaises(ContractError):
+            load_contract(self.root, self.pin)
 
     def test_extra_file_and_manifest_replacement_rejected(self):
         (self.root/"surprise.py").write_bytes(b"raise Exception('must never execute')")

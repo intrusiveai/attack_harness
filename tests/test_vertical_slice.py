@@ -34,6 +34,8 @@ class Reply:
 class Inputs:
     def __init__(self,bundle):self._bundle=deepcopy(bundle)
     def bundle(self):return deepcopy(self._bundle)
+    def context(self):return {"target": {"capabilities": {"services": []}}}
+    def reference_index(self):return []
     def conclusion_binding(self,revision):
         return {
             "campaign_id":"campaign-1","launch_id":"launch-1","run_revision":revision,
@@ -55,10 +57,12 @@ class Clock:
 
 
 class ScriptedHost:
+    size_limits = dict(direct_input_bytes=32768, assessment_bytes=1<<20, artifact_bytes=16<<20, artifact_part_bytes=256<<10, observation_chunk_bytes=256<<10, snapshot_page_items=100)
     campaign_id="campaign-1";launch_id="launch-1";run_revision=1
     def __init__(self,protocol,payloads,observations):
         self.protocol=protocol;self.payloads=payloads;self.observations=observations
         self.operations=frozenset({
+            "engine.diagnostic_report",
             "engine.model_generate","engine.artifact_begin","engine.artifact_put_part",
             "engine.artifact_commit","engine.attempt_execute","engine.observation_read",
             "engine.record_append","engine.finish",
@@ -78,10 +82,8 @@ class ScriptedHost:
     @staticmethod
     def _model_result(turn,calls):
         return {
-            "codec_id":"openai-chat-text-tools-v1",
-            "profile_id":"vertical-slice-profile",
-            "profile_digest":"sha256:"+"9"*64,
             "receipt_id":f"model-receipt-{turn}",
+            "context_budget":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"requested_completion_tokens":4096,"reserved_tokens":36864,"remaining_prompt_tokens":32668,"near_prompt_limit":False,"remaining_model_tokens":1000000-turn*120,"remaining_model_turns":100-turn},
             "response":{
                 "id":f"chatcmpl-{turn}","object":"chat.completion","created":turn,
                 "model":"fixture-model-2026","choices":[{"index":0,
@@ -99,82 +101,63 @@ class ScriptedHost:
             },
         }
 
-    def _attempt(self,descriptor,generation,parent=None):
-        value={"origin":"scenario", "scenario_id":"scenario-marker", "operation_id":"invoke",
-               "input":{"artifact_receipt":descriptor}}
-        if parent is not None:value["parent_attempt_receipt_id"]=parent
-        return value
-
     def _draft(self):
-        attempts=["attempt-receipt-1","attempt-receipt-2"]
-        observation={"attempt_receipt_id":"attempt-receipt-2","entry_id":"target-output",
-                     "range":{"offset":0,"length":len(self.observations[1])}}
         return {
-            "status":"completed","finish_reason":"objectives-addressed",
-            "summary":"A refined benign input produced the marker in permitted output.",
-            "objectives":[{"objective_id":"objective-marker","outcome":"supported",
-                "summary":"Two serial variants were observed.",
-                "attempt_receipt_refs":attempts,"record_refs":["record-1","record-2"]}],
-            "hypotheses":[{"hypothesis_id":"hypothesis-marker",
-                "objective_refs":["objective-marker"],
-                "provenance":{"origin":"scenario","scenario_id":"scenario-marker"},
-                "outcome":"supported","summary":"The changed instruction influenced output.",
-                "attempt_receipt_refs":attempts,"record_refs":["record-1"]}],
-            "claims":[{"claim_id":"claim-marker",
-                "statement":"The second target output contains the benign marker.",
-                "interpretation":"supported","confidence":"medium",
-                "assurance":"external-response","attempt_receipt_refs":[attempts[1]],
-                "observation_refs":[observation],"uncertainty_refs":["gap-internal"]}],
-            "coverage":[{"objective_id":"objective-marker","hypothesis_id":"hypothesis-marker",
-                "status":"tested","reason":"Baseline and one changed variant completed.",
-                "attempt_receipt_refs":attempts}],
-            "uncertainties":[{"gap_id":"gap-internal","kind":"evidence-gap",
-                "description":"No independent internal-effect evidence was available.",
-                "observation_refs":[],"input_refs":[],"record_refs":[]}],
-            "record_refs":["record-1","record-2"],
+            "status": "completed", "finish_reason": "objectives-addressed",
+            "summary": "A refined benign input produced the marker in permitted output.",
+            "objectives": [{"objective_id": "objective-marker", "outcome": "supported",
+                "summary": "Two serial variants were observed.",
+                "observations": ["observation-1", "observation-2"], "records": ["record-1", "record-2"]}],
+            "hypotheses": [{"label": "marker", "origin": "scenario", "scenario_id": "scenario-marker",
+                "objective_refs": ["objective-marker"], "outcome": "supported",
+                "summary": "The changed instruction influenced output.",
+                "attempts": ["execution-1", "execution-2"], "records": ["record-1"]}],
+            "claims": [{"statement": "The second target output contains the benign marker.",
+                "interpretation": "supported", "confidence": "medium", "assurance": "external-response",
+                "observations": ["observation-2"], "uncertainties": ["internal"]}],
+            "coverage": [{"objective_id": "objective-marker", "hypothesis": "marker", "status": "tested",
+                "reason": "Baseline and one changed variant completed.", "attempts": ["execution-1", "execution-2"]}],
+            "uncertainties": [{"label": "internal", "kind": "evidence-gap",
+                "description": "No independent internal-effect evidence was available."}],
+            "records": ["record-1", "record-2"],
         }
 
-    def _calls(self,turn):
-        descriptor=lambda raw:{"digest":raw_digest(raw),"size_bytes":len(raw),
-            "media_type":"application/json","canonicalization":"jcs-v1"}
-        publish=lambda value:{"purpose":"payload","media_type":"application/json",
-                              "content":{"encoding":"json","value":value}}
-        if turn==1:
-            record={"record_kind":"hypothesis","record":{
-                "hypothesis_id":"hypothesis-marker","objective_refs":["objective-marker"],
-                "provenance":{"origin":"scenario","scenario_id":"scenario-marker"},
-                "statement":"A changed benign instruction may influence the target output.",
-                "assumptions":["Only external response evidence is available."],
-                "predicted_observations":["The marker appears in permitted output."],
-                "record_refs":[]}}
-            return [("hypothesis","record_append",record),
-                    ("payload-1","artifact_publish",publish({"query":"baseline"})),
-                    ("attempt-1","attempt_execute",self._attempt("artifact-1",1))]
-        if turn==2:
-            return [("observe-1","observation_read",{
-                "receipt_id":"attempt-receipt-1","entry_id":"target-output",
-                "offset":0,"max_bytes":4096})]
-        if turn==3:
-            return [("payload-2","artifact_publish",publish({"query":"return MARKER"})),
-                    ("attempt-2","attempt_execute",self._attempt(
-                        "artifact-2",2,"attempt-receipt-1"))]
-        if turn==4:
-            coverage={"record_kind":"coverage","record":{"entries":[{
-                "objective_id":"objective-marker","hypothesis_id":"hypothesis-marker",
-                "status":"tested","reason":"Two completed variants were compared.",
-                "attempt_receipt_refs":["attempt-receipt-1","attempt-receipt-2"]}],
-                "record_refs":["record-1"]}}
-            return [("observe-2","observation_read",{
-                "receipt_id":"attempt-receipt-2","entry_id":"target-output",
-                "offset":0,"max_bytes":4096}),
-                    ("coverage","record_append",coverage)]
-        if turn==5:
-            draft=self._draft();reason=draft.pop("finish_reason")
-            return [("finish","finish",{"finish_reason":reason,"assessment":draft})]
+    def _calls(self, turn):
+        def attempt(artifact, parent=None):
+            body = {"origin": "scenario", "scenario_id": "scenario-marker", "operation_id": "invoke",
+                    "artifact": artifact}
+            if parent: body["parent"] = parent
+            return body
+        def publish(query):
+            return {"purpose": "payload", "media_type": "application/json", "json": {"query": query}}
+        if turn == 1:
+            return [("hypothesis", "record_hypothesis", {"origin": "scenario",
+                "scenario_id": "scenario-marker", "objective_refs": ["objective-marker"],
+                "statement": "A changed benign instruction may influence the target output.",
+                "assumptions": ["Only external response evidence is available."],
+                "predicted_observations": ["The marker appears in permitted output."]}),
+                ("payload-1", "artifact_publish", publish("baseline")),
+                ("attempt-1", "attempt_execute", attempt("artifact-1"))]
+        if turn == 2:
+            return [("observe-1", "observation_read", {"observation": "observation-1"})]
+        if turn == 3:
+            return [("payload-2", "artifact_publish", publish("return MARKER")),
+                ("attempt-2", "attempt_execute", attempt("artifact-2", "execution-1"))]
+        if turn == 4:
+            return [("observe-2", "observation_read", {"observation": "observation-2"}),
+                ("coverage", "record_coverage", {"entries": [{
+                    "objective_id": "objective-marker", "hypothesis": "hypothesis-1", "status": "tested",
+                    "reason": "Two completed variants were compared.", "attempts": ["execution-1", "execution-2"]}],
+                    "records": ["record-1"]})]
+        if turn == 5:
+            return [("finish", "finish", self._draft())]
         raise AssertionError("unexpected model turn")
 
     def request(self,operation,body,*,operation_id):
         self.events.append((operation,deepcopy(body),operation_id))
+        if operation == "engine.diagnostic_report":
+            self.protocol._catalog.validate_value("urn:operator:schema:engine-diagnostic-report-request:v1alpha1", body)
+            return Reply({})
         if operation=="engine.model_generate":
             self.model_turn+=1;self.model_requests.append(deepcopy(body))
             return self._checked(operation,self._model_result(
@@ -278,7 +261,7 @@ class VerticalSliceTest(unittest.TestCase):
             "profile_id":"vertical-slice-profile","profile_digest":"sha256:"+"9"*64,
             "request_model":"fixture-model","response_models":["fixture-model-2026"],
             "instruction_role":"developer","prompt":"Fixed vertical-slice prompt.\n",
-            "max_completion_tokens":4096,"tools":json.loads(tools)}
+            "context_limits":{"maximum_prompt_tokens":32768,"maximum_completion_tokens":4096,"warning_threshold_tokens":26214},"max_completion_tokens":4096,"tools":json.loads(tools)}
         policy_raw=_canonical_value(policy,4<<20)
         conversation=NativeConversation(self.protocol,policy_raw,"Run the marker scenario.")
         result=AdaptiveHarness(self.protocol,client,loop,dispatcher,conversation,finalizer).run()
@@ -294,7 +277,7 @@ class VerticalSliceTest(unittest.TestCase):
                    if value["begin"]["purpose"]=="payload"]
         self.assertEqual(committed,payloads)
         turn3=json.dumps(client.model_requests[2],separators=(",",":"))
-        self.assertIn(base64.b64encode(observations[0]).decode(),turn3)
+        self.assertIn("ordinary",turn3)
         conclusion=self.protocol.validate_conclusion(client.conclusion_raw)
         self.assertEqual(conclusion["claims"][0]["observation_refs"][0]
                          ["attempt_receipt_id"],"attempt-receipt-2")

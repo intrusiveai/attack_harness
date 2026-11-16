@@ -59,7 +59,7 @@ class ReleaseBuildTest(unittest.TestCase):
                 self.assertEqual(path.stat().st_mode & 0o777, 0o444)
                 record = validate_compatibility(raw, FakeProtocol().package_identity(), platform)
                 self.assertEqual(record["platform"], platform)
-                self.assertEqual(set(record), {"api_version", "minimum_operator_version", "contract_package_version",
+                self.assertEqual(set(record), {"api_version", "contract_package_version",
                                                "contract_package_digest", "runtime_profile", "platform"})
                 manifest = json.loads((path.parent / "engine-manifest.json").read_bytes())
                 self.assertEqual(manifest["contract"], FakeProtocol().package_identity())

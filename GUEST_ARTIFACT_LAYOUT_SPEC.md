@@ -1,13 +1,13 @@
 # Attack Harness container and artifact layout
 
-Attack Harness v0.1.0 is an immutable Linux OCI image for `linux/amd64` and
+Attack Harness v0.1.4 is an immutable Linux OCI image for `linux/amd64` and
 `linux/arm64`, launched by Operator under runtime profile `operator-container/v1`.
 The image contains the Python runtime, fixed Harness code, native confinement
 module, default prompt, and the exact shared contract package. Operator provides
 campaign inputs and transports and retains durable outputs outside the guest.
 
 The [integration guide](docs/INTEGRATION.md#locked-contract-and-runtime) specifies
-the locked contract, matching Operator revision, and installation procedure.
+the approved interface identity and installation procedure.
 The [runtime guide](CUSTOM_AI_HARNESS_IMPLEMENTATION_SPEC.md) describes the adaptive
 loop and tools.
 
@@ -64,29 +64,30 @@ skills, writable work, and target responses are never code or module search path
 ```
 
 [`build/prepare_release.py`](build/prepare_release.py) validates the exact shared
-package inventory, digest, registries, file count, and content size before copying
-it. Tool declarations are generated from the shared package for all supported
+interface version and exact document-byte hash, then the separate v2 package
+inventory and schema/registry projections before copying it. Tool declarations are generated from the shared package for all supported
 codecs. Release verification checks the copied package, compatibility fields,
 resource digests, runtime configuration, and generated catalog against those inputs.
 
 ## Embedded compatibility and digest bindings
 
 `/opt/operator/engine/share/compatibility.json` is a bounded closed JSON object.
-For AMD64 its values are:
+For AMD64 its template is shown below. Builds MUST fill the two placeholders
+from `package.package_version` and `package.package_digest` in
+[the contract lock](build/contract-lock.json):
 
 ```json
 {
-  "api_version": "operator.dev/harness-compatibility/v1alpha1",
-  "minimum_operator_version": "0.1.0",
-  "contract_package_version": "0.2.1",
-  "contract_package_digest": "sha256:6ecefb5354a4fe2d1baf591bace2fb8457d87106f6a8f99ebc9c9abede4a98d9",
+  "api_version": "operator.dev/harness-compatibility/v1alpha2",
+  "contract_package_version": "<package.package_version>",
+  "contract_package_digest": "<package.package_digest>",
   "runtime_profile": "operator-container/v1",
   "platform": "linux/amd64"
 }
 ```
 
-The ARM64 image uses `linux/arm64`. The minimum Operator version and exact
-contract identity are both enforced. The compatibility file does not contain its
+The ARM64 image uses `linux/arm64`. The exact interface version and byte hash
+are enforced, independently of Operator implementation revision. The compatibility file does not contain its
 own image digest, registry tag, or a remote approval identity. It is at most 64 KiB;
 invalid fields, types, duplicate keys, or mismatched package/platform values fail.
 
@@ -100,13 +101,13 @@ before campaign execution. The following identities are distinct:
 | OCI config digest | Platform image configuration, including root filesystem identities. |
 | Local Docker image ID | Independently resolved by Docker; classic and containerd-backed stores can expose different identity forms. |
 | Compatibility digest | SHA-256 of the exact embedded `compatibility.json` bytes, without JSON normalization. |
-| Shared package digest | Content identity of the installed Operator contract package. |
+| Shared package digest | SHA-256 of exact `asyncapi.json` bytes, including formatting and final newline. |
 
 Operator freezes the compatibility-byte digest as `release_record_digest` in
 startup and assessment bindings. Attempt generator metadata uses that same value
 as `generator.release_digest`. The resolved image identity is a separate binding.
 These names do not imply an external record lookup. The shared
-[image contract](https://github.com/intrusiveai/operator_sandbox/blob/754b7119f49850727c6df506f050eae11d7af915/schemas/ENGINE_RELEASE_CONTRACT.md)
+[image contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/schemas/ENGINE_RELEASE_CONTRACT.md)
 is authoritative.
 
 `engine-manifest.json` binds platform, runtime profile, contract identity, fixed
@@ -145,7 +146,7 @@ Operator establishes the container's read-only root, disabled network, dropped
 capabilities, resource limits, and startup policy. Linux hosts use FIFO transport;
 macOS hosts use file spool through their Linux Docker runtime. Host selection and
 mount details follow the pinned
-[container contract](https://github.com/intrusiveai/operator_sandbox/blob/d9255aeba9618bd53f4c3344e6f1c4284e99a353/GUEST_CONTAINER_SPEC.md).
+[container contract](https://github.com/intrusiveai/operator_sandbox/blob/aa2cec69c063136377cd0b807bd1116f8ffb484c/GUEST_CONTAINER_SPEC.md).
 
 The guest loads fixed code and the shared package, accepts `bootstrap`, pins
 transport descriptors, and installs the irreversible native filter. Only then does
@@ -184,7 +185,7 @@ make image PLATFORM=linux/arm64 OPERATOR_ROOT=/absolute/path/to/contract-source 
 ```
 
 Use `linux/amd64` for AMD64. Output under `dist/` includes an OCI archive and build
-report. Inspect with the separately pinned Operator runtime:
+report. Inspect with the selected compatible Operator runtime:
 
 ```sh
 make inspect-stopped-image PLATFORM=linux/arm64 OPERATOR_ROOT=/absolute/path/to/matching-operator PYTHON=.ci-venv/bin/python

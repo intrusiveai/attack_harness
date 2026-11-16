@@ -52,7 +52,7 @@ class ConclusionFinalizer:
                         self._reference_error(ref, f"/{group}/{index}/{key}/{n}", category)
         for n, ref in enumerate(draft["record_refs"]):
             self._reference_error(ref, f"/record_refs/{n}", "assessment-record receipt")
-        for group in ("claims", "uncertainties"):
+        for group in ("claims",):
             for i, item in enumerate(draft[group]):
                 for n, ref in enumerate(item["observation_refs"]):
                     if self.observations is None or not self.observations.observed(
@@ -104,6 +104,6 @@ class ConclusionFinalizer:
             self.loop.stop("budget-limit" if reason == "budget-limit" else "harness-error")
         self.budget().charge("finish", 0, self.clock())
         mapped = reason if reason in ("context-limit", "budget-limit") else "harness-error"
-        if self.loop.snapshot()["reason"] == "no-useful-next-experiment":
+        if self.loop.snapshot()["reason"] == "no-useful-next-experiment" and reason not in ("context-limit", "budget-limit"):
             mapped = "no-useful-next-experiment"
         return self.stage({"finish_reason": mapped, "unavailable": {"reason": reason}}).value

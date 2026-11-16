@@ -147,6 +147,7 @@ def inspect(args):
         "inspection_host_platform": inspection_host,
         "native_platform": native_platform,
         "operator_commit": operator_commit,
+        "contract": report["contract"],
         "operator_version": version_match[1],
         "docker_image_id": selector,
         "oci_config_digest": config_digest,

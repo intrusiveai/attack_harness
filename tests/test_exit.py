@@ -35,7 +35,9 @@ class ExitTest(unittest.TestCase):
         self.transport = FakeTransport(self.protocol, self.respond)
         self.client = OrdinaryClient(self.protocol, self.transport, {
             'campaign_id': 'campaign-1', 'launch_id': 'launch-1', 'run_revision': 3,
-            'operations': sorted(o['name'] for o in self.protocol.operations())})
+            'operations': sorted(o['name'] for o in self.protocol.operations()),
+            'size_limits': dict(direct_input_bytes=32768, assessment_bytes=1<<20, artifact_bytes=16<<20, artifact_part_bytes=256<<10, observation_chunk_bytes=256<<10, snapshot_page_items=100),
+            'operation_timeouts_ms': {o['name']: 30000 for o in self.protocol.operations()}})
         self.output = io.StringIO()
 
     def respond(self, raw):

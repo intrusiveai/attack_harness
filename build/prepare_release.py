@@ -26,7 +26,6 @@ ENTRYPOINT = ["/usr/bin/python3", "-I", "-S", "-B",
               "/opt/operator/engine/bootstrap.py"]
 PLATFORMS = ("linux/amd64", "linux/arm64")
 COMPATIBILITY_PATH = "opt/operator/engine/share/compatibility.json"
-MINIMUM_OPERATOR_VERSION = "0.1.0"
 
 
 def _closed_object(pairs):
@@ -40,8 +39,7 @@ def _closed_object(pairs):
 
 def compatibility(pin, platform):
     return {
-        "api_version": "operator.dev/harness-compatibility/v1alpha1",
-        "minimum_operator_version": MINIMUM_OPERATOR_VERSION,
+        "api_version": "operator.dev/harness-compatibility/v1alpha2",
         "contract_package_version": pin["package_version"],
         "contract_package_digest": pin["package_digest"],
         "runtime_profile": "operator-container/v1",
@@ -58,9 +56,6 @@ def validate_compatibility(raw, pin, platform):
             or any(type(item) is not str for item in value.values())
             or platform not in PLATFORMS):
         raise ValueError("invalid closed compatibility record")
-    version = value["minimum_operator_version"]
-    if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version):
-        raise ValueError("compatibility minimum Operator version must be stable SemVer")
     if value != expected:
         raise ValueError("compatibility does not match the installed package, runtime or platform")
     return value
@@ -106,16 +101,9 @@ def _locked_protocol(contract_root, lock):
     expected = {key: lock["package"][key]
                 for key in ("package_version", "package_digest")}
     protocol = load_contract(contract_root, expected)
-    if protocol.registry_digests() != {
-        "catalog_digest": lock["package"]["catalog_digest"],
-        "operations_digest": lock["package"]["operations_digest"],
-    }:
-        raise ValueError("contract registry does not match contract lock")
+    # Shared package verification checks registry/schema projections against the
+    # approved document and checks every inventoried payload independently.
     manifest = _read_json(contract_root / "package.json", 8 << 20)
-    if len(manifest["files"]) != lock["package"]["file_count"]:
-        raise ValueError("contract file count does not match contract lock")
-    if sum(item["size_bytes"] for item in manifest["files"]) != lock["package"]["content_bytes"]:
-        raise ValueError("contract content size does not match contract lock")
     return protocol, manifest
 
 
@@ -130,8 +118,9 @@ def _tool_catalog(protocol):
 
 def check_contract(contract_root, lock_path):
     lock = _read_json(lock_path, 64 << 10)
-    if set(lock) != {"api_version", "source", "package", "publisher"} or \
-            lock["api_version"] != "operator.dev/harness-contract-lock/v1alpha1":
+    if set(lock) != {"api_version", "package"} or \
+            lock["api_version"] != "operator.dev/harness-contract-lock/v2" or \
+            set(lock["package"]) != {"package_version", "package_digest"}:
         raise ValueError("invalid contract lock")
     return _locked_protocol(contract_root, lock)
 
