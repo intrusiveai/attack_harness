@@ -136,39 +136,72 @@ identify the repository, environment, tag, and workflow file.
    rg -n 'id-token:|environment:' .github/workflows
    ```
 
-   Every OIDC job must declare an environment with this template. The checked-in
-   workflows grant OIDC only to the catalog publisher.
+   Include GitHub-managed Dependabot and Dependency Graph jobs in this review;
+   they do not appear in the checked-in workflows and have no environment. Use
+   `context` in the subject template: it expands to `environment:production` for
+   the catalog publisher and the applicable ref/event context for other jobs.
+   Requiring `environment` directly prevents managed jobs from starting. This
+   does not grant them release-role access: AWS still requires production,
+   the numeric repository/owner identities, release tags, the publisher workflow,
+   and the `sts.amazonaws.com` audience.
 2. Authenticate `gh` with repository administrator access. Read and retain the
    existing configuration with your change record:
+
+   ```sh
+   gh api repos/intrusiveai/attack_harness/actions/oidc/customization/sub \
+     > oidc-before.json
+   ```
+
+3. After the service administrator confirms the AWS trust from step 4, apply this
+   template if it is not already configured. Preserve the existing immutable
+   subject setting; do not reset it to change the subject format:
+
+   ```sh
+   jq '{use_default:false,
+        include_claim_keys:["repository_id","repository_owner_id","context","ref","workflow_ref"]}
+       + (if has("use_immutable_subject") then
+            {use_immutable_subject:.use_immutable_subject} else {} end)' \
+     oidc-before.json > oidc-request.json
+   gh api --method PUT \
+     repos/intrusiveai/attack_harness/actions/oidc/customization/sub \
+     --input oidc-request.json
+   ```
+
+4. Read the configuration again without overwriting the backup. Confirm
+   `use_default` is `false`, the immutable setting is unchanged, and all five keys
+   appear in exactly that order:
 
    ```sh
    gh api repos/intrusiveai/attack_harness/actions/oidc/customization/sub
    ```
 
-3. After the service administrator confirms the AWS trust from step 4, apply this
-   template if it is not already configured:
-
-   ```sh
-   gh api --method PUT \
-     repos/intrusiveai/attack_harness/actions/oidc/customization/sub \
-     --input - <<'JSON'
-   {"use_default":false,"include_claim_keys":["repository_id","repository_owner_id","environment","ref","workflow_ref"]}
-   JSON
-   ```
-
-4. Repeat the GET command. Confirm `use_default` is `false` and all five keys
-   appear in exactly that order. Ordinary jobs use `workflow_ref`, not
-   `job_workflow_ref`. For catalog publication, AWS must accept this subject:
+   Ordinary jobs use `workflow_ref`, not `job_workflow_ref`. For catalog
+   publication, the custom claims expand to:
 
    ```text
    repository_id:1384026211:repository_owner_id:296295422:environment:production:ref:refs/tags/<TAG>:workflow_ref:intrusiveai/attack_harness/.github/workflows/<FILE>@refs/tags/<TAG>
    ```
 
    Replace `<FILE>` with `publish-catalog.yml`; both `<TAG>` positions contain
-   the same `v*` tag. The subject binds the workflow
+   the same `v*` tag. Verify the complete issued subject against deployed AWS
+   trust, including any repository prefix actually present. Do not infer a
+   prefix from the settings response alone: use a nonpublishing OIDC check or
+   successful AWS role-assumption audit records, without exposing tokens.
+   The subject binds the workflow
    path and ref, not its contents, so review workflow and publisher changes.
-5. Follow the candidate procedure below to confirm a real OIDC exchange and
-   public delivery. Passing local tests alone does not establish live readiness.
+5. Validate role assumption without publishing. Do not dispatch the catalog
+   publisher just to test OIDC. If no nonpublishing check is available under the
+   trusted workflow/tag, report live validation as pending; do not broaden AWS
+   trust or create a release solely for verification. Prior successful audit
+   records establish the previous configuration, not a new exchange.
+6. Confirm a fresh managed dependency job executes. Old managed runs may not
+   support reruns. For security updates, use **Security and quality → Dependabot →
+   affected alert → Try again / Create Dependabot security update**, if offered.
+   For version updates, use **Insights → Dependency graph → Dependabot → Recent
+   update jobs → Check for updates**. If no retry control is available, wait for
+   the next managed job and report verification as pending. Old failures remain
+   in history; a settings update alone is not a passing run. See
+   [GitHub's retry instructions](https://docs.github.com/en/enterprise-cloud%40latest/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/re-run-dependabot-jobs).
 
 ## Verify local compatibility before publication
 
